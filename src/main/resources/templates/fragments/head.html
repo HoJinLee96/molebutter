@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<!-- 공통 head. 사용: <head th:replace="~{fragments/head :: common('페이지명')}"> -->
+<head th:fragment="common(title)">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${title} + ' · molebutter'">molebutter</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body></body>
+</html>

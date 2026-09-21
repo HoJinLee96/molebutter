@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('가입 신청')}"></head>
+<body class="auth-body">
+<main class="auth-card">
+    <h1 class="brand">가입 신청</h1>
+    <p class="auth-desc">이메일 인증 후 가입을 신청하면 관리자 승인 뒤에 이용할 수 있습니다.</p>
+
+    <div class="auth-form">
+        <!-- 1단계: 이메일 인증번호 발송 -->
+        <div class="field">
+            <label for="email">이메일</label>
+            <div class="field-row">
+                <input id="email" type="email" autocomplete="email" required autofocus>
+                <button type="button" id="send-btn" class="btn">인증번호 발송</button>
+            </div>
+            <p id="send-success" class="form-success" hidden>인증번호를 발송했습니다. 메일함을 확인해 주세요.</p>
+        </div>
+
+        <!-- 2단계: 인증번호 확인 -->
+        <div class="field" id="step-code" hidden>
+            <label for="code">인증번호</label>
+            <div class="field-row">
+                <input id="code" inputmode="numeric" maxlength="6" placeholder="6자리 숫자">
+                <button type="button" id="verify-btn" class="btn">확인</button>
+            </div>
+            <p id="verify-success" class="form-success" hidden>이메일 인증이 완료되었습니다.</p>
+        </div>
+
+        <!-- 3단계: 가입 정보 -->
+        <form id="info-form" hidden novalidate>
+            <div class="auth-form">
+                <div class="field">
+                    <label for="name">이름</label>
+                    <input id="name" autocomplete="name" required>
+                </div>
+                <div class="field">
+                    <label for="phone">휴대전화</label>
+                    <input id="phone" autocomplete="tel" placeholder="010-0000-0000" required>
+                </div>
+                <div class="field">
+                    <label for="password">비밀번호</label>
+                    <input id="password" type="password" autocomplete="new-password" required>
+                    <p class="field-hint">8~64자, 영문자와 숫자를 포함해야 합니다.</p>
+                </div>
+                <div class="field">
+                    <label for="password-confirm">비밀번호 확인</label>
+                    <input id="password-confirm" type="password" autocomplete="new-password" required>
+                </div>
+                <button type="submit" id="signup-btn" class="btn primary block">가입 신청</button>
+            </div>
+        </form>
+
+        <p id="form-error" class="form-error" hidden></p>
+
+        <!-- 완료 -->
+        <div id="done" class="done-box" hidden>
+            <h2>가입 신청 완료</h2>
+            <p>관리자 승인 후 로그인할 수 있습니다.<br>승인되면 등록한 이메일로 로그인해 주세요.</p>
+            <a class="btn primary block" th:href="@{/signin}">로그인 화면으로</a>
+        </div>
+    </div>
+
+    <nav class="auth-links" id="bottom-links">
+        <a th:href="@{/signin}">로그인으로 돌아가기</a>
+    </nav>
+</main>
+
+<script th:src="@{/js/api.js}"></script>
+<script th:inline="none">
+    const emailInput = document.getElementById('email');
+    const sendBtn = document.getElementById('send-btn');
+    const verifyBtn = document.getElementById('verify-btn');
+
+    sendBtn.addEventListener('click', async () => {
+        setError('form-error', null);
+        try {
+            await apiPost('/api/auth/signup/email-code', { email: emailInput.value.trim() });
+            document.getElementById('send-success').hidden = false;
+            document.getElementById('step-code').hidden = false;
+            sendBtn.textContent = '재발송';
+            startCooldown(sendBtn, 60);
+            document.getElementById('code').focus();
+        } catch (e) {
+            setError('form-error', e.message);
+        }
+    });
+
+    verifyBtn.addEventListener('click', async () => {
+        setError('form-error', null);
+        try {
+            await apiPost('/api/auth/signup/verify-email', {
+                email: emailInput.value.trim(),
+                code: document.getElementById('code').value.trim(),
+            });
+            document.getElementById('verify-success').hidden = false;
+            document.getElementById('info-form').hidden = false;
+            emailInput.readOnly = true;
+            sendBtn.hidden = true;
+            verifyBtn.disabled = true;
+            document.getElementById('name').focus();
+        } catch (e) {
+            setError('form-error', e.message);
+        }
+    });
+
+    document.getElementById('info-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        setError('form-error', null);
+        const password = document.getElementById('password').value;
+        if (password !== document.getElementById('password-confirm').value) {
+            setError('form-error', '비밀번호가 서로 일치하지 않습니다.');
+            return;
+        }
+        const signupBtn = document.getElementById('signup-btn');
+        signupBtn.disabled = true;
+        try {
+            await apiPost('/api/auth/signup', {
+                email: emailInput.value.trim(),
+                password,
+                name: document.getElementById('name').value.trim(),
+                phoneNumber: document.getElementById('phone').value.trim(),
+            });
+            document.querySelectorAll('.auth-form > .field, #info-form, #bottom-links')
+                .forEach(el => el.hidden = true);
+            document.getElementById('done').hidden = false;
+        } catch (e) {
+            setError('form-error', e.message);
+            signupBtn.disabled = false;
+        }
+    });
+</script>
+</body>
+</html>

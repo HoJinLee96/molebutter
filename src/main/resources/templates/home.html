@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('홈')}"></head>
+<body>
+<header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
+
+<main class="page">
+    <h1 th:text="'안녕하세요, ' + ${userName} + '님'">안녕하세요</h1>
+    <p class="sub">사용할 수 있는 메뉴입니다. 준비 중인 메뉴는 순차적으로 열립니다.</p>
+
+    <div class="section-grid">
+        <th:block th:each="item : ${menuItems}">
+            <a class="section-card ready" th:if="${readySections.contains(item)}" th:href="@{${item.homePath()}}">
+                <span class="name" th:text="${item.label}">메뉴</span>
+                <span class="tag open">열기</span>
+            </a>
+            <div class="section-card" th:unless="${readySections.contains(item)}">
+                <span class="name" th:text="${item.label}">메뉴</span>
+                <span class="tag">준비 중</span>
+            </div>
+        </th:block>
+    </div>
+</main>
+
+<script th:src="@{/js/api.js}"></script>
+<script th:inline="none">
+    document.getElementById('signout-btn').addEventListener('click', async () => {
+        try {
+            await apiPost('/api/auth/signout');
+        } finally {
+            location.href = '/signin';
+        }
+    });
+</script>
+</body>
+</html>

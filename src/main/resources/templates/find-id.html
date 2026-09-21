@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('이메일 찾기')}"></head>
+<body class="auth-body">
+<main class="auth-card">
+    <h1 class="brand">이메일 찾기</h1>
+    <p class="auth-desc">가입할 때 등록한 이름과 휴대전화 번호를 입력하세요.</p>
+
+    <form id="find-form" class="auth-form" novalidate>
+        <div class="field">
+            <label for="name">이름</label>
+            <input id="name" autocomplete="name" required autofocus>
+        </div>
+        <div class="field">
+            <label for="phone">휴대전화</label>
+            <input id="phone" autocomplete="tel" placeholder="010-0000-0000" required>
+        </div>
+        <p id="form-error" class="form-error" hidden></p>
+        <button type="submit" id="find-btn" class="btn primary block">이메일 찾기</button>
+    </form>
+
+    <div id="result" class="done-box" hidden>
+        <h2>등록된 이메일</h2>
+        <p id="masked-email" style="font-size:17px; font-weight:700; color:var(--text);"></p>
+        <a class="btn primary block" th:href="@{/signin}">로그인하러 가기</a>
+    </div>
+
+    <nav class="auth-links">
+        <a th:href="@{/signin}">로그인으로 돌아가기</a> ·
+        <a th:href="@{/find-password}">비밀번호 재설정</a>
+    </nav>
+</main>
+
+<script th:src="@{/js/api.js}"></script>
+<script th:inline="none">
+    document.getElementById('find-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        setError('form-error', null);
+        try {
+            const data = await apiPost('/api/auth/find-email', {
+                name: document.getElementById('name').value.trim(),
+                phoneNumber: document.getElementById('phone').value.trim(),
+            });
+            document.getElementById('find-form').hidden = true;
+            document.getElementById('masked-email').textContent = data.maskedEmail;
+            document.getElementById('result').hidden = false;
+        } catch (e) {
+            setError('form-error', e.message);
+        }
+    });
+</script>
+</body>
+</html>

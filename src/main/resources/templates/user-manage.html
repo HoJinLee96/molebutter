@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('직원 관리')}"></head>
+<body>
+<header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
+
+<main class="page wide">
+    <h1>직원 관리</h1>
+    <p class="sub">가입 승인, 역할 지정, 정지·잠금 해제를 처리합니다.</p>
+
+    <div class="tabs" id="status-tabs">
+        <button type="button" class="tab active" data-status="">전체</button>
+        <button type="button" class="tab" data-status="PENDING">승인 대기</button>
+        <button type="button" class="tab" data-status="ACTIVE">활성</button>
+        <button type="button" class="tab" data-status="LOCKED">잠김</button>
+        <button type="button" class="tab" data-status="SUSPENDED">정지</button>
+    </div>
+
+    <p id="form-error" class="form-error" hidden></p>
+
+    <div class="table-wrap">
+        <table class="data">
+            <thead>
+            <tr>
+                <th>이름</th>
+                <th>이메일</th>
+                <th>휴대전화</th>
+                <th>역할</th>
+                <th>상태</th>
+                <th>가입일</th>
+                <th>마지막 로그인</th>
+                <th>작업</th>
+            </tr>
+            </thead>
+            <tbody id="user-rows"></tbody>
+        </table>
+        <p id="empty" class="empty" hidden>표시할 계정이 없습니다.</p>
+    </div>
+</main>
+
+<script th:src="@{/js/api.js}"></script>
+<script th:inline="none">
+    const STATUS_LABEL = { PENDING: '승인 대기', ACTIVE: '활성', LOCKED: '잠김', SUSPENDED: '정지' };
+    const ROLES = [['ADMIN', '관리자'], ['PRODUCT', '상품 담당'], ['VIEWER', '조회 전용']];
+    let currentStatus = '';
+
+    document.getElementById('signout-btn').addEventListener('click', async () => {
+        try { await apiPost('/api/auth/signout'); } finally { location.href = '/signin'; }
+    });
+
+    document.getElementById('status-tabs').addEventListener('click', (event) => {
+        const tab = event.target.closest('.tab');
+        if (!tab) return;
+        document.querySelectorAll('#status-tabs .tab').forEach(t => t.classList.toggle('active', t === tab));
+        currentStatus = tab.dataset.status;
+        loadUsers();
+    });
+
+    function fmtDate(value) {
+        return value ? value.replace('T', ' ').substring(0, 16) : '-';
+    }
+
+    function roleSelect(id, selected) {
+        const options = ROLES
+            .map(([value, label]) => `<option value="${value}" ${value === selected ? 'selected' : ''}>${label}</option>`)
+            .join('');
+        return `<select id="${id}">${options}</select>`;
+    }
+
+    function actionsFor(user) {
+        switch (user.status) {
+            case 'PENDING':
+                return `${roleSelect('role-' + user.id, 'VIEWER')}
+                        <button class="btn small primary" data-action="approve" data-id="${user.id}">승인</button>
+                        <button class="btn small" data-action="suspend" data-id="${user.id}">거절(정지)</button>`;
+            case 'ACTIVE':
+                return `${roleSelect('role-' + user.id, user.role)}
+                        <button class="btn small" data-action="role" data-id="${user.id}">역할 변경</button>
+                        <button class="btn small" data-action="suspend" data-id="${user.id}">정지</button>`;
+            case 'LOCKED':
+                return `<button class="btn small primary" data-action="unlock" data-id="${user.id}">잠금 해제</button>
+                        <button class="btn small" data-action="suspend" data-id="${user.id}">정지</button>`;
+            case 'SUSPENDED':
+                return `<button class="btn small" data-action="unsuspend" data-id="${user.id}">정지 해제</button>`;
+            default:
+                return '';
+        }
+    }
+
+    async function loadUsers() {
+        setError('form-error', null);
+        try {
+            const users = await apiGet('/api/admin/users' + (currentStatus ? `?status=${currentStatus}` : ''));
+            const tbody = document.getElementById('user-rows');
+            tbody.innerHTML = users.map(user => `
+                <tr>
+                    <td>${user.name}</td>
+                    <td>${user.email}</td>
+                    <td>${user.phoneNumber ?? '-'}</td>
+                    <td>${user.roleLabel}</td>
+                    <td><span class="badge ${user.status.toLowerCase()}">${STATUS_LABEL[user.status] ?? user.status}</span></td>
+                    <td>${fmtDate(user.createdAt)}</td>
+                    <td>${fmtDate(user.lastLoginAt)}</td>
+                    <td><div class="row-actions">${actionsFor(user)}</div></td>
+                </tr>`).join('');
+            document.getElementById('empty').hidden = users.length > 0;
+        } catch (e) {
+            setError('form-error', e.message);
+        }
+    }
+
+    const CONFIRM_TEXT = {
+        approve: '이 계정을 승인할까요?',
+        role: '역할을 변경할까요?',
+        suspend: '이 계정을 정지할까요?',
+        unsuspend: '정지를 해제할까요?',
+        unlock: '잠금을 해제할까요?',
+    };
+
+    document.getElementById('user-rows').addEventListener('click', async (event) => {
+        const button = event.target.closest('button[data-action]');
+        if (!button) return;
+        const { action, id } = button.dataset;
+        if (!confirm(CONFIRM_TEXT[action])) return;
+        setError('form-error', null);
+        button.disabled = true;
+        try {
+            if (action === 'approve' || action === 'role') {
+                const role = document.getElementById('role-' + id).value;
+                await apiPost(`/api/admin/users/${id}/${action === 'approve' ? 'approve' : 'role'}`, { role });
+            } else {
+                await apiPost(`/api/admin/users/${id}/${action}`);
+            }
+            await loadUsers();
+        } catch (e) {
+            setError('form-error', e.message);
+            button.disabled = false;
+        }
+    });
+
+    loadUsers();
+</script>
+</body>
+</html>

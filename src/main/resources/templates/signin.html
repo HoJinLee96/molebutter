@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('로그인')}"></head>
+<body class="auth-body">
+<main class="auth-card">
+    <h1 class="brand">molebutter</h1>
+    <p class="auth-desc">사내 운영 시스템에 로그인하세요.</p>
+
+    <form id="signin-form" class="auth-form" novalidate>
+        <div class="field">
+            <label for="email">이메일</label>
+            <input id="email" name="email" type="email" autocomplete="username" required autofocus>
+        </div>
+        <div class="field">
+            <label for="password">비밀번호</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <p id="form-error" class="form-error" hidden></p>
+        <button type="submit" id="submit-btn" class="btn primary block">로그인</button>
+    </form>
+
+    <nav class="auth-links">
+        <a th:href="@{/signup}">가입 신청</a> ·
+        <a th:href="@{/find-id}">이메일 찾기</a> ·
+        <a th:href="@{/find-password}">비밀번호 재설정</a>
+    </nav>
+</main>
+
+<script th:src="@{/js/api.js}"></script>
+<script th:inline="none">
+    document.getElementById('signin-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        setError('form-error', null);
+        const button = document.getElementById('submit-btn');
+        button.disabled = true;
+        try {
+            await apiPost('/api/auth/signin', {
+                email: document.getElementById('email').value.trim(),
+                password: document.getElementById('password').value,
+            });
+            location.href = '/';
+        } catch (e) {
+            setError('form-error', e.message);
+            button.disabled = false;
+        }
+    });
+</script>
+</body>
+</html>

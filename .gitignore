@@ -1,0 +1,139 @@
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+# Help / generated project notes
+HELP.md
+
+# Maven build output
+target/
+build/
+out/
+!**/src/main/**/target/
+!**/src/test/**/target/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# Local Maven caches
+.m2/
+.m2_temp/
+
+# QueryDSL / annotation processor output
+generated/
+generated-sources/
+generated-test-sources/
+
+# Spring Boot local configuration
+src/main/resources/application-secret
+src/main/resources/application-secret/*
+src/main/resources/application-secret.properties
+src/main/resources/application-local.properties
+src/main/resources/application-*.local.properties
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+.envrc
+
+# Runtime files
+logs/
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# Local uploads/downloads and generated files
+downloads/
+uploads/
+exports/
+java_files_list.txt
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Coupang 매칭판매 업로드 원본 파일 보관 (런타임 생성)
+data/coupang-matching-sale/
+
+# Java crash / heap dumps
+hs_err_pid*
+replay_pid*
+*.hprof
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# STS / Eclipse
+.apt_generated
+.apt_generated_tests
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache/
+
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# VS Code
+.vscode/
+
+# Python helper cache
+__pycache__/
+*.py[cod]
+
+# Obsidian 관련 파일 무시
+.obsidian/
+.smtcmp_json_db/
+.smtcmp_vector_db.tar.gz
+
+# 문서 정책(2026-07-26 확정): GitHub에는 docs/ 교과서(목차 README·장·부록)만 올린다.
+# notes/(허브·기록·산출물·backend-rebuild·로컬)는 로컬 전용 — 백업은 R2 재해복구 payload가 담당한다.
+# 단, notes/로컬/(스크린샷·개인 스크래치)은 R2 백업에서도 제외한다(소실 수용).
+notes/
+# Claude Code 개인 설정 (로컬 전용)
+.claude/settings.local.json

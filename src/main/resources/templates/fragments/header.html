@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- 로그인 후 공통 헤더. 메뉴는 역할별 MenuSection에서 파생(컨트롤러가 menuItems로 전달).
+     worklist 배지는 DASHBOARD 챕터(Ch 7)에서 이 영역에 붙는다.
+     사용: <header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"> -->
+<header class="app-header" th:fragment="header(userName, menuItems)">
+    <a class="logo" th:href="@{/}">molebutter</a>
+    <nav class="menu">
+        <th:block th:each="item : ${menuItems}">
+            <a class="menu-item ready" th:if="${readySections.contains(item)}"
+               th:href="@{${item.homePath()}}" th:text="${item.label}">메뉴</a>
+            <span class="menu-item" th:unless="${readySections.contains(item)}"
+                  th:text="${item.label}">메뉴</span>
+        </th:block>
+    </nav>
+    <div class="user-area">
+        <a class="user-link" th:href="@{/my-page}" th:text="${userName} + '님'">사용자님</a>
+        <button type="button" id="signout-btn" class="btn small">로그아웃</button>
+    </div>
+</header>
+</body>
+</html>

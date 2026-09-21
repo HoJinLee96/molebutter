@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('인증 로그')}"></head>
+<body>
+<header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
+
+<main class="page wide">
+    <h1>인증 로그</h1>
+    <p class="sub">로그인·토큰·계정 상태 변경 등 인증 이벤트 기록입니다. 기본 조회 범위는 최근 7일입니다.</p>
+
+    <form id="filter-form" class="toolbar">
+        <div class="field">
+            <label for="from">시작일</label>
+            <input id="from" type="date">
+        </div>
+        <div class="field">
+            <label for="to">종료일</label>
+            <input id="to" type="date">
+        </div>
+        <div class="field">
+            <label for="event-type">이벤트</label>
+            <select id="event-type">
+                <option value="">전체</option>
+                <option th:each="type : ${eventTypes}" th:value="${type}" th:text="${type.label}">EVENT</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="email">이메일</label>
+            <input id="email" type="text" placeholder="부분 일치 검색">
+        </div>
+        <div class="field">
+            <label for="ip">IP</label>
+            <input id="ip" type="text" placeholder="부분 일치 검색">
+        </div>
+        <button type="submit" class="btn primary">조회</button>
+    </form>
+
+    <p id="form-error" class="form-error" hidden></p>
+
+    <div class="table-wrap">
+        <table class="data">
+            <thead>
+            <tr>
+                <th>시각</th>
+                <th>이벤트</th>
+                <th>결과</th>
+                <th>이메일</th>
+                <th>역할</th>
+                <th>IP</th>
+                <th>사유</th>
+                <th>User-Agent</th>
+            </tr>
+            </thead>
+            <tbody id="log-rows"></tbody>
+        </table>
+        <p id="empty" class="empty" hidden>조회된 로그가 없습니다.</p>
+    </div>
+
+    <div class="pager">
+        <button type="button" id="prev-btn" class="btn small">이전</button>
+        <span id="page-info">-</span>
+        <button type="button" id="next-btn" class="btn small">다음</button>
+    </div>
+</main>
+
+<script th:src="@{/js/api.js}"></script>
+<script th:inline="none">
+    let page = 0;
+    let totalPages = 0;
+
+    document.getElementById('signout-btn').addEventListener('click', async () => {
+        try { await apiPost('/api/auth/signout'); } finally { location.href = '/signin'; }
+    });
+
+    function fmtDate(value) {
+        return value ? value.replace('T', ' ').substring(0, 19) : '-';
+    }
+
+    async function loadLogs() {
+        setError('form-error', null);
+        const params = new URLSearchParams({ page, size: 20 });
+        const from = document.getElementById('from').value;
+        const to = document.getElementById('to').value;
+        const eventType = document.getElementById('event-type').value;
+        const email = document.getElementById('email').value.trim();
+        const ip = document.getElementById('ip').value.trim();
+        if (from) params.set('from', from);
+        if (to) params.set('to', to);
+        if (eventType) params.set('eventType', eventType);
+        if (email) params.set('email', email);
+        if (ip) params.set('ip', ip);
+
+        try {
+            const data = await apiGet('/api/auth-logs?' + params.toString());
+            totalPages = data.totalPages;
+            const tbody = document.getElementById('log-rows');
+            tbody.innerHTML = data.items.map(log => `
+                <tr>
+                    <td>${fmtDate(log.createdAt)}</td>
+                    <td>${log.eventTypeLabel}</td>
+                    <td><span class="badge ${log.success ? 'ok' : 'fail'}">${log.success ? '성공' : '실패'}</span></td>
+                    <td>${log.email ?? '-'}</td>
+                    <td>${log.userRole ?? '-'}</td>
+                    <td>${log.ip ?? '-'}</td>
+                    <td>${log.failureReason ?? '-'}</td>
+                    <td class="ua" title="${(log.userAgent ?? '').replaceAll('"', '&quot;')}">${log.userAgent ?? '-'}</td>
+                </tr>`).join('');
+            document.getElementById('empty').hidden = data.items.length > 0;
+            document.getElementById('page-info').textContent =
+                totalPages === 0 ? '0 / 0' : `${data.page + 1} / ${totalPages} (총 ${data.totalElements}건)`;
+            document.getElementById('prev-btn').disabled = page <= 0;
+            document.getElementById('next-btn').disabled = page >= totalPages - 1;
+        } catch (e) {
+            setError('form-error', e.message);
+        }
+    }
+
+    document.getElementById('filter-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        page = 0;
+        loadLogs();
+    });
+    document.getElementById('prev-btn').addEventListener('click', () => { if (page > 0) { page--; loadLogs(); } });
+    document.getElementById('next-btn').addEventListener('click', () => { if (page < totalPages - 1) { page++; loadLogs(); } });
+
+    loadLogs();
+</script>
+</body>
+</html>
