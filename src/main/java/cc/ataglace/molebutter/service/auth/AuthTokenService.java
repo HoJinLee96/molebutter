@@ -2,8 +2,6 @@ package cc.ataglace.molebutter.service.auth;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.temporal.ChronoUnit;
 
 import org.springframework.stereotype.Service;
 
@@ -68,7 +66,7 @@ public class AuthTokenService {
             throw new BusinessException(ErrorCode.INVALID_TOKEN);
         }
         // 저장소에 jti가 없으면 = 이미 회전됨/로그아웃됨/재사용. 탈취로 보고 family 전체 무효화.
-        if (!store.exists(REFRESH_KEY + jti)) {
+        if (store.getAndDelete(REFRESH_KEY + jti).isEmpty()) {
             revokeFamily(familyId, absoluteExpiry);
             log.warn("[AUTH] refresh reuse 감지 → family 무효화 familyId={}", familyId);
             throw new BusinessException(ErrorCode.INVALID_TOKEN);
@@ -76,17 +74,14 @@ public class AuthTokenService {
 
         User user = userRepository.findById(userId).orElse(null);
         if (user == null || user.isSigninBlocked()) {
-            store.delete(REFRESH_KEY + jti);
             throw new BusinessException(ErrorCode.INVALID_TOKEN);
         }
         // 비밀번호 변경 이후 발급된 토큰만 유효(변경 전 발급 refresh는 거부).
-        if (issuedBeforePasswordChange(claims, user)) {
-            store.delete(REFRESH_KEY + jti);
+        if (!hasCurrentVersion(claims, user)) {
             throw new BusinessException(ErrorCode.INVALID_TOKEN);
         }
 
-        // 회전: 기존 jti 폐기 후 같은 family·같은 절대만료로 새 토큰쌍 발급.
-        store.delete(REFRESH_KEY + jti);
+        // 기존 jti는 위에서 원자적으로 소비했다. 같은 family·절대만료를 유지한다.
         return issueTokenBundle(user, familyId, absoluteExpiry);
     }
 
@@ -149,9 +144,13 @@ public class AuthTokenService {
             throw new BusinessException(ErrorCode.INVALID_TOKEN);
         }
         String jti = jwtService.newId();
-        String refresh = jwtService.createRefreshToken(user.getId(), familyId, jti, absoluteExpiry);
+        String refresh = jwtService.createRefreshToken(user, familyId, jti, absoluteExpiry);
         store.put(REFRESH_KEY + jti, user.getId() + ":" + familyId, remaining);
-        String access = jwtService.createAccessToken(user);
+        String access = jwtService.createAccessToken(user, familyId);
+        if (isFamilyRevoked(familyId)) {
+            store.delete(REFRESH_KEY + jti);
+            throw new BusinessException(ErrorCode.INVALID_TOKEN);
+        }
         return new TokenBundle(access, refresh, user);
     }
 
@@ -177,18 +176,17 @@ public class AuthTokenService {
         }
     }
 
-    private boolean issuedBeforePasswordChange(Claims claims, User user) {
-        if (user.getPasswordChangedAt() == null || claims.getIssuedAt() == null) {
-            return false;
-        }
-        // JWT iat는 초 단위라, passwordChangedAt도 초로 맞춰 비교한다(같은 초 발급 토큰을 오탐하지 않도록).
-        Instant pwChanged = user.getPasswordChangedAt().atZone(ZoneId.systemDefault())
-                .toInstant().truncatedTo(ChronoUnit.SECONDS);
-        return claims.getIssuedAt().toInstant().isBefore(pwChanged);
+    public boolean hasCurrentVersion(Claims claims, User user) {
+        Number version = claims.get("ver", Number.class);
+        return version != null && version.longValue() == user.getAuthVersion();
+    }
+
+    public boolean isFamilyRevoked(String familyId) {
+        return familyId == null || store.exists(FAMILY_REVOKED_KEY + familyId);
     }
 
     /**
-     * 현재 시간에 절대 상환 시간 차감하여 남은 시간 밀리미터초로 반환
+     * 절대 만료 시각까지 남은 시간을 반환한다.
      */
     private Duration remainingUntil(Instant absoluteExpiry) {
         long millis = absoluteExpiry.toEpochMilli() - System.currentTimeMillis();

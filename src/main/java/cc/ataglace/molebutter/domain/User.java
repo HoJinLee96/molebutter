@@ -44,9 +44,12 @@ public class User extends BaseEntity {
     @Column(name = "last_login_at")
     private LocalDateTime lastLoginAt;
 
-    /** 마지막 비밀번호 변경 시각. 이 시각 이전에 발급된 refresh 토큰은 회전 시 거부된다. */
+    /** 마지막 비밀번호 변경 시각(감사/표시용). 토큰 무효화는 authVersion으로 판정한다. */
     @Column(name = "password_changed_at")
     private LocalDateTime passwordChangedAt;
+
+    @Column(name = "auth_version", nullable = false)
+    private long authVersion;
 
     @Builder
     private User(String email, String phoneNumber, String name, String passwordHash, UserRole role, UserStatus status) {
@@ -92,6 +95,7 @@ public class User extends BaseEntity {
         if (this.failedLoginAttempts >= maxFailedAttempts) {
             if (this.status == UserStatus.ACTIVE) {
                 this.status = UserStatus.LOCKED;
+                this.authVersion++;
                 return true;
             }
         }
@@ -100,6 +104,7 @@ public class User extends BaseEntity {
 
     /** 비밀번호 변경: 해시 교체 + 변경 시각 기록. */
     public void changePassword(String newPasswordHash, LocalDateTime now) {
+        this.authVersion++;
         this.passwordHash = newPasswordHash;
         this.passwordChangedAt = now;
     }
@@ -127,7 +132,7 @@ public class User extends BaseEntity {
         this.status = UserStatus.ACTIVE;
     }
 
-    /** 역할 변경. 새 역할은 다음 access token 발급(최대 access TTL) 시점부터 반영된다. */
+    /** 역할 변경. 기존 토큰은 무효화되어 다음 요청부터 재로그인이 필요하다. */
     public void changeRole(UserRole role) {
         if (this.status == UserStatus.PENDING) {
             throw new IllegalStateException("승인 대기 계정은 승인하면서 역할을 지정하세요.");
@@ -136,6 +141,7 @@ public class User extends BaseEntity {
             throw new IllegalArgumentException("이미 해당 역할입니다.");
         }
         this.role = role;
+        this.authVersion++;
     }
 
     /** 계정 정지. PENDING 계정에 쓰면 가입 거절의 의미가 된다. */
@@ -144,6 +150,7 @@ public class User extends BaseEntity {
             throw new IllegalStateException("이미 정지된 계정입니다.");
         }
         this.status = UserStatus.SUSPENDED;
+        this.authVersion++;
     }
 
     /** 정지 해제: SUSPENDED → ACTIVE. */

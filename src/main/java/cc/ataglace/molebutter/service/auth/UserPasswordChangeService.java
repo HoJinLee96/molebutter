@@ -12,7 +12,7 @@ import cc.ataglace.molebutter.exception.ErrorCode;
 import cc.ataglace.molebutter.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 
-/** 본인 비밀번호 변경. passwordChangedAt을 갱신해 변경 이전 발급 refresh 토큰이 회전 시 거부되게 한다. */
+/** 본인 비밀번호 변경. 인증 버전을 올려 변경 이전 access/refresh 토큰을 모두 무효화한다. */
 @Service
 @RequiredArgsConstructor
 public class UserPasswordChangeService {
@@ -23,7 +23,7 @@ public class UserPasswordChangeService {
 
     @Transactional
     public User changePassword(Long userId, String currentPassword, String newPassword) {
-        User user = userRepository.findById(userId)
+        User user = userRepository.findLockedById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
         if (!passwordEncoder.matches(currentPassword == null ? "" : currentPassword, user.getPasswordHash())) {
             throw new BusinessException(ErrorCode.PASSWORD_MISMATCH);

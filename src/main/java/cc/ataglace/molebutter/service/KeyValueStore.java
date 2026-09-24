@@ -9,6 +9,14 @@ public interface KeyValueStore {
 
     Optional<String> get(String key);
 
+    /** 원자적으로 읽고 삭제한다. 일회용 토큰/인증 증명의 중복 소비를 막는다. */
+    Optional<String> getAndDelete(String key);
+
+    boolean putIfAbsent(String key, String value, Duration ttl);
+
+    /** 값이 일치할 때만 삭제한다. */
+    boolean compareAndDelete(String key, String expected);
+
     void delete(String key);
 
     boolean exists(String key);

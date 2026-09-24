@@ -1,6 +1,9 @@
 package cc.ataglace.molebutter.controller;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.CacheControl;
+import org.springframework.security.web.csrf.CsrfToken;
+import java.util.Map;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -55,6 +58,12 @@ public class UserAuthController {
     private final UserEmailFindService emailFindService;
     private final UserAuthAuditService auditService;
     private final UserRepository userRepository;
+
+    @GetMapping("/csrf")
+    public ResponseEntity<ApiResponse<Map<String, String>>> csrf(CsrfToken token) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.success(
+                Map.of("headerName", token.getHeaderName(), "token", token.getToken())));
+    }
 
     @PostMapping("/signin")
     public ResponseEntity<ApiResponse<Void>> signin(
@@ -129,7 +138,7 @@ public class UserAuthController {
                 principal.userId(), request.currentPassword(), request.newPassword());
 
         // 기존 access token은 blacklist, 새 토큰쌍(새 family, 변경 이후 발급)으로 교체해 세션을 유지하되
-        // 변경 이전 발급된 다른 refresh는 password_changed_at 검사로 회전 시 거부된다.
+        // 변경 이전 발급된 다른 access/refresh는 auth_version 검사로 거부된다.
         authTokenService.blacklistAccess(authCookieService.resolveAccessToken(httpRequest));
         TokenBundle tokens = authTokenService.issueOnSignin(user);
         authCookieService.writeTokens(httpResponse, tokens.accessToken(), tokens.refreshToken());

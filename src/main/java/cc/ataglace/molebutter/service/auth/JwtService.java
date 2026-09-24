@@ -57,7 +57,7 @@ public class JwtService {
     }
 
     /** access token 발급. */
-    public String createAccessToken(User user) {
+    public String createAccessToken(User user, String familyId) {
         Instant now = Instant.now();
         Instant exp = now.plus(authProperties.jwt().accessTtl());
         return Jwts.builder()
@@ -67,6 +67,8 @@ public class JwtService {
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
                 .claim(CLAIM_TYPE, TYPE_ACCESS)
+                .claim("ver", user.getAuthVersion())
+                .claim(CLAIM_FAMILY, familyId)
                 .claim(CLAIM_EMAIL, user.getEmail())
                 .claim(CLAIM_ROLE, user.getRole().name())
                 .signWith(signingKey)
@@ -77,13 +79,14 @@ public class JwtService {
      * refresh token 발급. exp는 절대 만료(absoluteExpiry)로 고정한다. 회전 시 같은 familyId와 absoluteExpiry를 넘겨
      * 만료를 연장하지 않는다.
      */
-    public String createRefreshToken(Long userId, String familyId, String jti, Instant absoluteExpiry) {
+    public String createRefreshToken(User user, String familyId, String jti, Instant absoluteExpiry) {
         return Jwts.builder()
                 .issuer(authProperties.jwt().issuer())
-                .subject(String.valueOf(userId))
+                .subject(String.valueOf(user.getId()))
                 .id(jti)
                 .issuedAt(Date.from(Instant.now()))
                 .expiration(Date.from(absoluteExpiry))
+                .claim("ver", user.getAuthVersion())
                 .claim(CLAIM_TYPE, TYPE_REFRESH)
                 .claim(CLAIM_FAMILY, familyId)
                 .signWith(signingKey)

@@ -2,6 +2,10 @@ package cc.ataglace.molebutter.config;
 
 import java.io.IOException;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
@@ -14,6 +18,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+import cc.ataglace.molebutter.config.properties.AuthProperties;
 import cc.ataglace.molebutter.domain.MenuSection;
 import cc.ataglace.molebutter.dto.ApiResponse;
 import cc.ataglace.molebutter.exception.ErrorCode;
@@ -40,7 +45,7 @@ public class SecurityConfig {
 
     /** 로그인 없이 접근 가능한 인증 API(로그인·갱신·가입·로그아웃·계정 찾기·비밀번호 재설정). */
     private static final String[] PUBLIC_AUTH_APIS = {
-            "/api/auth/signin", "/api/auth/refresh", "/api/auth/signout",
+            "/api/auth/csrf", "/api/auth/signin", "/api/auth/refresh", "/api/auth/signout",
             "/api/auth/signup", "/api/auth/signup/**",
             "/api/auth/find-email",
             "/api/auth/password-reset", "/api/auth/password-reset/**"
@@ -48,13 +53,19 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ObjectMapper objectMapper;
+    private final AuthProperties authProperties;
+
+    @Value("${app.security.require-https:false}")
+    private boolean requireHttps;
 
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        CookieCsrfTokenRepository csrfRepository = new CookieCsrfTokenRepository();
+        csrfRepository.setCookieCustomizer(cookie -> cookie
+                .secure(authProperties.cookie().secure()).sameSite("Lax").path("/"));
+        if (requireHttps) http.redirectToHttps(Customizer.withDefaults());
         http
-                // 토큰은 HttpOnly+SameSite=Lax cookie — Lax가 크로스사이트 POST의 cookie 전송을 막아
-                // 주요 CSRF 벡터를 차단하므로 토큰 방식 CSRF 보호는 생략한다(운영 하드닝 시 재검토).
-                .csrf(AbstractHttpConfigurer::disable)
+                .csrf(csrf -> csrf.csrfTokenRepository(csrfRepository))
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable) // 로그아웃은 /api/auth/signout에서 직접 처리
@@ -98,7 +109,8 @@ public class SecurityConfig {
     private AccessDeniedHandler accessDeniedHandler() {
         return (request, response, accessDeniedException) -> {
             if (isApiRequest(request)) {
-                writeErrorBody(response, ErrorCode.HANDLE_ACCESS_DENIED);
+                writeErrorBody(response, accessDeniedException instanceof CsrfException
+                        ? ErrorCode.INVALID_CSRF_TOKEN : ErrorCode.HANDLE_ACCESS_DENIED);
             } else {
                 response.sendError(HttpServletResponse.SC_FORBIDDEN);
             }

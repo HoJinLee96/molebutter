@@ -14,6 +14,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import cc.ataglace.molebutter.domain.MenuSection;
 import cc.ataglace.molebutter.domain.UserRole;
+import cc.ataglace.molebutter.domain.User;
+import cc.ataglace.molebutter.repository.UserRepository;
 import cc.ataglace.molebutter.service.auth.AuthCookieService;
 import cc.ataglace.molebutter.service.auth.JwtService;
 import cc.ataglace.molebutter.service.auth.AuthTokenService;
@@ -33,8 +35,8 @@ import lombok.extern.slf4j.Slf4j;
  * <p>토큰이 없거나 유효하지 않으면 예외 없이 익명으로 통과시킨다 — 401/403 응답은 인가 계층
  * (SecurityConfig의 authorizeHttpRequests + entry point)의 몫이다.
  *
- * <p>권한은 토큰에 굽지 않고 role claim → {@link UserRole#getSections()} 매핑으로 매 요청 도출한다.
- * 역할별 섹션 구성이 바뀌어도 재로그인 없이 다음 요청부터 반영된다.
+ * <p>명시한 일반 조회는 JWT의 사용자 정보를 사용한다. 민감 조회·변경 요청은 DB의 상태·버전·역할을 확인한다.
+ * 모든 분류에서 Redis의 토큰/세션 폐기를 확인하고, 역할별 섹션 권한은 서버에서 도출한다.
  */
 @Slf4j
 @Component
@@ -44,6 +46,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtService jwtService;
     private final AuthTokenService authTokenService;
     private final AuthCookieService authCookieService;
+    private final UserRepository userRepository;
+    private final RequestAuthPolicyResolver policyResolver;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -69,13 +73,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 return;
             }
             Long userId = jwtService.userId(claims);
-            UserRole role = parseRole(jwtService.role(claims));
-            if (userId == null || role == null) {
-                return;
-            }
-            UserPrincipal principal = new UserPrincipal(userId, jwtService.email(claims), role);
+            if (userId == null || authTokenService.isFamilyRevoked(jwtService.familyId(claims))) return;
+            UserPrincipal principal = resolvePrincipal(request, claims, userId);
+            if (principal == null) return;
             UsernamePasswordAuthenticationToken authentication = UsernamePasswordAuthenticationToken
-                    .authenticated(principal, null, buildAuthorities(role));
+                    .authenticated(principal, null, buildAuthorities(principal.userRole()));
             authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
             SecurityContextHolder.getContext().setAuthentication(authentication);
         } catch (JwtException e) {
@@ -84,15 +86,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
     }
 
-    private UserRole parseRole(String roleName) {
-        if (roleName == null) {
-            return null;
+    private UserPrincipal resolvePrincipal(HttpServletRequest request, Claims claims, Long userId) {
+        if (policyResolver.resolve(request).requiresCurrentUser()) {
+            User user = userRepository.findById(userId).orElse(null);
+            if (user == null || user.isSigninBlocked() || !authTokenService.hasCurrentVersion(claims, user)) return null;
+            return new UserPrincipal(userId, user.getEmail(), user.getRole());
         }
+
+        // DB를 생략하는 조회에서는 계정 상태/역할 변경이 access 만료까지 지연될 수 있다.
+        String email = jwtService.email(claims);
+        String role = jwtService.role(claims);
+        if (email == null || email.isBlank() || role == null || claims.get("ver", Number.class) == null
+                || claims.getId() == null || claims.getId().isBlank() || claims.getExpiration() == null) return null;
         try {
-            return UserRole.valueOf(roleName);
+            return new UserPrincipal(userId, email, UserRole.valueOf(role));
         } catch (IllegalArgumentException e) {
-            log.warn("[AUTH] 알 수 없는 role claim(익명 처리): {}", roleName);
-            return null;
+            throw new JwtException("알 수 없는 사용자 역할", e);
         }
     }
 

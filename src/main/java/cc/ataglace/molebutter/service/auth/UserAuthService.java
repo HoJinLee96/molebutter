@@ -101,7 +101,7 @@ public class UserAuthService {
         }
 
         // 7) 성공: 실패 카운터/잠금 초기화 + last_login_at 갱신을 커밋하고, rate limit 윈도우를 리셋한 뒤 감사 로그를 남긴다.
-        User updated = userMutationService.registerSigninSuccess(userId, now);
+        User updated = userMutationService.registerSigninSuccess(userId, user.getAuthVersion(), user.getPasswordHash(), now);
         rateLimiter.resetAccountWindow(normalizedEmail, ip);
         authAuditService.register(updated.getRole(), updated.getId(), updated.getEmail(), UserAuthEventType.SIGNIN,
                 client, true, null);

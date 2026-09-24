@@ -47,8 +47,8 @@ public class UserSignupService {
     }
 
     /**
-     * 가입 제출: verified 확인 → 정책/정규화 검증 → PENDING/VIEWER 계정 저장.
-     * 저장 커밋 후 verified 소비와 SIGNUP 감사를 남긴다(롤백 시 유령 감사 방지).
+     * 가입 제출: 정책/정규화 검증 → verified 원자 소비 → PENDING/VIEWER 계정 저장.
+     * 인증 증명은 저장 전에 소비한다. 저장 실패 시 재인증이 필요하다.
      */
     public void signup(SignupRequest request, ClientInfo client) {
         String email = EmailNormalizer.normalize(request.email());
@@ -56,13 +56,11 @@ public class UserSignupService {
         String phoneNumber = PhoneNumberNormalizer.normalize(request.phoneNumber());
         String name = request.name().trim();
 
-        if (!emailVerificationService.isVerified(email, EmailVerificationPurpose.SIGNUP)) {
-            throw new BusinessException(ErrorCode.EMAIL_NOT_VERIFIED);
-        }
         if (userRepository.existsByEmail(email)) {
             throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
         }
 
+        emailVerificationService.consumeVerified(email, EmailVerificationPurpose.SIGNUP);
         User user = User.builder()
                 .email(email)
                 .phoneNumber(phoneNumber)
@@ -78,7 +76,6 @@ public class UserSignupService {
             throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
         }
 
-        emailVerificationService.consumeVerified(email, EmailVerificationPurpose.SIGNUP);
         auditService.register(user.getRole(), user.getId(), email, UserAuthEventType.SIGNUP, client, true, null);
         log.info("[SIGNUP] 승인 대기 계정 생성. email={} name={}", email, name);
     }

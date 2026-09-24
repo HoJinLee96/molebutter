@@ -20,6 +20,7 @@ public enum ErrorCode {
     OPTIMISTIC_LOCKING_FAILURE(HttpStatus.CONFLICT, "Optimistic Locking Failure"),
 
     // Auth
+    INVALID_CSRF_TOKEN(HttpStatus.FORBIDDEN, "보안 토큰이 만료되었습니다. 다시 시도하세요."),
     SIGNIN_FAILED(HttpStatus.UNAUTHORIZED, "아이디 또는 비밀번호가 올바르지 않습니다."),
     ACCOUNT_LOCKED(HttpStatus.FORBIDDEN, "인증통해 복구 하세요."),
     ACCOUNT_SUSPENDED(HttpStatus.FORBIDDEN, "정지된 계정입니다. 관리자에게 문의하세요."),

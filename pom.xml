@@ -28,6 +28,7 @@
 	</scm>
 	<properties>
 		<java.version>21</java.version>
+        <molebutter.build-directory>target</molebutter.build-directory>
 	</properties>
 	<dependencies>
 <dependency>
@@ -125,6 +126,7 @@
 	</dependencies>
 
 	<build>
+        <directory>${molebutter.build-directory}</directory>
 		<plugins>
 			<!-- 비밀 파일은 로컬 실행(target/classes)에는 남기고 배포 jar에서만 제외한다.
 			     resources exclude 방식은 target/classes에서도 빠져 optional:classpath: import가
@@ -153,4 +155,19 @@
 		</plugins>
 	</build>
 
+    <profiles>
+        <profile>
+            <id>integration-tests</id>
+            <build><plugins><plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <includes>
+                        <include>**/*Tests.java</include>
+                        <include>**/*IT.java</include>
+                    </includes>
+                </configuration>
+            </plugin></plugins></build>
+        </profile>
+    </profiles>
 </project>

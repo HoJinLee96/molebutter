@@ -1,6 +1,7 @@
 package cc.ataglace.molebutter.service.auth;
 
 import org.springframework.stereotype.Component;
+import java.nio.charset.StandardCharsets;
 
 import cc.ataglace.molebutter.exception.BusinessException;
 import cc.ataglace.molebutter.exception.ErrorCode;
@@ -13,7 +14,8 @@ public class PasswordPolicyValidator {
     private static final int MAX_LENGTH = 64; // BCrypt 입력 상한(72바이트) 이내
 
     public void validate(String rawPassword) {
-        if (rawPassword == null || rawPassword.length() < MIN_LENGTH || rawPassword.length() > MAX_LENGTH) {
+        if (rawPassword == null || rawPassword.length() < MIN_LENGTH || rawPassword.length() > MAX_LENGTH
+                || rawPassword.getBytes(StandardCharsets.UTF_8).length > 72) {
             throw new BusinessException(ErrorCode.INVALID_PASSWORD_FORMAT);
         }
         boolean hasLetter = false;

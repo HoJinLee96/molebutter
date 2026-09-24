@@ -52,7 +52,7 @@ public class UserAdminService {
         log.info("[USER_MANAGE] 가입 승인. userId={} role={} by={}", userId, role, actorId);
     }
 
-    /** 역할 변경. 새 역할은 대상자의 다음 access token 발급 시점(최대 access TTL)부터 반영된다. */
+    /** 역할 변경. 기존 토큰을 무효화하여 다음 요청부터 반영한다. */
     @Transactional
     public void changeRole(Long actorId, Long userId, UserRole role, ClientInfo client) {
         guardSelf(actorId, userId);
@@ -62,7 +62,7 @@ public class UserAdminService {
                 UserAuthEventType.ACCOUNT_ROLE_CHANGED, client, true, null);
     }
 
-    /** 계정 정지(PENDING이면 가입 거절). 기존 refresh는 회전 시 차단되고, access는 남은 TTL 동안만 유효하다. */
+    /** 계정 정지(PENDING이면 가입 거절). 기존 access/refresh는 다음 요청부터 모두 차단한다. */
     @Transactional
     public void suspend(Long actorId, Long userId, ClientInfo client) {
         guardSelf(actorId, userId);
@@ -91,7 +91,7 @@ public class UserAdminService {
     }
 
     private User load(Long userId) {
-        return userRepository.findById(userId)
+        return userRepository.findLockedById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 

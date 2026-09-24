@@ -54,15 +54,12 @@ public class UserPasswordResetService {
 
     /**
      * 재설정 제출: verified 확인 → 정책 검증 → 해시 교체 + 잠금 해제.
-     * passwordChangedAt 갱신으로 변경 이전 발급 refresh 토큰은 회전 시 전부 거부된다.
+     * 인증 버전을 올려 변경 이전 access/refresh 토큰을 모두 무효화한다.
      */
     @Transactional
     public void resetPassword(String rawEmail, String newPassword, ClientInfo client) {
         String email = EmailNormalizer.normalize(rawEmail);
-        if (!emailVerificationService.isVerified(email, EmailVerificationPurpose.PASSWORD_RESET)) {
-            throw new BusinessException(ErrorCode.EMAIL_NOT_VERIFIED);
-        }
-        User user = userRepository.findByEmail(email)
+        User user = userRepository.findLockedByEmail(email)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         if (user.isSuspended()) {
             throw new BusinessException(ErrorCode.ACCOUNT_SUSPENDED);
@@ -72,9 +69,9 @@ public class UserPasswordResetService {
             throw new BusinessException(ErrorCode.PASSWORD_SAME_AS_OLD);
         }
 
+        emailVerificationService.consumeVerified(email, EmailVerificationPurpose.PASSWORD_RESET);
         user.resetPassword(passwordEncoder.encode(newPassword), LocalDateTime.now());
 
-        emailVerificationService.consumeVerified(email, EmailVerificationPurpose.PASSWORD_RESET);
         auditService.register(user.getRole(), user.getId(), email, UserAuthEventType.PASSWORD_RESET, client, true,
                 null);
         log.info("[PASSWORD_RESET] 비밀번호 재설정 완료. userId={}", user.getId());

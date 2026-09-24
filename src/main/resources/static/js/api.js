@@ -15,24 +15,55 @@ class ApiError extends Error {
     }
 }
 
-async function apiRequest(url, options, allowRefresh = true) {
-    const res = await fetch(url, options);
-    let payload = null;
-    try {
-        payload = await res.json();
-    } catch (ignored) {
-        // 본문 없는 응답(리다이렉트 등)
-    }
+let csrfPromise;
+let refreshPromise;
 
-    if (res.status === 401 && payload?.code === 'UNAUTHORIZED' && allowRefresh) {
-        const refreshed = await fetch('/api/auth/refresh', { method: 'POST' });
-        if (refreshed.ok) {
-            return apiRequest(url, options, false); // 갱신 성공: 원 요청 1회 재시도
+function csrfToken() {
+    if (!csrfPromise) {
+        csrfPromise = fetch('/api/auth/csrf', { cache: 'no-store', credentials: 'same-origin' })
+            .then(async res => {
+                if (!res.ok) throw new ApiError('보안 토큰을 가져오지 못했습니다.', 'CSRF_FETCH_FAILED', res.status);
+                return (await res.json()).data;
+            }).catch(error => { csrfPromise = null; throw error; });
+    }
+    return csrfPromise;
+}
+
+async function securedFetch(url, options, retryCsrf = true) {
+    const request = { ...options, credentials: 'same-origin', headers: new Headers(options?.headers) };
+    const unsafe = !['GET', 'HEAD', 'OPTIONS'].includes((request.method ?? 'GET').toUpperCase());
+    if (unsafe) {
+        const csrf = await csrfToken();
+        request.headers.set(csrf.headerName, csrf.token);
+    }
+    const response = await fetch(url, request);
+    if (unsafe && retryCsrf && response.status === 403) {
+        const error = await response.clone().json().catch(() => null);
+        if (error?.code === 'INVALID_CSRF_TOKEN') {
+            csrfPromise = null;
+            return securedFetch(url, options, false);
         }
+    }
+    return response;
+}
+
+// 같은 페이지의 병렬 요청은 하나의 refresh 요청을 공유한다.
+function refreshSession() {
+    if (!refreshPromise) {
+        refreshPromise = securedFetch('/api/auth/refresh', { method: 'POST' })
+            .then(res => res.ok).finally(() => { refreshPromise = null; });
+    }
+    return refreshPromise;
+}
+
+async function apiRequest(url, options, allowRefresh = true) {
+    const res = await securedFetch(url, options);
+    const payload = await res.json().catch(() => null);
+    if (res.status === 401 && payload?.code === 'UNAUTHORIZED' && allowRefresh) {
+        if (await refreshSession()) return apiRequest(url, options, false);
         location.href = '/signin';
         throw new ApiError('세션이 만료되었습니다. 다시 로그인해 주세요.', 'UNAUTHORIZED', 401);
     }
-
     if (!res.ok) {
         throw new ApiError(payload?.message ?? '요청에 실패했습니다. 잠시 후 다시 시도해 주세요.',
             payload?.code ?? 'UNKNOWN', res.status);
