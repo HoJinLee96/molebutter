@@ -34,6 +34,8 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import cc.ataglace.molebutter.config.AdminBootstrap;
 import cc.ataglace.molebutter.domain.User;
+import cc.ataglace.molebutter.domain.UserRole;
+import cc.ataglace.molebutter.domain.UserStatus;
 import cc.ataglace.molebutter.exception.BusinessException;
 import cc.ataglace.molebutter.repository.UserRepository;
 import cc.ataglace.molebutter.service.EmailSender;
@@ -46,13 +48,12 @@ import tools.jackson.databind.ObjectMapper;
 
 /** scripts/test-integration.sh가 준비한 임시 MySQL/Redis에만 연결한다. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "spring.config.import=", "spring.datasource.username=test_app",
+        "spring.config.import=classpath:bootstrap-admin-test.properties", "spring.datasource.username=test_app",
         "spring.datasource.password=isolated-test-app-password",
         "spring.flyway.user=test_migrator", "spring.flyway.password=isolated-test-migration-password",
         "spring.data.redis.host=127.0.0.1", "spring.data.redis.password=", "mail.provider=test",
         "auth.jwt.secret=isolated-integration-test-secret-at-least-32-bytes", "auth.cookie.secure=false",
-        "auth.signin.rate-limit-max-attempts=1000",
-        "BOOTSTRAP_ADMIN_EMAIL=admin@example.com", "BOOTSTRAP_ADMIN_PASSWORD=IntegrationAdmin123!"
+        "auth.signin.rate-limit-max-attempts=1000"
 })
 @ActiveProfiles("bootstrap-admin")
 @Import(AuthenticationFlowIT.MailConfiguration.class)
@@ -241,9 +242,7 @@ class AuthenticationFlowIT {
     @Test
     void migrationsValidateAndRuntimeAccountCannotCreateTables() {
         flyway.validate();
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("3");
-        assertThat(jdbc.queryForObject("SELECT password_hash FROM `user` WHERE id=1", String.class))
-                .isEqualTo("{disabled-initial-admin}");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
         assertThatThrownBy(() -> jdbc.execute("CREATE TABLE forbidden_ddl (id BIGINT)"))
                 .isInstanceOf(org.springframework.dao.DataAccessException.class);
     }
@@ -251,9 +250,14 @@ class AuthenticationFlowIT {
     @Test
     void bootstrapNeverOverwritesExistingAdminCredentials() {
         User before = users.findByEmail("admin@example.com").orElseThrow();
+        assertThat(before.getRole()).isEqualTo(UserRole.ADMIN);
+        assertThat(before.getStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder()
+                .matches("IntegrationAdmin123!", before.getPasswordHash())).isTrue();
         bootstrap.run(null);
         assertThat(users.findByEmail("admin@example.com").orElseThrow().getPasswordHash())
                 .isEqualTo(before.getPasswordHash());
+        assertThat(users.findAllByRole(UserRole.ADMIN)).hasSize(1);
     }
 
     private int attempt(Runnable action) {

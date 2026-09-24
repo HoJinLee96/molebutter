@@ -1,5 +1,6 @@
 -- =====================================================================
--- V1: 초기 스키마 — user, user_auth_audit_log, operation_audit_log + ADMIN seed
+-- V1: 초기 스키마 — user, user_auth_audit_log, operation_audit_log
+-- 최초 관리자는 bootstrap-admin 프로필의 AdminBootstrap에서 생성한다.
 -- =====================================================================
 
 CREATE TABLE `user` (
@@ -59,12 +60,3 @@ CREATE TABLE operation_audit_log (
     KEY ix_operation_audit_log_user_created (user_id, created_at),
     KEY ix_operation_audit_log_event_created (event_type, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- ---------------------------------------------------------------------
--- 초기 관리자(대표) 계정. 초기 비밀번호: admin1234!
--- ---------------------------------------------------------------------
-INSERT INTO `user`
-    (id, email, name, password_hash, user_role, user_status, failed_login_attempts, created_at, created_by)
-VALUES
-    (1, 'moremall2102@naver.com', '관리자', '$2y$10$Iig12CjfO5QhFnZ/TEss8e9qYyEjz2kGzFaC0L9AFNESU9pTRFXFW',
-     'ADMIN', 'ACTIVE', 0, NOW(6), 'SYSTEM');

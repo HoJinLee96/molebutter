@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 
 class MigrationUpgradeIT {
     @Test
-    void upgradesV1WithoutOverwritingAnAlreadyChangedAdminPassword() throws Exception {
+    void v1CreatesNoAdminAndV2PreservesExistingAccounts() throws Exception {
         String url = System.getenv("MOLEBUTTER_TEST_DB_URL");
         if (url == null || !url.contains("/molebutter_test?")) {
             throw new IllegalStateException("Run scripts/test-integration.sh");
@@ -18,10 +18,17 @@ class MigrationUpgradeIT {
         Flyway.configure().dataSource(url, user, password).target("1").load().migrate();
         try (var connection = DriverManager.getConnection(url, user, password);
                 var statement = connection.createStatement()) {
-            statement.executeUpdate("UPDATE `user` SET password_hash='custom-password-hash', email='owner@example.com' WHERE id=1");
+            try (var result = statement.executeQuery("SELECT COUNT(*) FROM `user`")) {
+                assertThat(result.next()).isTrue();
+                assertThat(result.getLong(1)).isZero();
+            }
+            statement.executeUpdate("""
+                    INSERT INTO `user` (id, email, name, password_hash, user_role, user_status, created_at)
+                    VALUES (1, 'owner@example.com', 'Test admin', 'custom-password-hash', 'ADMIN', 'ACTIVE', NOW(6))
+                    """);
         }
         Flyway flyway = Flyway.configure().dataSource(url, user, password).load();
-        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(2);
+        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
         flyway.validate();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
         try (var connection = DriverManager.getConnection(url, user, password);
