@@ -91,20 +91,25 @@ function setError(id, message) {
     el.hidden = !message;
 }
 
-/** 재발송 버튼 쿨다운: seconds 동안 비활성화하며 남은 초를 표시한다. */
-function startCooldown(button, seconds) {
-    const original = button.textContent;
+/** 재발송 대기 시간은 버튼과 분리해 표시한다. 반환 함수로 타이머와 안내를 정리한다. */
+function startCooldown(button, seconds, hint) {
     let remain = seconds;
     button.disabled = true;
-    button.textContent = `${remain}초`;
+    hint.hidden = false;
+    hint.textContent = `${remain}초 후 인증번호를 재발송할 수 있습니다.`;
+    const stop = () => {
+        clearInterval(timer);
+        hint.hidden = true;
+        hint.textContent = '';
+        button.disabled = false;
+    };
     const timer = setInterval(() => {
         remain -= 1;
         if (remain <= 0) {
-            clearInterval(timer);
-            button.disabled = false;
-            button.textContent = original;
+            stop();
         } else {
-            button.textContent = `${remain}초`;
+            hint.textContent = `${remain}초 후 인증번호를 재발송할 수 있습니다.`;
         }
     }, 1000);
+    return stop;
 }
