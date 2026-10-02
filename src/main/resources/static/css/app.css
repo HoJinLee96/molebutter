@@ -11,6 +11,12 @@
     --success: #1f9d61;
     --radius: 10px;
     --shadow: 0 1px 3px rgba(16, 24, 40, .08), 0 8px 24px rgba(16, 24, 40, .06);
+    --control-line: #aeb5bf;
+    --control-focus: #5f6672;
+    --control-font-size: 16px;
+    --control-height: 36px;
+    --field-gap: 40px;
+    --label-gap: 4px;
 }
 
 * { box-sizing: border-box; }
@@ -45,9 +51,12 @@ a:hover { text-decoration: underline; }
 .btn:hover { background: #f1f3f6; }
 .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
 .btn.primary:hover { background: var(--primary-hover); }
+.btn.danger { color: var(--danger); border-color: var(--danger); }
+.btn.danger:hover { background: #fff1f1; }
 .btn.block { width: 100%; }
 .btn.small { padding: 6px 10px; font-size: 13px; font-weight: 500; }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
+.btn:focus-visible, .tab:focus-visible, summary:focus-visible { outline: 2px solid var(--control-focus); outline-offset: 3px; }
 
 /* ── 인증 페이지 (로그인·가입·찾기) ───────────────────── */
 .auth-body {
@@ -74,22 +83,71 @@ a:hover { text-decoration: underline; }
 }
 .auth-desc { margin: 0 0 24px; color: var(--text-sub); font-size: 13px; }
 
-.auth-form { display: flex; flex-direction: column; gap: 14px; }
-.field { display: flex; flex-direction: column; gap: 6px; }
-.field label { font-size: 13px; font-weight: 600; }
-.field input {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 12px;
-    font-size: 15px;
+/* ── 공통 폼: 라벨과 입력은 가깝게, 항목 사이는 넓게 ─── */
+.auth-form, .form { display: flex; flex-direction: column; gap: var(--field-gap); min-width: 0; }
+.field { display: flex; flex-direction: column; gap: var(--label-gap); width: 100%; max-width: var(--field-width, 28rem); min-width: 0; }
+.field > label { font-size: 13px; font-weight: 600; line-height: 1.5; }
+label:has(> :is(input:not([type="checkbox"], [type="radio"], [type="hidden"]), select, textarea)) { display: flex; flex-direction: column; gap: var(--label-gap); min-width: 0; font-size: 13px; font-weight: 600; line-height: 1.5; }
+.required-mark { color: var(--danger); font-size: 12px; margin-right: 4px; }
+:where(input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"], [type="range"], [type="color"], [type="submit"], [type="button"], [type="reset"]), select, textarea) {
+    width: 100%;
+    max-width: min(100%, var(--control-width, 28rem));
+    min-width: 0;
+    min-height: var(--control-height);
+    border: 0;
+    border-bottom: 1px solid var(--control-line);
+    border-radius: 0;
+    padding: 4px 2px 6px;
+    color: var(--text);
+    background: transparent;
+    font: inherit;
+    font-size: var(--control-font-size);
+    font-weight: 400;
+    line-height: 1.25;
     outline: none;
+    box-shadow: none;
     transition: border-color .15s, box-shadow .15s;
 }
-.field input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(47, 111, 237, .15); }
-.field-row { display: flex; gap: 8px; }
-.field-row input { flex: 1; min-width: 0; }
-.field-row .btn { flex-shrink: 0; }
+:where(input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"], [type="range"], [type="color"], [type="submit"], [type="button"], [type="reset"]), select, textarea):focus {
+    border-bottom-color: var(--control-focus);
+    box-shadow: 0 .5px 0 var(--control-focus);
+}
+textarea { min-height: 96px; padding: 8px 2px 2px; line-height: 1.5; resize: vertical; }
+input::placeholder, textarea::placeholder { color: #828995; opacity: 1; }
+input:disabled, select:disabled, textarea:disabled { opacity: .6; cursor: not-allowed; }
+input:read-only:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"]) { border-bottom-style: dashed; color: var(--text-sub); }
+input:is([type="checkbox"], [type="radio"]) { width: 18px; height: 18px; flex: 0 0 18px; margin: 0; vertical-align: middle; accent-color: var(--primary); }
+input:is([type="checkbox"], [type="radio"], [type="file"]):focus-visible { outline: 2px solid var(--control-focus); outline-offset: 3px; }
+input[type="file"] { max-width: 100%; min-width: 0; padding: 6px 0; font: inherit; font-size: 13px; }
+input[type="file"]::file-selector-button { border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin-right: 12px; background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
+input[type="number"] { --control-width: 10rem; }
+input.control-percent { --control-width: 8rem; }
+input[type="date"] { --control-width: 12rem; }
+input[type="month"] { --control-width: 11rem; }
+input[type="time"] { --control-width: 10rem; }
+input[type="datetime-local"] { --control-width: 23rem; }
+input[autocomplete="tel"] { --control-width: 15rem; }
+input[autocomplete="name"] { --control-width: 14rem; }
+input[inputmode="numeric"][maxlength="6"] { --control-width: 9rem; }
+.field--short { --field-width: 12rem; --control-width: 12rem; }
+.field--code { --field-width: 18rem; --control-width: 18rem; }
+.field--wide { --field-width: 42rem; --control-width: 42rem; }
+.field--full { --field-width: 100%; --control-width: 100%; }
+.field--search { --field-width: 22rem; --control-width: 22rem; }
+.form-row { display: flex; flex-wrap: wrap; align-items: start; gap: var(--field-gap) 24px; min-width: 0; }
+.form-row > .field { flex: 0 1 var(--field-width, 18rem); }
+.field-row { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; min-width: 0; }
+.field-row input { flex: 1 1 var(--control-width, 12rem); min-width: 0; }
+.field-row .btn { flex: 0 0 auto; }
+.choice-group { display: flex; flex-direction: column; gap: 12px; padding: 4px 0; }
+label:has(> input:is([type="checkbox"], [type="radio"])) { display: flex; align-items: start; gap: 8px; font-size: 14px; line-height: 1.6; }
+label > input:is([type="checkbox"], [type="radio"]) { margin-top: 2px; }
+.auth-form > .btn:not(.block), .form > .btn:not(.block) { align-self: flex-start; }
+.auth-form > .btn, .form > .btn { margin-top: 4px; }
+.form fieldset { display: grid; gap: var(--field-gap); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin: 0; min-width: 0; }
+.form legend { font-size: 13px; font-weight: 600; padding: 0 6px; }
 .field-hint { font-size: 12px; color: var(--text-sub); margin: 0; }
+.field > :is(.field-hint, .form-error, .form-success) { margin-top: 4px; }
 
 .form-error { margin: 0; color: var(--danger); font-size: 13px; }
 .form-success { margin: 0; color: var(--success); font-size: 13px; }
@@ -128,7 +186,7 @@ a:hover { text-decoration: underline; }
 .page.narrow { max-width: 640px; }
 /* 테이블 중심 페이지: 가로 스크롤을 줄이기 위해 화면을 넓게 쓴다. */
 .page.wide { max-width: 1440px; }
-.page h1 { font-size: 20px; margin: 0 0 4px; }
+.page h1 { font-size: 20px; margin: 0 0 24px; }
 .page .sub { color: var(--text-sub); font-size: 14px; margin: 0 0 24px; }
 
 .panel {
@@ -144,6 +202,7 @@ a:hover { text-decoration: underline; }
 .info-list div { display: flex; align-items: baseline; }
 .info-list dt { width: 96px; color: var(--text-sub); font-size: 14px; flex-shrink: 0; }
 .info-list dd { margin: 0; font-weight: 600; font-size: 14px; }
+
 
 .app-header .user-link { color: var(--text-sub); }
 .app-header .user-link:hover { color: var(--text); text-decoration: none; }
@@ -175,20 +234,17 @@ a:hover { text-decoration: underline; }
 a.section-card.ready { color: var(--text); transition: border-color .15s, box-shadow .15s; }
 a.section-card.ready:hover { text-decoration: none; border-color: var(--primary); box-shadow: var(--shadow); }
 .tag.open { color: var(--primary); border-color: rgba(47, 111, 237, .35); background: rgba(47, 111, 237, .08); }
+
 .app-header a.menu-item.ready { color: var(--text); font-weight: 600; }
 .app-header a.menu-item.ready:hover { background: var(--bg); text-decoration: none; }
 
 /* ── 필터/탭 ─────────────────────────────────────────── */
-.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin-bottom: 16px; }
-.toolbar .field { gap: 4px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: var(--field-gap) 20px; align-items: end; margin-bottom: 20px; }
+.toolbar .field { width: var(--field-width, 14rem); max-width: 100%; }
+.toolbar .field:has(input[type="date"]) { --field-width: 11rem; }
+.toolbar .field:has(input[type="month"]) { --field-width: 11rem; }
 .toolbar .field label { font-size: 12px; color: var(--text-sub); }
-.toolbar input, .toolbar select {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 10px;
-    font-size: 14px;
-    background: var(--surface);
-}
+.toolbar + .toolbar { margin-top: 24px; }
 .tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
 .tab {
     border: 1px solid var(--border);
@@ -203,7 +259,7 @@ a.section-card.ready:hover { text-decoration: none; border-color: var(--primary)
 .tab.active { background: var(--text); border-color: var(--text); color: #fff; }
 
 /* ── 테이블 ──────────────────────────────────────────── */
-.table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; }
+.table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; margin-block: 20px; }
 table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
 table.data th, table.data td { padding: 10px 14px; text-align: left; white-space: nowrap; }
 table.data thead th { font-size: 12px; color: var(--text-sub); border-bottom: 1px solid var(--border); background: #fafbfc; }
@@ -220,16 +276,28 @@ table.data td.ua { max-width: 280px; overflow: hidden; text-overflow: ellipsis; 
 .badge.ok { color: #065f46; background: #d1fae5; }
 .badge.fail { color: #991b1b; background: #fee2e2; }
 
-.row-actions { display: flex; gap: 6px; align-items: center; }
-.row-actions select { border: 1px solid var(--border); border-radius: 6px; padding: 5px 6px; font-size: 13px; }
+.row-actions { display: flex; gap: 12px; align-items: center; }
+.row-actions select { --control-height: 34px; width: auto; }
+.panel > .btn, dialog > .btn { margin-top: 20px; }
+.table-wrap + :is(.btn, .toolbar, .row-actions) { margin-top: 20px; }
 
 .pager { display: flex; gap: 8px; align-items: center; justify-content: center; margin-top: 16px; font-size: 14px; color: var(--text-sub); }
+.pager-numbered { flex-wrap: wrap; gap: 12px; }
+.pager-group { display: flex; align-items: center; gap: 6px; }
+.pager-numbers .btn { min-width: 36px; min-height: 36px; }
+.pager-numbers [aria-current="page"] { color: var(--primary); border-color: var(--primary); background: #eff4ff; font-weight: 700; cursor: default; }
+.pager-summary { flex-basis: 100%; text-align: center; font-size: 12px; }
+@media (max-width: 640px) {
+    .pager-numbered .pager-numbers { order: -1; flex-basis: 100%; justify-content: center; }
+    .pager-numbered .pager-summary { order: 1; }
+}
 .empty { text-align: center; color: var(--text-sub); padding: 32px 0; }
 
 /* 근태: 본인 기록과 정정 검토 */
 .attendance-message { margin: 0 0 16px; }
 .attendance-title { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
 .attendance-title h2, .attendance-title h3 { margin: 0; }
+.auth-form > .attendance-title, .form > .attendance-title { margin-bottom: 0; }
 .attendance-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
 .attendance-metrics span { display: block; font-size: 13px; color: var(--text-sub); }
 .attendance-metrics strong { display: block; margin-top: 6px; font-size: 18px; overflow-wrap: anywhere; }
@@ -245,22 +313,28 @@ table.data td.ua { max-width: 280px; overflow: hidden; text-overflow: ellipsis; 
 .attendance-dialog .auth-form { margin-top: 16px; }
 .attendance-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .attendance-columns section { background: var(--bg); border-radius: 8px; padding: 14px; min-width: 0; }
-.attendance-dialog input, .attendance-dialog textarea { min-width: 0; width: 100%; }
 .attendance-dialog .field { min-width: 0; }
-.attendance-dialog textarea { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font: inherit; resize: vertical; }
+.attendance-dialog .field:has(textarea) { --field-width: 100%; --control-width: 100%; }
 .attendance-detail { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; }
 .attendance-detail dt { color: var(--text-sub); }
 .attendance-detail dd { margin: 0; overflow-wrap: anywhere; }
 .attendance-reason { white-space: pre-wrap; overflow-wrap: anywhere; }
-.attendance-break-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; align-items: end; margin-bottom: 12px; }
+.attendance-break-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 16px; align-items: end; margin-bottom: 24px; }
+.attendance-break-row:last-child { margin-bottom: 0; }
+.attendance-break-row > .btn { justify-self: start; }
+#break-editor:empty, #source-option-info:empty { display: none; }
 @media (max-width: 640px) {
     .attendance-page .app-header { height: auto; flex-wrap: wrap; padding: 12px 16px; gap: 10px; }
     .attendance-page .app-header .menu { order: 3; flex-basis: 100%; overflow-x: auto; }
-    .attendance-page .menu-item { white-space: nowrap; }
-    .attendance-page .user-area { margin-left: auto; }
-    .attendance-page .page { padding: 24px 12px; }
-    .attendance-page .panel, .attendance-dialog { padding: 16px; }
-    .attendance-columns, .attendance-metrics { grid-template-columns: 1fr; gap: 12px; }
+    .menu-item { white-space: nowrap; }
+    .user-area { margin-left: auto; }
+    .page { padding: 24px 12px; }
+    .panel, .attendance-dialog { padding: 16px; }
+    .auth-body { padding: 20px 16px; }
+    .auth-card { padding: 28px 24px; }
+    .toolbar .field { width: 100%; }
+    .toolbar :is(input, select) { --control-height: 44px; }
+    .attendance-columns, .attendance-metrics { grid-template-columns: 1fr; gap: 24px; }
     .attendance-metrics > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
     .attendance-metrics strong { font-size: 16px; }
     .attendance-break-row { grid-template-columns: 1fr; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
@@ -268,9 +342,24 @@ table.data td.ua { max-width: 280px; overflow: hidden; text-overflow: ellipsis; 
 
 /* 관리자 근태 필터는 작은 화면에서 한 줄씩 배치한다. 표만 가로 스크롤한다. */
 .attendance-filters .field { min-width: 0; }
-.attendance-filters input, .attendance-filters select { max-width: 100%; box-sizing: border-box; }
 .attendance-page [role="tabpanel"][hidden] { display: none; }
 @media (max-width: 600px) {
     .attendance-filters .field { width: 100%; }
     .attendance-filters input, .attendance-filters select { width: 100%; }
 }
+
+/* Modal rows share control baselines; headings, actions and merchandise align by their visible centres. */
+dialog .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; vertical-align:middle; }
+dialog :is(.attendance-title,.inventory-heading,.product-dialog-head,.notification-heading) { align-items:center; }
+dialog :is(.attendance-title,.inventory-heading,.product-dialog-head,.notification-heading) > :is(h2,h3) { margin:0; min-width:0; overflow-wrap:anywhere; }
+dialog .inventory-heading { margin-bottom:20px; }
+dialog :is(.form-row,.field-row,.toolbar,.inventory-grid,.purchase-order-row,.attendance-break-row) { align-items:end; }
+dialog .attendance-columns:has(> label,> .field) { align-items:end; }
+dialog :is(.attendance-actions,.inventory-actions,.row-actions,.detail-refresh-actions) { align-items:center; }
+dialog :is(.lookup-supplier-head,.product-candidate,.product-identity,.inventory-stock-identity,.inventory-selected-product,.supplier-store-option) { align-items:center; }
+dialog .inventory-order-footer { align-items:end; }
+dialog .data :is(td,th) { vertical-align:middle; }
+dialog .inventory-product-heading { min-height:0; }
+dialog .inventory-purchase-fields label > span { min-height:0; }
+dialog .inventory-item-edit-actions { margin:0; align-self:end; }
+dialog .inventory-item-edit-actions > .btn { min-height:var(--control-height); }
