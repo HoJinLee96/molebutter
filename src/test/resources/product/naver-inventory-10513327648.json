@@ -1,0 +1,35 @@
+{
+  "_id": "10513327648",
+  "channel": {
+    "channelUid": "2sWDx2kDr1Vivr1fXGyLp",
+    "name": "헤지스ACC",
+    "verticalType": "DEPARTMENT",
+    "storeCategory": {
+      "id": "10001004",
+      "name": "목동점",
+      "wholeIds": [
+        "10001",
+        "10001004"
+      ],
+      "wholeNames": [
+        "현대백화점",
+        "목동점"
+      ]
+    }
+  },
+  "contents": {
+    "id": 10513327648,
+    "name": "[헤지스] [HIWA4F450] 블랙 단색 나일론 미니숄더백",
+    "productStatusType": "SALE",
+    "channelProductStatusType": "NORMAL",
+    "stockQuantity": 41,
+    "optionUsable": false,
+    "naverShoppingSearchInfo": {
+      "brandId": 39,
+      "manufacturerName": "LF",
+      "brandName": "헤지스",
+      "modelName": "HIWA4F450"
+    },
+    "channelServiceType": "WINDOW"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "data": {
+    "basicInfo": {
+      "pdNo": "LE1204272674",
+      "sitmNo": "LE1204272674_1222907552",
+      "sitmNoList": [
+        "LE1204272674_1222907552"
+      ],
+      "sitmNm": "단일상품",
+      "sitmSlStatCd": "SALE"
+    },
+    "optionInfo": {
+      "optionList": [],
+      "addInputOption": [],
+      "optionMappingInfo": {},
+      "colorLohbs": false,
+      "isRDB": false
+    },
+    "stckInfo": {
+      "stkQty": 994,
+      "stkVerNo": null,
+      "stkMgtYn": "Y",
+      "dealStkQty": null,
+      "dealLmtQty": null,
+      "dealOdQty": null,
+      "qtyOfItemDeal": null,
+      "qtyOfProductDeal": null,
+      "hideStkQty": false
+    },
+    "priceInfo": {
+      "slPrc": 142400
+    },
+    "dlvInfo": {
+      "dvCst": 0
+    }
+  },
+  "returnCode": "200"
+}

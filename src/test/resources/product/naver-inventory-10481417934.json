@@ -1,0 +1,51 @@
+{
+  "_id": "10481417934",
+  "channel": {
+    "name": "헤지스핸드백",
+    "channelUid": "2sWE1Zo9uL5JNAqGMuUC2",
+    "verticalType": "DEPARTMENT",
+    "storeCategory": {
+      "id": "10003007",
+      "name": "잠실점",
+      "wholeIds": [
+        "10003",
+        "10003007"
+      ],
+      "wholeNames": [
+        "롯데백화점",
+        "잠실점"
+      ]
+    }
+  },
+  "contents": {
+    "id": 10481417934,
+    "name": "[헤지스ACC] ( HIWA4F450BK ) 블랙 나일론 로고 호보백",
+    "naverShoppingSearchInfo": {
+      "brandId": 39,
+      "manufacturerName": "(주)맥몰리앤드컴퍼니",
+      "brandName": "헤지스",
+      "modelName": "HIWA4F450"
+    },
+    "stockQuantity": 50,
+    "optionUsable": true,
+    "options": [
+      {
+        "id": 10862805346,
+        "optionType": "SIMPLE",
+        "groupName": "선물 포장",
+        "name": "O"
+      },
+      {
+        "id": 10862805347,
+        "optionType": "SIMPLE",
+        "groupName": "선물 포장",
+        "name": "X"
+      }
+    ],
+    "optionCombinations": [],
+    "optionStandards": [],
+    "productStatusType": "SALE",
+    "channelProductStatusType": "NORMAL",
+    "channelServiceType": "WINDOW"
+  }
+}
