@@ -30,11 +30,12 @@ final class LotteProductPayload {
         var axes = info.path("optionList");
         Map<String, SourceOption> options = new LinkedHashMap<>();
         boolean complete = false;
+        Set<String> ambiguous = new HashSet<>();
         if (axes.isArray() && axes.size() == 1 && axes.path(0).path("options").isArray()) {
             var choices = axes.path(0).path("options");
             var mappings = info.path("optionMappingInfo");
             complete = !choices.isEmpty();
-            Set<String> seen = new HashSet<>(), ambiguous = new HashSet<>();
+            Set<String> seen = new HashSet<>();
             for (var choice : choices) {
                 String key = text(choice, "value"), label = text(choice, "label");
                 var m = mappings.path(key);
@@ -61,7 +62,8 @@ final class LotteProductPayload {
             }
         }
         String label = text(b, "sitmNm");
-        if (!sku.isBlank() && !label.isBlank()) {
+        // 충돌한 SKU는 선택 상품의 보완 재고로도 다시 확정하지 않는다.
+        if (!sku.isBlank() && !label.isBlank() && !ambiguous.contains(sku)) {
             var selected = stock(sku, label, d.path("stckInfo"), text(b, "sitmSlStatCd"));
             var mapped = options.get(sku);
             if (mapped == null) {

@@ -61,4 +61,27 @@ class NaverInventoryTest {
         assertThat(parse("\"optionUsable\":false,\"optionCombinations\":[{\"id\":1,\"optionName1\":\"FREE\"}]").options()).isEmpty();
     }
 
+
+    @Test void declaredCombinationAxesRequireEveryNameButKeepValidRows() {
+        String axes="\"options\":[{\"optionType\":\"COMBINATION\",\"groupName\":\"색상\"},{\"optionType\":\"COMBINATION\",\"groupName\":\"사이즈\"}]";
+        for(String missing:List.of("\"optionName1\":\"블랙\"","\"optionName2\":\"M\"")) {
+            var d=parse("\"productStatusType\":\"SALE\",\"optionUsable\":true,"+axes+",\"optionCombinations\":[{\"id\":1,"+missing+",\"stockQuantity\":5},{\"id\":2,\"optionName1\":\"블랙\",\"optionName2\":\"M\",\"stockQuantity\":0}]");
+            assertThat(d.options()).containsExactly(new SourceOption("2","블랙 / M",0L,"SOLD_OUT"));
+            assertThat(d.optionsComplete()).isFalse();
+        }
+        String threeAxes=axes.replace("]",",{\"optionType\":\"COMBINATION\",\"groupName\":\"포장\"}]");
+        assertThat(parse(threeAxes+",\"optionCombinations\":[{\"id\":1,\"optionName1\":\"블랙\",\"optionName2\":\"M\",\"stockQuantity\":5}]").optionsComplete()).isFalse();
+        var complete=parse("\"productStatusType\":\"SALE\",\"optionUsable\":true,"+axes+",\"optionCombinations\":[{\"id\":1,\"optionName1\":\"블랙\",\"optionName2\":\"M\",\"stockQuantity\":5}]");
+        assertThat(complete.optionsComplete()).isTrue();
+        assertThat(complete.options().getFirst().label()).isEqualTo("블랙 / M");
+    }
+    @Test void combinationAxisChecksSupportNestedAndHistoricalDefinitions() {
+        String row="{\"id\":1,\"optionName1\":\"FREE\",\"stockQuantity\":5}";
+        var nested=parse("\"productStatusType\":\"SALE\",\"optionUsable\":true,\"optionInfo\":{\"options\":[{\"optionType\":\"COMBINATION\",\"groupName\":\"사이즈\"}],\"optionCombinations\":["+row+"]}");
+        assertThat(nested.optionsComplete()).isTrue();assertThat(nested.options().getFirst().label()).isEqualTo("FREE");
+        var historical=parse("\"productStatusType\":\"SALE\",\"optionCombinations\":["+row+"]");
+        assertThat(historical.optionsComplete()).isTrue();
+        String contradictory="\"options\":[{\"optionType\":\"COMBINATION\",\"groupName\":\"색상\"}],\"optionInfo\":{\"options\":[{\"optionType\":\"COMBINATION\",\"groupName\":\"색상\"},{\"optionType\":\"COMBINATION\",\"groupName\":\"사이즈\"}]}";
+        assertThat(parse(contradictory+",\"optionCombinations\":["+row+"]").optionsComplete()).isFalse();
+    }
 }

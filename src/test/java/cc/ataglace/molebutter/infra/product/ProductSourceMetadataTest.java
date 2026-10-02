@@ -62,4 +62,35 @@ class ProductSourceMetadataTest {
         var offer=json.readValue("{\"naverProductId\":\"1\",\"price\":10000}",Offer.class);
         assertThat(offer.mall()).isNull();assertThat(offer.imageUrl()).isNull();
     }
+
+    @Test void nestedNaverBranchContradictionsPreventStoreAssignment() {
+        var parser=new MallOptionParser(new ObjectMapper());
+        String outer=naverChannel("현대백화점","목동점","H","M");
+        for(String inner:java.util.List.of(naverChannel("현대백화점","천호점","H","C"),
+                naverChannel("롯데백화점","목동점","L","M"),naverChannel("현대백화점","목동점","H","X"),naverChannel("현대백화점","목동점","h","M"))) {
+            var detail=parser.details(Mall.NAVER_SMART_STORE,naverChannels(outer,inner),"42");
+            var offer=new Offer("nv","","","42","https://shopping.naver.com/window-products/department/42",1L,0L,Mall.NAVER_SMART_STORE,null);
+            var branch=cc.ataglace.molebutter.service.product.SupplierBranch.resolve(offer,detail);
+            assertThat(branch.state()).isEqualTo("CONFLICT");
+            assertThat(cc.ataglace.molebutter.service.product.SupplierStorePolicy.identity(offer,branch)).isNull();
+        }
+    }
+    @Test void matchingAndComplementaryNaverChannelsKeepTheirStoreEvidence() {
+        var parser=new MallOptionParser(new ObjectMapper());
+        String full=naverChannel("현대백화점","목동점","H","M");
+        for(String outer:java.util.List.of(full,naverChannel("현대백화점"," 목동점 ","H",""),"{\"id\":\"1\",\"channelUid\":\"U\",\"verticalType\":\"DEPARTMENT\"}","null")) {
+            var detail=parser.details(Mall.NAVER_SMART_STORE,naverChannels(outer,full),"42");
+            assertThat(detail.storeEvidence().kind()).isEqualTo("BRANCH");
+            assertThat(detail.storeEvidence().externalId()).isEqualTo("H/M");
+            assertThat(detail.storeEvidence().references()).containsEntry("channelUid","U");
+        }
+        assertThat(parser.details(Mall.NAVER_SMART_STORE,naverChannels(full,"null"),"42").storeEvidence().externalId()).isEqualTo("H/M");
+    }
+    private String naverChannel(String retailer,String branch,String retailerId,String branchId) {
+        return new ObjectMapper().writeValueAsString(Map.of("id","1","channelUid","U","verticalType","DEPARTMENT",
+                "storeCategory",Map.of("wholeNames",java.util.List.of(retailer,branch),"wholeIds",java.util.List.of(retailerId,branchId))));
+    }
+    private String naverChannels(String outer,String inner) {
+        return "{\"id\":\"42\",\"channel\":"+outer+",\"contents\":{\"id\":\"42\",\"channel\":"+inner+"}}";
+    }
 }

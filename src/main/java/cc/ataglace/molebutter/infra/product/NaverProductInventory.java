@@ -48,14 +48,20 @@ final class NaverProductInventory {
         }
         if (!rows.isArray() || rows.isEmpty())
             return new Result(List.of(), false);
+        int axes = combinationAxes(body, info);
+        if (axes < 0 || axes > 3)
+            return new Result(List.of(), false);
         var result = new LinkedHashMap<String, SourceOption>();
         var ambiguous = new HashSet<String>();
         boolean complete = true;
         for (var row : rows) {
             String key = text(row, "id");
-            String label = String.join(" / ",
-                    List.of(text(row, "optionName1"), text(row, "optionName2"), text(row, "optionName3")).stream()
-                            .filter(s -> !s.isBlank()).toList());
+            var names = List.of(text(row, "optionName1"), text(row, "optionName2"), text(row, "optionName3"));
+            if (names.subList(0, axes).stream().anyMatch(String::isBlank)) {
+                complete = false;
+                continue;
+            }
+            String label = String.join(" / ", names.stream().filter(s -> !s.isBlank()).toList());
             if (key.isBlank() || label.isBlank()) {
                 complete = false;
                 continue;
@@ -69,6 +75,32 @@ final class NaverProductInventory {
         }
         ambiguous.forEach(result::remove);
         return new Result(List.copyOf(result.values()), complete && !result.isEmpty());
+    }
+
+    private static int combinationAxes(JsonNode body, JsonNode info) {
+        var outer = body.path("options");
+        var inner = info.path("options");
+        boolean hasOuter = !outer.isMissingNode() && !outer.isNull();
+        boolean hasInner = !inner.isMissingNode() && !inner.isNull();
+        if (hasOuter && hasInner && !outer.equals(inner))
+            return -1;
+        var choices = hasOuter ? outer : inner;
+        // 옵션 축을 선언하지 않던 과거 응답은 조합 행 자체를 기준으로 읽는다.
+        if (choices.isMissingNode() || choices.isNull())
+            return 0;
+        if (!choices.isArray())
+            return -1;
+        var groups = new LinkedHashSet<String>();
+        for (var choice : choices) {
+            String type = text(choice, "optionType");
+            if ("SIMPLE".equals(type))
+                continue;
+            String group = text(choice, "groupName").trim();
+            if (!"COMBINATION".equals(type) || group.isBlank())
+                return -1;
+            groups.add(group);
+        }
+        return groups.size();
     }
 
     private static boolean simpleOnly(JsonNode body, JsonNode info) {

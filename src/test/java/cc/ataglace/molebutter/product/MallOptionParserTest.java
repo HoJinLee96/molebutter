@@ -173,4 +173,18 @@ class MallOptionParserTest {
             assertThat(details.optionsComplete()).isFalse();
         }
     }
+
+    @Test void selectedLotteSkuCannotRestoreAConflictingMapping() {
+        String payload="""
+            {"returnCode":"200","data":{"basicInfo":{"pdNo":"P","sitmNo":"P_1","sitmNm":"selected","sitmSlStatCd":"SALE","sitmNoList":["P_1","P_2"]},
+              "stckInfo":{"stkQty":3},"optionInfo":{"optionList":[{"options":[{"value":"M","label":"M"},{"value":"L","label":"L"},{"value":"S","label":"S"}]}],
+              "optionMappingInfo":{"M":{"sitmNo":"P_1","spdNo":"P","stkQty":1,"sitmNoSlStatCd":"SALE"},
+                "L":{"sitmNo":"P_1","spdNo":"P","stkQty":2,"sitmNoSlStatCd":"SALE"},
+                "S":{"sitmNo":"P_2","spdNo":"P","stkQty":0,"sitmNoSlStatCd":"SALE"}}}}}
+            """;
+        for(String order:List.of(payload,payload.replace("{\"value\":\"M\",\"label\":\"M\"},{\"value\":\"L\",\"label\":\"L\"}","{\"value\":\"L\",\"label\":\"L\"},{\"value\":\"M\",\"label\":\"M\"}"))) {
+            assertThat(parser.parse(Mall.LOTTE_ON,order,"P")).containsExactly(new SourceOption("P_2","S",0L,"SOLD_OUT"));
+            assertThat(parser.details(Mall.LOTTE_ON,order,"P").optionsComplete()).isFalse();
+        }
+    }
 }

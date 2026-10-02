@@ -21,23 +21,60 @@ final class SupplierMetadataParser {
                 String outerId=text(channel,"id"),innerId=text(nestedChannel,"id");
                 if(!outerId.isBlank()&&!innerId.isBlank()&&!outerId.equals(innerId)){found.add(new StoreEvidence("CONFLICT",null,"판매채널 번호 불일치",null,null));continue;}
                 if(!outerUid.isBlank()&&!innerUid.isBlank()&&!outerUid.equals(innerUid)){found.add(new StoreEvidence("CONFLICT",null,"판매채널 식별자 불일치",null,null));continue;}
-                if(!channel.isObject())channel=nestedChannel;var category=channel.path("storeCategory");
-                var refs=Map.of("channelId",text(channel,"id"),"channelUid",text(channel,"channelUid"));
-                var names=category.path("wholeNames");var ids=category.path("wholeIds");
-                if(names.isArray()&&names.size()==2&&!names.path(0).asText("").isBlank()&&SupplierBranchText.names(names.path(1).asText("")).size()==1){
-                    String external=ids.isArray()&&ids.size()==2&&!ids.path(0).asText("").isBlank()&&!ids.path(1).asText("").isBlank()?ids.path(0).asText("")+"/"+ids.path(1).asText(""):null;
-                    found.add(new StoreEvidence("BRANCH",names.path(0).asText(),names.path(1).asText(),external==null?null:"NAVER_DEPARTMENT",external,refs));
-                }else {
-                    String exposure=text(category,"exposureText");var branches=SupplierBranchText.names(exposure);var retailers=SupplierBranchText.retailers(exposure);
-                    if(branches.size()==1&&retailers.size()==1)found.add(new StoreEvidence("BRANCH",retailers.iterator().next(),branches.iterator().next(),null,null,refs));
-                    else if(!"DEPARTMENT".equals(text(channel,"verticalType"))){String uid=text(channel,"channelUid");String name=text(channel,"channelName","name");if(!uid.isBlank()&&!name.isBlank())found.add(new StoreEvidence("SELLER",null,name,"NAVER_CHANNEL",uid,refs));}
-                }
+                var evidence=naverStore(channel,nestedChannel);
+                if(evidence!=null)found.add(evidence);
             }
         }
         if(found.isEmpty())return null;
         if(found.size()==1)return found.iterator().next();
         // 서로 다른 본상품 응답을 임의로 하나 선택하지 않는다.
         return new StoreEvidence("CONFLICT",null,String.join(" / ",found.stream().map(StoreEvidence::name).toList()),null,null);
+    }
+    private static StoreEvidence naverStore(JsonNode outer,JsonNode inner){
+        var a=naverChannel(outer);var b=naverChannel(inner);
+        if(a==null)return b;if(b==null)return a;
+        if(!a.kind().equals(b.kind())||different(retailerKey(a.retailer()),retailerKey(b.retailer()))
+                ||different(storeName(a),storeName(b))||differentIdentity(a.namespace(),b.namespace())
+                ||differentIdentity(a.externalId(),b.externalId()))
+            return new StoreEvidence("CONFLICT",null,a.name()+" / "+b.name(),null,null);
+        // 한쪽에 없는 외부 식별자는 일치하는 다른 쪽 근거로 보완한다.
+        var chosen=a.externalId()!=null?a:b;
+        var refs=new LinkedHashMap<String,String>();
+        for(var evidence:List.of(a,b))evidence.references().forEach((key,value)->{if(!value.isBlank())refs.put(key,value);});
+        return new StoreEvidence(chosen.kind(),a.retailer()==null||a.retailer().isBlank()?b.retailer():a.retailer(),
+                chosen.name(),chosen.namespace(),chosen.externalId(),refs);
+    }
+    private static StoreEvidence naverChannel(JsonNode channel){
+        if(!channel.isObject())return null;
+        var category=channel.path("storeCategory");
+        var refs=Map.of("channelId",text(channel,"id"),"channelUid",text(channel,"channelUid"));
+        var names=category.path("wholeNames");var ids=category.path("wholeIds");
+        if(names.isArray()&&names.size()==2&&!names.path(0).asText("").isBlank()&&SupplierBranchText.names(names.path(1).asText("")).size()==1){
+            String external=ids.isArray()&&ids.size()==2&&!ids.path(0).asText("").isBlank()&&!ids.path(1).asText("").isBlank()?ids.path(0).asText("")+"/"+ids.path(1).asText(""):null;
+            return new StoreEvidence("BRANCH",names.path(0).asText(),names.path(1).asText(),external==null?null:"NAVER_DEPARTMENT",external,refs);
+        }
+        String exposure=text(category,"exposureText");var branches=SupplierBranchText.names(exposure);var retailers=SupplierBranchText.retailers(exposure);
+        if(branches.size()==1&&retailers.size()==1)return new StoreEvidence("BRANCH",retailers.iterator().next(),branches.iterator().next(),null,null,refs);
+        if(!"DEPARTMENT".equals(text(channel,"verticalType"))){
+            String uid=text(channel,"channelUid"),name=text(channel,"channelName","name");
+            if(!uid.isBlank()&&!name.isBlank())return new StoreEvidence("SELLER",null,name,"NAVER_CHANNEL",uid,refs);
+        }
+        return null;
+    }
+    private static String storeName(StoreEvidence evidence){
+        var branches="BRANCH".equals(evidence.kind())?SupplierBranchText.names(evidence.name()):Set.<String>of();
+        return branches.size()==1?branches.iterator().next():evidence.name();
+    }
+    private static String retailerKey(String value){
+        var retailers=SupplierBranchText.retailers(value);
+        return retailers.size()==1?retailers.iterator().next():value;
+    }
+    private static boolean differentIdentity(String a,String b){
+        return a!=null&&b!=null&&!a.isBlank()&&!b.isBlank()&&!a.equals(b);
+    }
+    private static boolean different(String a,String b){
+        if(a==null||b==null||a.isBlank()||b.isBlank())return false;
+        return !a.trim().replaceAll("\\s+"," ").equalsIgnoreCase(b.trim().replaceAll("\\s+"," "));
     }
     private static StoreEvidence lotte(JsonNode data){
         var basic=data.path("basicInfo");var seller=data.path("slrInfo").path("trBase");
