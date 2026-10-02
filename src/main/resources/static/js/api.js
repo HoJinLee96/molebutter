@@ -57,10 +57,25 @@ function refreshSession() {
 }
 
 async function apiRequest(url, options, allowRefresh = true) {
+    const mutation = !['GET', 'HEAD', 'OPTIONS'].includes((options?.method ?? 'GET').toUpperCase());
+    if (mutation && !String(url).startsWith('/api/auth/')) {
+        options = { ...options, headers: new Headers(options?.headers) };
+        if (!options.headers.has('X-Operation-Id')) options.headers.set('X-Operation-Id', (crypto.randomUUID ? crypto.randomUUID() : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c => (Number(c) ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> Number(c) / 4).toString(16))));
+    }
+    let success = false;
+    const form = typeof document !== 'undefined' ? document.activeElement?.closest('form') : null;
+    try { const result = await apiRequestResult(url, options, allowRefresh); success = true; return result; }
+    finally {
+        if (mutation && !String(url).startsWith('/api/notifications') && !String(url).startsWith('/api/auth/') && !String(url).endsWith('/code-preview') && typeof document !== 'undefined')
+            document.dispatchEvent(new CustomEvent('app-operation-complete', { detail: { success, form } }));
+    }
+}
+
+async function apiRequestResult(url, options, allowRefresh) {
     const res = await securedFetch(url, options);
     const payload = await res.json().catch(() => null);
     if (res.status === 401 && payload?.code === 'UNAUTHORIZED' && allowRefresh) {
-        if (await refreshSession()) return apiRequest(url, options, false);
+        if (await refreshSession()) return apiRequestResult(url, options, false);
         location.href = '/signin';
         throw new ApiError('세션이 만료되었습니다. 다시 로그인해 주세요.', 'UNAUTHORIZED', 401);
     }

@@ -9,7 +9,7 @@ const reply = (status, code, data = null) => new Response(JSON.stringify({ code,
 
 test('parallel expired requests share one refresh and send a CSRF header', async () => {
     let refreshes = 0, csrfFetches = 0, authenticated = false;
-    const context = vm.createContext({ Headers, location: {}, fetch: async (url, options) => {
+    const context = vm.createContext({ crypto: require("node:crypto").webcrypto, Headers, location: {}, fetch: async (url, options) => {
         if (url === '/api/auth/csrf') {
             csrfFetches++;
             return reply(200, 'SUCCESS', { headerName: 'X-XSRF-TOKEN', token: 'csrf' });
@@ -32,7 +32,7 @@ test('parallel expired requests share one refresh and send a CSRF header', async
 
 test('stale CSRF is fetched again once and does not trigger session refresh', async () => {
     let csrfFetches = 0, posts = 0;
-    const context = vm.createContext({ Headers, location: {}, fetch: async (url, options) => {
+    const context = vm.createContext({ crypto: require("node:crypto").webcrypto, Headers, location: {}, fetch: async (url, options) => {
         if (url === '/api/auth/csrf') return reply(200, 'SUCCESS', {
             headerName: 'X-XSRF-TOKEN', token: 'csrf-' + ++csrfFetches,
         });
@@ -50,7 +50,7 @@ test('stale CSRF is fetched again once and does not trigger session refresh', as
 
 test('permission denied is not retried', async () => {
     let requests = 0;
-    const context = vm.createContext({ Headers, location: {}, fetch: async () => {
+    const context = vm.createContext({ crypto: require("node:crypto").webcrypto, Headers, location: {}, fetch: async () => {
         requests++;
         return reply(403, 'HANDLE_ACCESS_DENIED');
     }});
@@ -61,7 +61,7 @@ test('permission denied is not retried', async () => {
 
 function downloadContext(fetch) {
     const saved = [];
-    const context = vm.createContext({ Headers, fetch, setTimeout: fn => fn(),
+    const context = vm.createContext({ crypto: require("node:crypto").webcrypto, Headers, fetch, setTimeout: fn => fn(),
         URL: { createObjectURL: blob => { saved.push(blob); return 'blob:test'; }, revokeObjectURL() {} },
         document: { body: { append() {} }, createElement: () => ({ click() {}, remove() {} }) },
     });
@@ -93,4 +93,29 @@ test('download never saves permission errors, expired sessions, HTML or truncate
         await assert.rejects(vm.runInContext("apiDownload('/records.csv', 'records.csv', false)", context), { code });
         assert.equal(saved.length, 0);
     }
+});
+
+test('operation identity survives CSRF and session retry with one final completion signal', async () => {
+    const ids=[],events=[];let attempts=0;
+    const context=vm.createContext({crypto:require('node:crypto').webcrypto,Headers,location:{},
+        document:{activeElement:null,dispatchEvent:event=>events.push(event)},CustomEvent:class{constructor(type,options){this.type=type;this.detail=options?.detail;}},
+        fetch:async(url,options)=>{
+            if(url==='/api/auth/csrf')return reply(200,'SUCCESS',{headerName:'X-XSRF-TOKEN',token:'test'});
+            if(url==='/api/auth/refresh')return reply(200,'SUCCESS');
+            ids.push(options.headers.get('X-Operation-Id'));
+            if(++attempts===1)return reply(403,'INVALID_CSRF_TOKEN');
+            if(attempts===2)return reply(401,'UNAUTHORIZED');
+            return reply(200,'SUCCESS',{done:true});
+        }});
+    vm.runInContext(source,context);await vm.runInContext("apiPost('/api/products', {})",context);
+    assert.equal(ids.length,3);assert.equal(new Set(ids).size,1);assert.match(ids[0],/^[0-9a-f-]{36}$/);
+    assert.equal(events.length,1);assert.equal(events[0].detail.success,true);
+});
+
+test('notification deletion never triggers a recursive operation refresh', async () => {
+    const events=[];
+    const context=vm.createContext({crypto:require('node:crypto').webcrypto,Headers,location:{},
+        document:{activeElement:null,dispatchEvent:event=>events.push(event)},CustomEvent:class{},
+        fetch:async url=>url==='/api/auth/csrf'?reply(200,'SUCCESS',{headerName:'X-XSRF-TOKEN',token:'test'}):reply(200,'SUCCESS')});
+    vm.runInContext(source,context);await vm.runInContext("apiRequest('/api/notifications/1', {method:'DELETE'})",context);assert.equal(events.length,0);
 });
