@@ -22,9 +22,21 @@ public class ViewController {
 
     /** 페이지가 구현된 섹션 — 홈 카드·헤더 메뉴에서 실링크로 노출된다. 챕터가 진행되며 하나씩 추가한다. */
     private static final Set<MenuSection> READY_SECTIONS = EnumSet.of(
-            MenuSection.USER_MANAGE, MenuSection.AUTH_LOGS);
+            MenuSection.USER_MANAGE, MenuSection.AUTH_LOGS, MenuSection.ATTENDANCE, MenuSection.ATTENDANCE_MANAGE);
 
     private final UserRepository userRepository;
+
+    @GetMapping("/attendance")
+    public String attendance(@AuthenticationPrincipal UserPrincipal principal, Model model) {
+        if (addLayoutModel(principal, model) == null) return "redirect:/signin";
+        return "attendance";
+    }
+
+    @GetMapping("/attendance-manage")
+    public String attendanceManage(@AuthenticationPrincipal UserPrincipal principal, Model model) {
+        if (addLayoutModel(principal, model) == null) return "redirect:/signin";
+        return "attendance-manage";
+    }
 
     /**
      * 로그인 후 임시 랜딩. 섹션 페이지들이 만들어지면 역할별 첫 섹션으로 보내는 방식으로 바뀔 수 있다.

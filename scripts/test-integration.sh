@@ -47,4 +47,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES ON 
 SQL
 export MOLEBUTTER_TEST_DB_URL="jdbc:mysql://127.0.0.1:$mysql_port/molebutter_test?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul"
 export MOLEBUTTER_TEST_REDIS_PORT="$redis_port"
-./mvnw -o -Dmolebutter.build-directory=target/verification -Pintegration-tests clean test "$@"
+if [ "${MOLEBUTTER_TEST_MAVEN_OFFLINE:-true}" = false ]; then
+  ./mvnw -Dmolebutter.build-directory=target/verification -Pintegration-tests clean test "$@"
+else
+  ./mvnw -o -Dmolebutter.build-directory=target/verification -Pintegration-tests clean test "$@"
+fi

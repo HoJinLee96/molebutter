@@ -143,3 +143,8 @@ notes/
 
 # Local image resources
 /src/main/resources/image/
+
+# Product search browser login state (never commit cookies)
+/data/product-search-browser/
+/data/product-search-guest/
+/data/product-search-guest.backup-20260930

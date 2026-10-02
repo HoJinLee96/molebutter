@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('내 근태')}"></head>
+<body class="attendance-page">
+<header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
+<main class="page">
+    <h1>내 근태</h1>
+    <p class="sub">출퇴근과 휴게를 기록하고, 내 근무 내역을 확인하세요. 모든 시각은 한국 시간입니다.</p>
+    <p id="page-error" class="form-error attendance-message" role="alert" hidden></p>
+    <p id="page-success" class="form-success attendance-message" role="status" hidden></p>
+    <section class="panel" aria-labelledby="current-heading">
+        <div class="attendance-title"><h2 id="current-heading">현재 근무</h2><span id="current-status">불러오는 중</span></div>
+        <p id="current-date" class="sub"></p>
+        <div class="attendance-metrics">
+            <div><span>출근</span><strong id="current-in">—</strong></div>
+            <div><span>순근무시간</span><strong id="current-work">—</strong></div>
+            <div><span>휴게시간</span><strong id="current-break">—</strong></div>
+        </div>
+        <p id="overnight-hint" class="attendance-notice" hidden>이전 날짜의 근무가 진행 중입니다. 실제로 이어서 근무했다면 이전 근무를 퇴근 처리하세요. 오늘 새로 출근하면 이전 기록은 퇴근 누락으로 남습니다.</p>
+        <div id="work-actions" class="attendance-actions">
+            <button id="clock-in" class="btn primary" type="button" disabled>출근</button>
+            <button id="break-start" class="btn" type="button" hidden>휴게 시작</button>
+            <button id="break-end" class="btn" type="button" hidden>휴게 종료</button>
+            <button id="clock-out" class="btn" type="button" hidden>퇴근</button>
+        </div>
+        <p class="field-hint">하루 한 번 출퇴근합니다. 휴게 중 퇴근하면 휴게도 함께 종료됩니다.</p>
+    </section>
+    <section class="panel" aria-labelledby="history-heading">
+        <div class="attendance-title"><h2 id="history-heading">내 기록</h2><button id="new-correction" class="btn small" type="button">누락일 정정 신청</button></div>
+        <div class="toolbar"><div class="field"><label for="month">조회 월</label><input id="month" type="month" required></div><button id="reload" class="btn small" type="button">새로고침</button></div>
+        <div class="table-wrap"><table class="data"><thead><tr><th>근무일</th><th>상태</th><th>출근</th><th>퇴근</th><th>순근무</th><th>상세</th></tr></thead><tbody id="records-body"></tbody></table></div>
+        <div id="records-pager" class="pager"></div>
+    </section>
+    <section class="panel" aria-labelledby="requests-heading">
+        <h2 id="requests-heading">정정 요청 내역</h2>
+        <p class="field-hint">선택한 월의 요청입니다. 승인 전에는 원래 기록이 유지됩니다.</p>
+        <div id="corrections-list" class="attendance-requests"></div>
+        <div id="corrections-pager" class="pager"></div>
+    </section>
+</main>
+<dialog id="record-dialog" class="attendance-dialog" aria-labelledby="record-title">
+    <div class="attendance-title"><h2 id="record-title">근무 상세</h2><button class="btn small" type="button" data-close="record-dialog">닫기</button></div>
+    <div id="record-detail"></div><button id="edit-record" class="btn primary" type="button">정정 신청</button>
+</dialog>
+<dialog id="correction-dialog" class="attendance-dialog" aria-labelledby="correction-title">
+    <div class="attendance-title"><h2 id="correction-title">근태 정정 신청</h2><button class="btn small" type="button" data-close="correction-dialog">닫기</button></div>
+    <p class="field-hint">출퇴근과 휴게 전체를 입력하세요. 관리자가 승인하면 반영됩니다.</p>
+    <form id="correction-form" class="auth-form">
+        <div class="field"><label for="work-date">근무일 (출근 날짜)</label><input id="work-date" type="date" required></div>
+        <div class="attendance-columns">
+            <div class="field"><label for="proposed-in">출근 시각</label><input id="proposed-in" type="datetime-local" step="1" required></div>
+            <div class="field"><label for="proposed-out">퇴근 시각</label><input id="proposed-out" type="datetime-local" step="1" required></div>
+        </div>
+        <div class="attendance-title"><h3>휴게 구간</h3><button id="add-break" class="btn small" type="button">휴게 추가</button></div>
+        <p class="field-hint">휴게가 없으면 비워 두세요. 누락된 휴게 종료 시각도 입력해 주세요.</p>
+        <div id="break-editor"></div>
+        <div class="field"><label for="correction-reason">정정 사유</label><textarea id="correction-reason" maxlength="1000" rows="3" required></textarea></div>
+        <p id="correction-error" class="form-error" role="alert" hidden></p>
+        <button id="submit-correction" class="btn primary" type="submit">정정 요청 보내기</button>
+    </form>
+</dialog>
+<dialog id="request-dialog" class="attendance-dialog" aria-labelledby="request-title">
+    <div class="attendance-title"><h2 id="request-title">정정 요청 상세</h2><button class="btn small" type="button" data-close="request-dialog">닫기</button></div>
+    <div id="request-detail"></div>
+    <p id="request-error" class="form-error" role="alert" hidden></p>
+    <button id="cancel-request" class="btn" type="button" hidden>요청 취소</button>
+</dialog>
+<script th:src="@{/js/api.js}"></script>
+<script th:src="@{/js/attendance-ui.js}"></script>
+<script th:src="@{/js/attendance.js}"></script>
+</body>
+</html>
