@@ -265,3 +265,12 @@ table.data td.ua { max-width: 280px; overflow: hidden; text-overflow: ellipsis; 
     .attendance-metrics strong { font-size: 16px; }
     .attendance-break-row { grid-template-columns: 1fr; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
 }
+
+/* 관리자 근태 필터는 작은 화면에서 한 줄씩 배치한다. 표만 가로 스크롤한다. */
+.attendance-filters .field { min-width: 0; }
+.attendance-filters input, .attendance-filters select { max-width: 100%; box-sizing: border-box; }
+.attendance-page [role="tabpanel"][hidden] { display: none; }
+@media (max-width: 600px) {
+    .attendance-filters .field { width: 100%; }
+    .attendance-filters input, .attendance-filters select { width: 100%; }
+}

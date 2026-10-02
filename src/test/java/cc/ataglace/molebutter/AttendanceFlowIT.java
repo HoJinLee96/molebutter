@@ -284,6 +284,178 @@ class AttendanceFlowIT {
         post(owner, "/api/attendance/clock-in", Map.of(), 401);
     }
 
+    @Autowired cc.ataglace.molebutter.service.attendance.AttendanceQueryService queries;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+    cc.ataglace.molebutter.repository.AttendanceQueryRepository queryRepository;
+
+    @Test
+    void adminSummaryIncludesEligibleZeroUsersAndKeepsNamesakesSeparate() throws Exception {
+        String group = "집계-" + UUID.randomUUID();
+        User a = queryUser(group, "ACTIVE", "2025-12-01"), locked = queryUser(group, "LOCKED", "2026-02-28"),
+                suspended = queryUser(group, "SUSPENDED", "2025-12-01"), pending = queryUser(group, "PENDING", "2025-12-01"),
+                future = queryUser(group, "ACTIVE", "2026-03-01");
+        Long adminId = users.findByEmail("admin@example.com").orElseThrow().getId();
+        var result = queries.summary(adminId, "2026-02", group, null, 0);
+        assertThat(result.items()).hasSize(3).allSatisfy(r -> {
+            assertThat(r.recordedDays()).isZero(); assertThat(r.workedSeconds()).isZero();
+        });
+        assertThat(result.items().stream().map(r -> Long.valueOf(r.employee().id())).toList())
+                .containsExactlyElementsOf(java.util.stream.Stream.of(a, locked, suspended).map(User::getId).sorted().toList());
+        assertThat(queries.summary(adminId, "2025-11", group, null, 0).items()).isEmpty();
+        fixtureRecord(pending, "2026-02-01", "COMPLETED", "09:00:00", "18:00:00");
+        fixtureRecord(future, "2026-02-02", "MISSING", "09:00:00", null);
+        assertThat(queries.summary(adminId, "2026-02", group, null, 0).totalElements()).isEqualTo(5);
+        var http = data(admin().get("/api/attendance-manage/summary?month=2026-02&userId=" + a.getId()));
+        assertThat(http.path("items").get(0).path("employee").path("id").isString()).isTrue();
+        assertThat(http.path("totalElements").asInt()).isEqualTo(1);
+    }
+
+    @Test
+    void summaryMatchesPersonalSecondsOvernightAndExcludesUnconfirmed() throws Exception {
+        User u = queryUser("시간합산-" + UUID.randomUUID(), "ACTIVE", "2025-01-01");
+        long id = fixtureRecord(u, "2026-02-28", "COMPLETED", "22:00:00.500000", null);
+        jdbc.update("UPDATE attendance SET clock_out='2026-03-01 08:00:01.200000' WHERE id=?", id);
+        jdbc.update("INSERT INTO attendance_break VALUES (?,0,'2026-02-28 23:00:00.800000','2026-02-28 23:10:01.100000'),(?,1,'2026-03-01 03:00:00','2026-03-01 03:20:00')", id, id);
+        fixtureRecord(u, "2026-02-01", "WORKING", "09:00:00", null);
+        fixtureRecord(u, "2026-02-02", "ON_BREAK", "09:00:00", null);
+        fixtureRecord(u, "2026-02-03", "MISSING", "09:00:00", null);
+        Long actor = users.findByEmail("admin@example.com").orElseThrow().getId();
+        var summary = queries.summary(actor, "2026-02", "", u.getId(), 0).items().getFirst();
+        assertThat(summary.recordedDays()).isEqualTo(4); assertThat(summary.completedDays()).isEqualTo(1);
+        assertThat(summary.workedSeconds()).isEqualTo(34200); assertThat(summary.breakSeconds()).isEqualTo(1800);
+        assertThat(summary.workingCount()).isEqualTo(1); assertThat(summary.onBreakCount()).isEqualTo(1);
+        assertThat(summary.missingCount()).isEqualTo(1); assertThat(summary.unconfirmedCount()).isEqualTo(3);
+        assertThat(queries.summary(actor, "2026-03", "", u.getId(), 0).items().getFirst().recordedDays()).isZero();
+        assertThat(queries.detail(actor, id).workedSeconds()).isEqualTo(attendance.detail(u.getId(), id).workedSeconds());
+        assertThat(queries.detail(actor, id).breaks()).hasSize(2);
+        var filtered = data(admin().get("/api/attendance-manage/records?from=2026-02-01&to=2026-02-28&status=COMPLETED&userId=" + u.getId()));
+        assertThat(filtered.path("items").size()).isEqualTo(1);
+        assertThat(filtered.path("items").get(0).path("breaks").size()).isEqualTo(2);
+        assertThat(filtered.path("items").get(0).path("id").asText()).isEqualTo(Long.toString(id));
+        assertThat(queries.records(actor, "2026-02-01", "2026-02-28", u.getEmail(), null, null, 0).totalElements()).isEqualTo(4);
+    }
+
+    @Test
+    void approvedCorrectionUpdatesSummaryOnlyAfterApproval() throws Exception {
+        Browser b = staff(UserRole.VIEWER), admin = admin();
+        JsonNode row = completeDay(b);
+        String userId = data(b.get("/api/auth/me")).path("id").asText();
+        String url = "/api/attendance-manage/summary?month=2026-02&userId=" + userId;
+        JsonNode c = post(b, "/api/attendance/corrections", correction(row, "2026-02-10", "2026-02-10T08:00:00", "2026-02-10T18:00:00"), 200);
+        assertThat(data(admin.get(url)).path("items").get(0).path("workedSeconds").asLong()).isEqualTo(32400);
+        post(admin, "/api/attendance-manage/corrections/" + c.path("id").asText() + "/approve", Map.of("revision", 0), 200);
+        assertThat(data(admin.get(url)).path("items").get(0).path("workedSeconds").asLong()).isEqualTo(36000);
+    }
+
+    @Test
+    void csvExportsAllFilteredRowsWithSafeTextLongIdsAndLargeHours() throws Exception {
+        User u = queryUser(" =SUM(1,2)\"한글\n다음", "ACTIVE", "2025-01-01");
+        for (int day = 1; day <= 22; day++) fixtureRecord(u, "2026-01-%02d".formatted(day), "COMPLETED", "09:00:00", "18:00:00");
+        long missing = fixtureRecord(u, "2026-01-23", "MISSING", "09:00:00", null);
+        jdbc.update("INSERT INTO attendance_break VALUES (?,0,'2026-01-23 12:00:00',NULL)", missing);
+        Browser admin = admin(); String suffix = "?from=2026-01-01&to=2026-01-31&userId=" + u.getId();
+        JsonNode page = data(admin.get("/api/attendance-manage/records" + suffix));
+        assertThat(page.path("items").size()).isEqualTo(20); assertThat(page.path("totalElements").asInt()).isEqualTo(23);
+        JsonNode second = data(admin.get("/api/attendance-manage/records" + suffix + "&page=1"));
+        assertThat(second.path("items").size()).isEqualTo(3);
+        assertThat(second.path("items").get(2).path("workDate").asText()).isEqualTo("2026-01-01");
+        var response = admin.get("/api/attendance-manage/records.csv" + suffix); assertStatus(response, 200);
+        assertThat(response.headers().firstValue("content-type").orElseThrow()).startsWith("text/csv");
+        assertThat(response.headers().firstValue("content-length").orElseThrow()).isEqualTo(Integer.toString(response.body().getBytes(java.nio.charset.StandardCharsets.UTF_8).length));
+        assertThat(response.body()).startsWith("\uFEFF\"직원 ID\"").contains("\"\t" + u.getId() + "\"", "\"' =SUM(1,2)\"\"한글\n다음\"", "미기록", "\"\",\"\",\"2026-01-23");
+        assertThat(response.body().split("\r\n")).hasSize(24);
+        response = admin.get("/api/attendance-manage/summary.csv?month=2026-01&userId=" + u.getId());
+        assertStatus(response, 200);
+        assertThat(response.body()).contains("\"198:00:00\"", "\"23\",\"22\"");
+        var invalid = admin.get("/api/attendance-manage/records.csv?from=2025-01-01&to=2026-01-02");
+        assertStatus(invalid, 400);
+        assertThat(invalid.headers().firstValue("content-type").orElseThrow()).contains("application/json");
+    }
+
+    @Test
+    void exportChunksShareSnapshotEvenWhenCorrectionIsApprovedBetweenChunks() throws Exception {
+        String group = "스냅샷-" + UUID.randomUUID();
+        User a = queryUser(group, "ACTIVE", "2024-01-01"), b = queryUser(group, "ACTIVE", "2024-01-01");
+        long oldest = 0;
+        for (int day = 0; day < 251; day++) {
+            String date = java.time.LocalDate.of(2025, 1, 1).plusDays(day).toString();
+            long id = fixtureRecord(a, date, "COMPLETED", "09:00:00", "18:00:00");
+            if (day == 0) oldest = id;
+            fixtureRecord(b, date, "COMPLETED", "09:00:00", "18:00:00");
+        }
+        Long actor = users.findByEmail("admin@example.com").orElseThrow().getId();
+        var request = attendance.requestCorrection(a.getId(), new CorrectionRequest(java.time.LocalDate.of(2025, 1, 1), Long.toString(oldest), 0L,
+                LocalDateTime.parse("2025-01-01T08:00:00"), LocalDateTime.parse("2025-01-01T18:00:00"), List.of(), "동시 승인"));
+        java.util.concurrent.atomic.AtomicBoolean changed = new java.util.concurrent.atomic.AtomicBoolean();
+        org.mockito.Mockito.doAnswer(invocation -> {
+            if ((long) invocation.getArgument(1) == 500L && changed.compareAndSet(false, true)) {
+                try (var executor = Executors.newSingleThreadExecutor()) {
+                    executor.submit(() -> attendance.review(actor, Long.valueOf(request.id()), true, new ReviewRequest(0L, null))).get(10, TimeUnit.SECONDS);
+                }
+            }
+            return invocation.callRealMethod();
+        }).when(queryRepository).records(org.mockito.ArgumentMatchers.anyMap(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyInt());
+        java.nio.file.Path file = null;
+        try {
+            file = queries.recordsCsv(actor, "2025-01-01", "2025-12-31", group, null, null);
+            String csv = java.nio.file.Files.readString(file);
+            assertThat(changed).isTrue(); assertThat(csv.split("\r\n")).hasSize(503);
+            assertThat(csv).doesNotContain("\"10:00:00\"").contains("\"9:00:00\"");
+        } finally {
+            org.mockito.Mockito.reset(queryRepository);
+            if (file != null) java.nio.file.Files.deleteIfExists(file);
+        }
+        assertThat(queries.detail(actor, oldest).workedSeconds()).isEqualTo(36000);
+    }
+
+    @Test
+    void summaryCsvContainsEveryEmployeeBeyondFirstPage() throws Exception {
+        String group = "월별전체-" + UUID.randomUUID();
+        for (int i = 0; i < 21; i++) queryUser(group + "-%02d".formatted(i), "ACTIVE", "2025-01-01");
+        Long actor = users.findByEmail("admin@example.com").orElseThrow().getId();
+        var first = queries.summary(actor, "2026-02", group, null, 0);
+        var second = queries.summary(actor, "2026-02", group, null, 1);
+        assertThat(first.items()).hasSize(20); assertThat(first.totalElements()).isEqualTo(21);
+        assertThat(second.items()).hasSize(1); assertThat(second.items().getFirst().employee().name()).endsWith("-20");
+        var file = queries.summaryCsv(actor, "2026-02", group, null);
+        try {
+            String csv = java.nio.file.Files.readString(file);
+            assertThat(csv.split("\r\n")).hasSize(22);
+            assertThat(csv).contains(group + "-00", group + "-20");
+        } finally { java.nio.file.Files.deleteIfExists(file); }
+    }
+
+    @Test
+    void queryEndpointsRequireCurrentAdminAndValidateFilters() throws Exception {
+        Browser admin = admin(), staff = staff(UserRole.VIEWER), anonymous = new Browser();
+        String[] urls = {"/records", "/records/1", "/summary", "/records.csv", "/summary.csv"};
+        for (String url : urls) {
+            assertStatus(staff.get("/api/attendance-manage" + url), 403);
+            assertStatus(anonymous.get("/api/attendance-manage" + url), 401);
+        }
+        for (String filter : List.of("from=2026-02-31", "from=2026-02-10&to=2026-02-01", "from=2025-01-01&to=2026-01-02", "page=-1", "userId=-1", "status=BAD"))
+            assertStatus(admin.get("/api/attendance-manage/records?" + filter), 400);
+        assertStatus(admin.get("/api/attendance-manage/summary?month=2026-13"), 400);
+        assertStatus(admin.get("/api/attendance-manage/records/1"), 404);
+        Long actor = users.findByEmail("admin@example.com").orElseThrow().getId();
+        jdbc.update("UPDATE `user` SET user_status='SUSPENDED' WHERE id=?", actor);
+        try { for (String url : urls) assertStatus(admin.get("/api/attendance-manage" + url), 401); }
+        finally { jdbc.update("UPDATE `user` SET user_status='ACTIVE' WHERE id=?", actor); }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='attendance' AND index_name='ix_attendance_work_date_id'", Integer.class)).isEqualTo(2);
+    }
+
+    private User queryUser(String name, String status, String created) {
+        User u = newUser(UserRole.VIEWER);
+        jdbc.update("UPDATE `user` SET name=?, user_status=?, created_at=? WHERE id=?", name, status, created + " 00:00:00", u.getId());
+        return u;
+    }
+    private long fixtureRecord(User user, String date, String status, String start, String end) {
+        long id = com.github.f4b6a3.tsid.TsidCreator.getTsid().toLong();
+        jdbc.update("INSERT INTO attendance(id,user_id,work_date,clock_in,clock_out,status,revision,created_at) VALUES (?,?,?,?,?,?,0,NOW(6))",
+                id, user.getId(), date, date + " " + start, end == null ? null : date + " " + end, status);
+        return id;
+    }
+
     private JsonNode completeDay(Browser b) throws Exception {
         at("2026-02-10T09:00:00");
         JsonNode row = post(b, "/api/attendance/clock-in", Map.of(), 200);

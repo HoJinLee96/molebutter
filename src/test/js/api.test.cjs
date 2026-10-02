@@ -58,3 +58,39 @@ test('permission denied is not retried', async () => {
     await assert.rejects(vm.runInContext("apiGet('/admin')", context), { code: 'HANDLE_ACCESS_DENIED' });
     assert.equal(requests, 1);
 });
+
+function downloadContext(fetch) {
+    const saved = [];
+    const context = vm.createContext({ Headers, fetch, setTimeout: fn => fn(),
+        URL: { createObjectURL: blob => { saved.push(blob); return 'blob:test'; }, revokeObjectURL() {} },
+        document: { body: { append() {} }, createElement: () => ({ click() {}, remove() {} }) },
+    });
+    vm.runInContext(source, context);
+    return { context, saved };
+}
+
+test('CSV download refreshes authentication once and saves only the CSV blob', async () => {
+    let refreshed = false, calls = 0;
+    const { context, saved } = downloadContext(async url => {
+        if (url === '/api/auth/csrf') return reply(200, 'SUCCESS', { headerName: 'X-XSRF-TOKEN', token: 'csrf' });
+        if (url === '/api/auth/refresh') { refreshed = true; return reply(200, 'SUCCESS'); }
+        calls++;
+        return refreshed ? new Response('\uFEFF"직원"\r\n"한글"\r\n', { headers: { 'Content-Type': 'text/csv;charset=UTF-8' } }) : reply(401, 'UNAUTHORIZED');
+    });
+    await vm.runInContext("apiDownload('/records.csv', 'records.csv')", context);
+    assert.equal(calls, 2); assert.equal(saved.length, 1);
+    assert.match(await saved[0].text(), /한글/);
+});
+
+test('download never saves permission errors, expired sessions, HTML or truncated files', async () => {
+    for (const [response, code] of [
+        [reply(403, 'HANDLE_ACCESS_DENIED'), 'HANDLE_ACCESS_DENIED'],
+        [reply(401, 'UNAUTHORIZED'), 'UNAUTHORIZED'],
+        [new Response('<html>login</html>', { headers: { 'Content-Type': 'text/html' } }), 'INVALID_DOWNLOAD'],
+        [new Response('short', { headers: { 'Content-Type': 'text/csv', 'Content-Length': '100' } }), 'INCOMPLETE_DOWNLOAD'],
+    ]) {
+        const { context, saved } = downloadContext(async () => response.clone());
+        await assert.rejects(vm.runInContext("apiDownload('/records.csv', 'records.csv', false)", context), { code });
+        assert.equal(saved.length, 0);
+    }
+});

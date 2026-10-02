@@ -113,3 +113,29 @@ function startCooldown(button, seconds, hint) {
     }, 1000);
     return stop;
 }
+
+/** CSV만 저장한다. 인증 갱신과 JSON 오류 처리 후 파일을 생성한다. */
+async function apiDownload(url, filename, allowRefresh = true) {
+    const res = await securedFetch(url, { headers: { Accept: 'text/csv, application/json' }, cache: 'no-store' });
+    if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        if (res.status === 401 && payload?.code === 'UNAUTHORIZED') {
+            if (allowRefresh && await refreshSession()) return apiDownload(url, filename, false);
+            throw new ApiError('세션이 만료되었습니다. 다시 로그인한 후 다운로드해 주세요.', 'UNAUTHORIZED', 401);
+        }
+        throw new ApiError(payload?.message ?? '다운로드하지 못했습니다. 잠시 후 다시 시도해 주세요.', payload?.code ?? 'DOWNLOAD_FAILED', res.status);
+    }
+    if (!(res.headers.get('Content-Type') ?? '').toLowerCase().startsWith('text/csv')) {
+        throw new ApiError('CSV 파일 응답을 받지 못했습니다. 다시 로그인하거나 잠시 후 시도해 주세요.', 'INVALID_DOWNLOAD', res.status);
+    }
+    const blob = await res.blob();
+    const expected = res.headers.get('Content-Length');
+    if (expected !== null && blob.size !== Number(expected)) {
+        throw new ApiError('파일 전송이 완료되지 않았습니다. 다시 다운로드해 주세요.', 'INCOMPLETE_DOWNLOAD', res.status);
+    }
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl; link.download = filename;
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}

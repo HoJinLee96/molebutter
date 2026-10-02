@@ -47,5 +47,5 @@
     }
     $('approve').addEventListener('click', () => review('approve'));
     $('reject').addEventListener('click', () => review('reject'));
-    load();
+    document.addEventListener('attendance-corrections-open', load);
 })();
