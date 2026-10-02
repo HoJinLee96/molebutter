@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 
 class MigrationUpgradeIT {
     @Test
-    void v1CreatesNoAdminAndV2PreservesExistingAccounts() throws Exception {
+    void v1CreatesNoAdminAndLaterMigrationsPreserveExistingAccounts() throws Exception {
         String url = System.getenv("MOLEBUTTER_TEST_DB_URL");
         if (url == null || !url.contains("/molebutter_test?")) {
             throw new IllegalStateException("Run scripts/test-integration.sh");
@@ -28,8 +28,9 @@ class MigrationUpgradeIT {
                     """);
         }
         Flyway flyway = Flyway.configure().dataSource(url, user, password).load();
-        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(2);
         flyway.validate();
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("4");
         assertThat(flyway.migrate().migrationsExecuted).isZero();
         try (var connection = DriverManager.getConnection(url, user, password);
                 var statement = connection.createStatement();

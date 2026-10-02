@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('근태 정정 관리')}"></head>
+<body class="attendance-page">
+<header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
+<main class="page">
+    <h1>근태 정정 관리</h1>
+    <p class="sub">직원의 정정 요청을 확인하고 승인하거나 반려하세요. 모든 시각은 한국 시간입니다.</p>
+    <p id="page-error" class="form-error attendance-message" role="alert" hidden></p>
+    <p id="page-success" class="form-success attendance-message" role="status" hidden></p>
+    <section class="panel">
+        <div class="toolbar"><div class="field"><label for="status">처리 상태</label><select id="status"><option value="PENDING">승인 대기</option><option value="APPROVED">승인</option><option value="REJECTED">반려</option><option value="CANCELLED">취소</option><option value="">전체</option></select></div><button id="reload" class="btn small" type="button">새로고침</button></div>
+        <div class="table-wrap"><table class="data"><thead><tr><th>직원</th><th>근무일</th><th>요청일</th><th>상태</th><th>상세</th></tr></thead><tbody id="requests-body"></tbody></table></div>
+        <div id="requests-pager" class="pager"></div>
+    </section>
+</main>
+<dialog id="review-dialog" class="attendance-dialog" aria-labelledby="review-title">
+    <div class="attendance-title"><h2 id="review-title">정정 요청 검토</h2><button class="btn small" type="button" data-close="review-dialog">닫기</button></div>
+    <div id="review-detail"></div>
+    <div id="review-actions">
+        <div class="field"><label for="review-comment">처리 사유 (반려 시 필수)</label><textarea id="review-comment" maxlength="1000" rows="3"></textarea></div>
+        <div class="attendance-actions"><button id="approve" class="btn primary" type="button">승인</button><button id="reject" class="btn" type="button">반려</button></div>
+    </div>
+    <p id="review-error" class="form-error" role="alert" hidden></p>
+</dialog>
+<script th:src="@{/js/api.js}"></script>
+<script th:src="@{/js/attendance-ui.js}"></script>
+<script th:src="@{/js/attendance-manage.js}"></script>
+</body>
+</html>
