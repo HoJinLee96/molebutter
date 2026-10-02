@@ -31,6 +31,7 @@
         <molebutter.build-directory>target</molebutter.build-directory>
 	</properties>
 	<dependencies>
+        <dependency><groupId>com.microsoft.playwright</groupId><artifactId>playwright</artifactId><version>1.63.0</version></dependency>
 <dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter</artifactId>
@@ -156,6 +157,20 @@
 	</build>
 
     <profiles>
+        <!-- 현재 Apple Silicon Mac의 DNS 설정을 Netty가 직접 읽도록 한다.
+             버전은 Spring Boot의 Netty BOM을 따르고 다른 OS에는 추가하지 않는다. -->
+        <profile>
+            <id>macos-arm64-dns</id>
+            <activation><os><family>mac</family><arch>aarch64</arch></os></activation>
+            <dependencies>
+                <dependency>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-resolver-dns-native-macos</artifactId>
+                    <classifier>osx-aarch_64</classifier>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
         <profile>
             <id>integration-tests</id>
             <build><plugins><plugin>
@@ -164,6 +179,7 @@
                 <configuration>
                     <includes>
                         <include>**/*Tests.java</include>
+                        <include>**/*Test.java</include>
                         <include>**/*IT.java</include>
                     </includes>
                 </configuration>
