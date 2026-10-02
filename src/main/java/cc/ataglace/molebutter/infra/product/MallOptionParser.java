@@ -15,56 +15,102 @@ public final class MallOptionParser {
     }
 
     public List<SourceOption> parse(Mall mall, String payload, String productId) {
+        return parseOptions(mall, payload, productId).options();
+    }
+
+    private ParsedOptions parseOptions(Mall mall, String payload, String productId) {
         if (mall == Mall.HAZZYS)
-            return hazzys(payload, productId);
+            return hazzys(payload, productId).finish();
         if (mall == Mall.LOTTE_IMALL)
-            return imall(payload, productId);
-        var roots = roots(mall, payload);
-        List<SourceOption> result = new ArrayList<>();
-        for (JsonNode root : roots)
+            return imall(payload, productId).finish();
+        var out = new OptionSet();
+        for (JsonNode root : roots(mall, payload))
             switch (mall) {
-                case LOTTE_ON -> lotte(root, productId, result);
+                case LOTTE_ON -> {
+                    if (!LotteProductPayload.matches(root, productId))
+                        break;
+                    var inventory = LotteProductPayload.inventory(root, productId);
+                    out.found = true;
+                    out.complete &= inventory.complete();
+                    out.options.addAll(inventory.options());
+                }
                 case HMALL -> {
                     if (!"Y".equals(text(root, "successYn")))
                         break;
                     var data = root.path("respData");
                     var rows = data.path("attrs");
-                    if (!data.path("combAttrs").isNull() && !data.path("combAttrs").isMissingNode())
-                        break; // 조합형의 조합별 수량 없는 응답은 미지원
+                    if (!rows.isArray() || (!data.path("combAttrs").isNull()
+                            && !data.path("combAttrs").isMissingNode())) {
+                        out.complete = false; // 조합형의 조합별 수량 없는 응답은 미지원
+                        break;
+                    }
                     for (JsonNode n : rows)
-                        if (productId.equals(text(n, "slitmCd")))
-                            result.add(option(text(n, "uitmCd"), text(n, "uitmTotNm"), number(n, "stck")));
+                        if (productId.equals(text(n, "slitmCd"))) {
+                            out.found = true;
+                            out.options.add(option(text(n, "uitmCd"), text(n, "uitmTotNm"), number(n, "stck")));
+                        } else {
+                            out.complete = false;
+                        }
                 }
                 case LFMALL -> {
                     var data = root.path("body").path("productOptionDTO");
                     if (!productId.equals(text(data, "productCode")))
                         break;
-                    for (JsonNode n : data.path("productOptionSizeDTOList")) {
+                    out.found = true;
+                    var rows = data.path("productOptionSizeDTOList");
+                    if (!rows.isArray() || rows.isEmpty()) {
+                        out.complete = false;
+                        break;
+                    }
+                    for (JsonNode n : rows) {
                         Long stock = number(n, "currentStockQuantity");
                         if ("Y".equals(text(n, "soldoutYn")))
                             stock = 0L;
                         var opt = option(text(n, "sizeCode", "optionSizeCode", "productOptionSizeCode"),
                                 text(n, "sizeName", "sizeNm", "sizeValue"), stock);
-                        result.add("N".equals(text(n, "saleAbleYn")) && !Objects.equals(stock, 0L) ? unavailable(opt)
-                                : opt);
+                        out.options.add("N".equals(text(n, "saleAbleYn")) && !Objects.equals(stock, 0L)
+                                ? unavailable(opt) : opt);
                     }
                 }
-                case NAVER_SMART_STORE -> naver(root, productId, result);
-                case HI_THEHYUNDAI -> hi(root, productId, result, 0);
+                case NAVER_SMART_STORE -> {
+                    if (!SupplierMetadataParser.naverMatches(root, productId))
+                        break;
+                    var inventory = NaverProductInventory.read(root, productId);
+                    out.found = true;
+                    out.complete &= inventory.complete();
+                    out.options.addAll(inventory.options());
+                }
+                case HI_THEHYUNDAI -> hi(root, productId, out, 0);
                 default -> {
                 }
             }
-        // 같은 ID의 정보가 서로 다르면 자동 선택하지 않는다.
-        Map<String, SourceOption> unique = new LinkedHashMap<>();
-        Set<String> ambiguous = new HashSet<>();
-        for (var o : result)
-            if (!o.id().isBlank() && !o.label().isBlank()) {
+        return out.finish();
+    }
+
+    private record ParsedOptions(List<SourceOption> options, boolean complete) {}
+
+    private static final class OptionSet {
+        final List<SourceOption> options = new ArrayList<>();
+        boolean found;
+        boolean complete = true;
+
+        ParsedOptions finish() {
+            // 모든 매입처에 같은 중복 정책을 적용한다. 충돌한 옵션은 순서에 따라 선택하지 않는다.
+            Map<String, SourceOption> unique = new LinkedHashMap<>();
+            Set<String> ambiguous = new HashSet<>();
+            for (var o : options) {
+                if (o.id().isBlank() || o.label().isBlank()) {
+                    complete = false;
+                    continue;
+                }
                 var before = unique.putIfAbsent(o.id(), o);
                 if (before != null && !before.equals(o))
                     ambiguous.add(o.id());
             }
-        ambiguous.forEach(unique::remove);
-        return List.copyOf(unique.values());
+            ambiguous.forEach(unique::remove);
+            return new ParsedOptions(List.copyOf(unique.values()),
+                    found && complete && ambiguous.isEmpty() && !unique.isEmpty());
+        }
     }
 
     private List<JsonNode> roots(Mall mall, String payload) {
@@ -161,7 +207,8 @@ public final class MallOptionParser {
             model = productId;
             title = input(payload, "PRODNAME");
         }
-        var options = parse(mall, payload, productId);
+        var parsed = parseOptions(mall, payload, productId);
+        var options = parsed.options();
         // 페이지 자체의 제목 메타데이터만 읽고 추천 상품이나 전체 본문을 지점 근거로 쓰지 않는다.
         if (title.isBlank() && (mall == Mall.HAZZYS || mall == Mall.LOTTE_IMALL || mall == Mall.HI_THEHYUNDAI)
                 && !options.isEmpty())
@@ -169,9 +216,7 @@ public final class MallOptionParser {
         var evidence = SupplierMetadataParser.parse(mall, roots(mall, payload), productId);
         if (evidence != null && store.isBlank())
             store = evidence.name();
-        boolean complete = mall != Mall.LOTTE_ON
-                || roots(mall, payload).stream().anyMatch(r -> LotteProductPayload.inventory(r, productId).complete());
-        return new SourceDetails(title, model, brand, options, store, evidence, complete);
+        return new SourceDetails(title, model, brand, options, store, evidence, parsed.complete());
     }
 
     private static String pageTitle(String html) {
@@ -207,20 +252,18 @@ public final class MallOptionParser {
         return new SourceOption(o.id(), o.label(), o.stock(), "UNAVAILABLE");
     }
 
-    private static void lotte(JsonNode root, String productId, List<SourceOption> out) {
-        out.addAll(LotteProductPayload.inventory(root, productId).options());
-    }
-
-    private static void naver(JsonNode root, String productId, List<SourceOption> out) {
-        out.addAll(NaverProductInventory.read(root, productId).options());
-    }
-
-    private static void hi(JsonNode node, String productId, List<SourceOption> out, int depth) {
+    private static void hi(JsonNode node, String productId, OptionSet out, int depth) {
         if (depth > 18)
             return;
-        if (node.isObject() && productId.equals(text(node, "slitmCd")) && node.path("sellUitmList").isArray()) {
-            for (JsonNode n : node.path("sellUitmList"))
-                out.add(option(text(n, "uitmCd"), text(n, "uitmTotNm"), number(n, "sellPossQty")));
+        if (node.isObject() && productId.equals(text(node, "slitmCd"))) {
+            out.found = true;
+            var rows = node.path("sellUitmList");
+            if (!rows.isArray() || rows.isEmpty()) {
+                out.complete = false;
+                return;
+            }
+            for (JsonNode n : rows)
+                out.options.add(option(text(n, "uitmCd"), text(n, "uitmTotNm"), number(n, "sellPossQty")));
             return;
         }
         for (JsonNode c : node)
@@ -228,11 +271,12 @@ public final class MallOptionParser {
                 hi(c, productId, out, depth + 1);
     }
 
-    private static List<SourceOption> hazzys(String html, String productId) {
+    private static OptionSet hazzys(String html, String productId) {
+        var out = new OptionSet();
         if (!productId.equals(input(html, "CARTITEMCD")))
-            return List.of();
+            return out;
+        out.found = true;
         String color = capture(html, "<dd[^>]*class=\"colorWrapHnm\"[^>]*>([^<]+)</dd>");
-        Map<String, SourceOption> out = new LinkedHashMap<>();
         Matcher buttons = Pattern.compile("<button\\b([^>]+)>([^<]*)</button>").matcher(html);
         while (buttons.find()) {
             String attrs = buttons.group(1);
@@ -242,21 +286,22 @@ public final class MallOptionParser {
                     || "true".equals(attribute(attrs, "aria-disabled"));
             String size = attribute(attrs, "data-size");
             Long stock = integer(attribute(attrs, "value"));
-            if (!size.isBlank()) {
-                var opt = option(size, color + " / " + buttons.group(2).trim(), stock);
-                out.put(size, disabled && !Objects.equals(stock, 0L) ? unavailable(opt) : opt);
-            }
+            String label = buttons.group(2).trim();
+            var opt = option(size, label.isBlank() ? "" : color + " / " + label, stock);
+            out.options.add(disabled && !Objects.equals(stock, 0L) ? unavailable(opt) : opt);
         }
-        return List.copyOf(out.values());
+        return out;
     }
 
-    private static List<SourceOption> imall(String html, String productId) {
-        List<SourceOption> out = new ArrayList<>();
+    private static OptionSet imall(String html, String productId) {
+        var out = new OptionSet();
         Matcher groups = Pattern.compile("itemInfo\\[\\d+\\]\\s*=\\s*\\{(.*?)\\};", Pattern.DOTALL).matcher(html);
         while (groups.find()) {
             String group = groups.group(1);
             if (!productId.equals(capture(group, "goods_no\\s*:\\s*['\"]?([0-9]+)")))
                 continue;
+            out.found = true;
+            int before = out.options.size();
             Matcher items = Pattern.compile("\\{([^{}]*\\bitem_no\\s*:[^{}]*)}", Pattern.DOTALL).matcher(group);
             while (items.find()) {
                 String row = items.group(1), id = capture(row, "item_no\\s*:\\s*['\"]?([0-9]+)"),
@@ -264,9 +309,10 @@ public final class MallOptionParser {
                 if (label.isBlank() && "1".equals(capture(group, "item_count\\s*:\\s*([0-9]+)")))
                     label = "단일상품";
                 Long stock = integer(capture(row, "inv_qty\\s*:\\s*([0-9]+)"));
-                if (!id.isBlank() && !label.isBlank())
-                    out.add(option(id, label, stock));
+                out.options.add(option(id, label, stock));
             }
+            Long count = integer(capture(group, "item_count\\s*:\\s*([0-9]+)"));
+            out.complete &= count != null && count == out.options.size() - before;
         }
         return out;
     }
