@@ -80,7 +80,16 @@ class MallOptionParserTest {
         assertThat(parser.details(Mall.LOTTE_IMALL,html,"3144343598").title()).isEmpty();
         assertThat(parser.details(Mall.LOTTE_IMALL,"<meta property='og:title' content='[목동점] 가방'>"+html,"3144343598").title()).isEqualTo("[목동점] 가방");
     }
-
+    @Test void urlsOnlyAllowExactMallDomainBoundaries() {
+        var gateway=new MallOptionGateway(json);
+        for(String url:List.of("http://www.hazzys.com/a","https://www.hazzys.com/a"))assertThat(gateway.validateUrl(Mall.HAZZYS,url)).isEqualTo(url);
+        for(String url:List.of("ftp://www.hazzys.com/a","javascript:alert(1)","https://hazzys.com.evil.test/a","https://localhost/a","https://user@hazzys.com/a","http://user@hazzys.com/a","https://www.hazzys.com:443/a"))assertThatThrownBy(()->gateway.validateUrl(Mall.HAZZYS,url)).isInstanceOf(IllegalArgumentException.class);
+    }
+    @Test void searchExcludesCatalogAndDoesNotGuessMissingShipping() {
+        var result=new NaverPriceSearch(json).parse("""
+          {"products":[{"item":{"nvMid":"1","mallName":"몰","mallId":"shop","price":"10000","mallProductId":"P"}},{"item":{"nvMid":"2","mallName":"카탈로그","mallId":"naver_model"}}],"hasNext":false}
+          """);assertThat(result.offers()).hasSize(1);assertThat(result.complete()).isTrue();
+    }
 
     @Test void conflictingHazzysButtonsNeverDependOnTheirOrder() {
         String identity="<input id='CARTITEMCD' value='P'>";

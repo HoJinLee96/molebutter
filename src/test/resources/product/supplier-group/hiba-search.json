@@ -1,0 +1,48 @@
+{
+  "query": "HIBA113K2",
+  "source": "search-api",
+  "rows": [
+    {
+      "id": "91201134612",
+      "productName": "[헤지스] HIBA6F113K2 헤리아토 H소가죽 패치 카키 크로스 겸용 토트백",
+      "mallNo": "514291",
+      "mallId": "ncp_gjdnqc_01",
+      "mallName": "헤지스ACC",
+      "mallProductId": "13656623827",
+      "mallProductUrl": "https://shopping.naver.com/outlink/itemdetail/13656623827",
+      "mallPcUrl": "https://shopping.naver.com/outlink/storehome/1000008804",
+      "chnlSeq": "1000008804",
+      "wdTp": "1",
+      "wdNm": "백화점",
+      "comNm": "현대백화점 목동점",
+      "price": "217720",
+      "lowPrice": 217720,
+      "channelInfoCache": {
+        "chnlSeq": "1000008804",
+        "chnlName": "헤지스ACC",
+        "mallSeq": "514291"
+      }
+    },
+    {
+      "id": "84162377352",
+      "productName": "[헤지스] [HIBA2E113K2] 헤리아토 H소가죽 패치 카키 크로스 겸용 버킷백 M",
+      "mallNo": "514291",
+      "mallId": "ncp_gjdnqc_01",
+      "mallName": "헤지스ACC",
+      "mallProductId": "6617877030",
+      "mallProductUrl": "https://shopping.naver.com/outlink/itemdetail/6617877030",
+      "mallPcUrl": "https://shopping.naver.com/outlink/storehome/1000008804",
+      "chnlSeq": "1000008804",
+      "wdTp": "1",
+      "wdNm": "백화점",
+      "comNm": "현대백화점 목동점",
+      "price": "217720",
+      "lowPrice": 217720,
+      "channelInfoCache": {
+        "chnlSeq": "1000008804",
+        "chnlName": "헤지스ACC",
+        "mallSeq": "514291"
+      }
+    }
+  ]
+}
