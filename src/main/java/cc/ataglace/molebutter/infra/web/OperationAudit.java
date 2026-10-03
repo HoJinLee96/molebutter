@@ -9,10 +9,10 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface OperationAudit {
 
-    /** 이벤트 종류. 예: COUPANG_PRODUCT_UPDATE, EXCEL_UPLOAD. */
+    /** 이벤트 종류. 예: PRODUCT_EDIT, PRODUCT_IMPORT. */
     String value();
 
-    /** 대상 타입(선택). 예: COUPANG_PRODUCT, PRODUCT. */
+    /** 대상 타입(선택). 예: PRODUCT, PRODUCT_REFRESH. */
     String targetType() default "";
 
     /** targetId로 남길 URI path variable 이름(선택). */

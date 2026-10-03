@@ -126,7 +126,7 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(
                         HttpStatus.TOO_MANY_REQUESTS,
                         "IMAGE_UPLOAD_SIZE_EXCEEDED",
-                        "상세 이미지는 10MB 이하 파일만 업로드할 수 있습니다."));
+                        "10MB 이하 파일만 업로드할 수 있습니다."));
     }
 
     /**
@@ -214,7 +214,7 @@ public class GlobalExceptionHandler {
             String message = current.getMessage();
             if (message != null) {
                 String normalized = message.toLowerCase(Locale.ROOT);
-                // "connection reset"은 다운스트림(쿠팡/외부몰/DB) 호출 실패에서도 나타나므로 제외한다.
+                // "connection reset"은 다운스트림(외부몰/DB) 호출 실패에서도 나타나므로 제외한다.
                 // 이를 client abort로 오인하면 실제 서버 오류가 204로 응답되어 묻힌다(F-WEB1).
                 // "broken pipe"/"response not usable"은 응답 쓰기 단계의 클라이언트 중단 신호로 한정한다.
                 if (normalized.contains("broken pipe")
