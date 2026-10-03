@@ -1,23 +1,21 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<body>
-<!-- 로그인 후 공통 헤더. 메뉴는 역할별 MenuSection에서 파생(컨트롤러가 menuItems로 전달).
-     worklist 배지는 DASHBOARD 챕터(Ch 7)에서 이 영역에 붙는다.
-     사용: <header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"> -->
-<header class="app-header" th:fragment="header(userName, menuItems)">
-    <a class="logo" th:href="@{/}">molebutter</a>
-    <nav class="menu">
-        <th:block th:each="item : ${menuItems}">
-            <a class="menu-item ready" th:if="${readySections.contains(item)}"
-               th:href="@{${item.homePath()}}" th:text="${item.label}">메뉴</a>
-            <span class="menu-item" th:unless="${readySections.contains(item)}"
-                  th:text="${item.label}">메뉴</span>
-        </th:block>
-    </nav>
-    <div class="user-area">
-        <a class="user-link" th:href="@{/my-page}" th:text="${userName} + '님'">사용자님</a>
-        <button type="button" id="signout-btn" class="btn small">로그아웃</button>
-    </div>
-</header>
-</body>
-</html>
+<html xmlns:th="http://www.thymeleaf.org"><body>
+<div th:fragment="header(userName, menuItems)" class="app-navigation">
+
+    <a class="skip-link" href="#main-content">본문으로 이동</a>
+    <header class="mobile-bar"><a class="logo" href="/">molebutter</a><button id="menu-open" class="btn small" type="button" aria-controls="app-sidebar" aria-expanded="false">메뉴</button></header>
+    <button id="menu-backdrop" class="menu-backdrop" type="button" tabindex="-1" aria-label="메뉴 닫기" hidden></button>
+    <aside id="app-sidebar" class="app-sidebar" aria-label="주 메뉴">
+        <div class="sidebar-heading"><a class="logo" href="/">molebutter</a><button id="menu-close" class="btn small" type="button">닫기</button></div>
+        <nav class="sidebar-menu" aria-label="업무 메뉴">
+            <a class="sidebar-link" href="/" th:classappend="${currentPath == '/'} ? 'active'" th:attr="aria-current=${currentPath == '/'} ? 'page' : null">홈</a>
+            <section class="sidebar-group" th:each="group : ${navigationGroups}">
+                <h2 th:text="${group.label}">상품 업무</h2>
+                <a class="sidebar-link" th:each="item : ${group.items}" th:href="@{${item.homePath()}}" th:text="${item.label}"
+                   th:classappend="${currentPath == item.homePath()} ? 'active'" th:attr="aria-current=${currentPath == item.homePath()} ? 'page' : null">상품</a>
+            </section>
+        </nav>
+        <div class="sidebar-account"><button id="notification-bell" class="sidebar-link sidebar-notification" data-notification-open type="button" aria-label="알림 0개" aria-haspopup="dialog" aria-controls="notification-drawer"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span>알림</span><span data-notification-count hidden>0</span></button><a class="sidebar-link" href="/my-page" th:classappend="${currentPath == '/my-page'} ? 'active'" th:attr="aria-current=${currentPath == '/my-page'} ? 'page' : null"><strong th:text="${userName} + '님'">사용자님</strong><small>내 정보</small></a><button id="signout-btn" class="btn small" type="button">로그아웃</button><p id="layout-error" class="form-error" role="alert" hidden></p></div>
+    </aside>
+</div>
+</body></html>

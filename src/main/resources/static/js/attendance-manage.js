@@ -15,14 +15,21 @@
     $('reload').addEventListener('click', load);
     $('requests-body').addEventListener('click', async event => {
         const button = event.target.closest('[data-id]'); if (!button) return;
+        openReview(button.dataset.id);
+    });
+    async function openReview(id) {
         try {
-            selected = await apiGet(`/api/attendance-manage/corrections/${button.dataset.id}`);
+            selected = await apiGet(`/api/attendance-manage/corrections/${encodeURIComponent(id)}`);
             $('review-detail').innerHTML = correction(selected);
             $('review-actions').hidden = selected.status !== 'PENDING';
             $('review-comment').value = ''; setError('review-error', null);
             $('review-dialog').showModal();
         } catch (error) { setError('page-error', error.message); }
-    });
+    }
+    const linkedCorrection=new URLSearchParams(location.search).get('correction');
+    if(linkedCorrection&&/^[0-9]+$/.test(linkedCorrection)) {
+        document.addEventListener('DOMContentLoaded',()=>{ $('tab-corrections').click();openReview(linkedCorrection); },{once:true});
+    }
     async function review(action) {
         if ($('approve').disabled) return;
         const comment = $('review-comment').value.trim();

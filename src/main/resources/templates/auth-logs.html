@@ -1,12 +1,11 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{fragments/head :: common('인증 로그')}"></head>
-<body>
+<body class="app-layout">
 <header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
 
-<main class="page wide">
+<main id="main-content" tabindex="-1" class="page wide">
     <h1>인증 로그</h1>
-    <p class="sub">로그인·토큰·계정 상태 변경 등 인증 이벤트 기록입니다. 기본 조회 범위는 최근 7일입니다.</p>
 
     <form id="filter-form" class="toolbar">
         <div class="field">
@@ -24,11 +23,11 @@
                 <option th:each="type : ${eventTypes}" th:value="${type}" th:text="${type.label}">EVENT</option>
             </select>
         </div>
-        <div class="field">
+        <div class="field field--search">
             <label for="email">이메일</label>
             <input id="email" type="text" placeholder="부분 일치 검색">
         </div>
-        <div class="field">
+        <div class="field field--short">
             <label for="ip">IP</label>
             <input id="ip" type="text" placeholder="부분 일치 검색">
         </div>
@@ -68,9 +67,6 @@
     let page = 0;
     let totalPages = 0;
 
-    document.getElementById('signout-btn').addEventListener('click', async () => {
-        try { await apiPost('/api/auth/signout'); } finally { location.href = '/signin'; }
-    });
 
     function fmtDate(value) {
         return value ? value.replace('T', ' ').substring(0, 19) : '-';

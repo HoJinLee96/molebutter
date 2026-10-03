@@ -913,8 +913,8 @@ class ProductFlowIT {
     @Test void listSendsPriceSummaryWhileDetailKeepsAllOptions(){var p=create("ABCD6F123BK");finish(p);var listed=products.list(actor,"","ALL","",0).items().getFirst();assertThat(listed.latestResult().searchPrice()).isEqualTo(10000);assertThat(listed.latestResult().suppliers()).isEmpty();assertThat(current(p).latestResult().suppliers()).hasSize(1);}
     @Test void cancellationReleasesWorkerAndRetryExcludesDeletedProducts(){var p=create("ABCD6F123BK");var p2=create("ABCD6F124BK");long run=Long.parseLong(refresh.start(actor,new RefreshInput("SELECTED",List.of(p.id(),p2.id()))));var w=refresh.claim("w");refresh.control(actor,run,"cancel");assertThat(refresh.heartbeat("w",w)).isFalse();products.delete(actor,new DeleteProducts(List.of(version(p))));long next=Long.parseLong(refresh.retry(actor,run));assertThat(refresh.items(actor,next,0).items()).hasSize(1);assertThat(refresh.claim("next").productId()).isEqualTo(Long.parseLong(p2.id()));}
     @Test void httpPermissionsCsrfUploadAndRemovedRoutes()throws Exception {
-        status(new Browser().get("/api/products"),401);var viewer=login(account(UserRole.VIEWER));status(viewer.get("/api/products"),403);
-        var user=account(UserRole.PRODUCT);var staff=login(user);status(staff.get("/api/products"),200);status(staff.get("/api/settings/brands"),200);
+        status(new Browser().get("/api/products"),401);var viewer=login(account(UserRole.VIEWER));status(viewer.get("/api/products"),403);status(viewer.get("/products"),403);
+        var user=account(UserRole.PRODUCT);var staff=login(user);status(staff.get("/api/products"),200);status(staff.get("/api/settings/brands"),200);status(staff.get("/products"),200);status(staff.get("/settings"),200);
         status(staff.post("/api/settings/brands",Map.of("name","권한 없음")),403);
         status(staff.send("POST","/api/products",Map.of("productCode","X"),null),403);
         status(staff.upload(WorkbookFixture.create(1,Map.of("F4","ABCD6F123BK","H4","헤지스 가방")),true),200);

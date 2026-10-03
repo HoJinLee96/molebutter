@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('공통 설정')}"></head>
+<body class="app-layout" th:attr="data-settings-admin=${settingsAdmin}">
+<header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
+<main id="main-content" tabindex="-1" class="page settings-page">
+    <h1>공통 설정</h1>
+    <p th:unless="${settingsAdmin}" class="settings-notice">설정을 조회할 수 있습니다. 추가·변경은 관리자에게 요청해 주세요.</p>
+    <nav id="settings-tabs" class="tabs settings-tabs" aria-label="설정 항목"><a class="tab" href="/settings?tab=brands" data-tab="brands">브랜드</a><a class="tab" href="/settings?tab=preferred" data-tab="preferred">선호 매입처</a><a class="tab" href="/settings?tab=suppliers" data-tab="suppliers">매입처 지원</a><a class="tab" href="/settings?tab=payment-methods" data-tab="payment-methods" th:if="${settingsAdmin}">결제 수단</a><a class="tab" href="/settings?tab=schedule" data-tab="schedule">자동 최신화</a></nav>
+    <p id="settings-error" class="form-error" role="alert" hidden></p><p id="settings-success" class="form-success" role="status" hidden></p>
+    <button id="settings-reload" class="btn small" type="button" hidden>다시 조회</button>
+    <section class="panel settings-section" data-settings-panel="brands" hidden>
+        <h2>브랜드</h2>
+        <form id="brand-create-form" class="toolbar" th:if="${settingsAdmin}"><div class="field"><label for="brand-name">새 브랜드 이름</label><input id="brand-name" maxlength="100" required autocomplete="off"></div><button class="btn primary" disabled>브랜드 추가</button></form>
+        <div class="table-wrap"><table class="data"><thead><tr><th>브랜드</th><th>사용 상품</th><th th:if="${settingsAdmin}">관리</th></tr></thead><tbody id="settings-brand-rows"></tbody></table></div>
+    </section>
+    <section class="panel settings-section" data-settings-panel="preferred" hidden>
+        <h2>선호 매입처</h2>
+        <p id="preferred-error" class="form-error" role="alert" hidden></p><p id="preferred-success" class="form-success" role="status" hidden></p>
+        <div class="toolbar"><button type="button" class="btn primary" id="preferred-add" th:if="${settingsAdmin}" disabled>선호 매입처 추가</button><button type="button" class="btn small" id="preferred-reload">목록 새로 조회</button></div>
+        <div class="table-wrap"><table class="data"><thead><tr><th>쇼핑몰</th><th>허용 범위</th><th th:if="${settingsAdmin}">관리</th></tr></thead><tbody id="preferred-rows"></tbody></table></div>
+        <div id="preferred-pending" class="toolbar"></div>
+    </section>
+    <section class="panel settings-section" data-settings-panel="suppliers" hidden>
+        <h2>옵션 조회 지원 매입처</h2><ul id="settings-suppliers" class="support-list"></ul>
+    </section>
+    <section class="panel settings-section" data-settings-panel="payment-methods" hidden th:if="${settingsAdmin}">
+        <h2>결제 수단</h2><form id="payment-create-form" class="toolbar"><label class="field">결제 수단 이름 <input id="payment-name" maxlength="100" required></label><button class="btn primary" disabled>결제 수단 추가</button></form>
+        <div class="table-wrap"><table class="data"><thead><tr><th>결제 수단</th><th>관리</th></tr></thead><tbody id="settings-payment-rows"></tbody></table></div>
+    </section>
+    <section class="panel settings-section" data-settings-panel="schedule" hidden>
+        <h2>자동 최신화</h2><p id="settings-schedule-summary" class="settings-notice">설정을 불러오고 있습니다.</p>
+        <form id="schedule-settings-form" class="form" th:if="${settingsAdmin}">
+            <label><input id="schedule-enabled" type="checkbox"> 매일 자동관리 상품 최신화</label>
+            <div class="field"><label for="schedule-time">실행 시각 (한국 시간)</label><input id="schedule-time" type="time" required></div>
+            <button class="btn primary" disabled>예약 설정 저장</button>
+        </form>
+    </section>
+</main>
+<dialog id="settings-edit-dialog" class="attendance-dialog" aria-labelledby="settings-edit-title">
+    <h2 id="settings-edit-title">이름 수정</h2><form id="settings-edit-form" class="form"><div class="field"><label for="settings-edit-name">이름</label><input id="settings-edit-name" maxlength="100" required></div><p id="settings-edit-error" class="form-error" role="alert" hidden></p><div class="attendance-actions"><button type="button" class="btn" data-settings-close="settings-edit-dialog">취소</button><button class="btn primary">저장</button></div></form>
+</dialog>
+<dialog id="settings-delete-dialog" class="attendance-dialog" aria-labelledby="settings-delete-title">
+    <h2 id="settings-delete-title">등록 삭제</h2><p id="settings-delete-description"></p><p id="settings-delete-error" class="form-error" role="alert" hidden></p><form id="settings-delete-form" class="attendance-actions"><button type="button" class="btn" data-settings-close="settings-delete-dialog">취소</button><button class="btn danger">삭제</button></form>
+</dialog>
+<script th:src="@{/js/api.js}"></script><script th:src="@{/js/settings.js}"></script><script th:src="@{/js/supplier-editor.js}"></script><script th:src="@{/js/supplier-settings.js}"></script>
+</body></html>
