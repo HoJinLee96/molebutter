@@ -23,6 +23,7 @@ public class AttendanceService {
     private final UserRepository users;
     private final AttendanceTime time;
     private final ObjectMapper json;
+    private final cc.ataglace.molebutter.service.notification.NotificationService notifications;
     private static final List<AttendanceStatus> ACTIVE = List.of(AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK);
 
     public CurrentView current(Long userId) {
@@ -120,7 +121,9 @@ public class AttendanceService {
         AttendanceCorrection c = new AttendanceCorrection(userId, request.workDate(), original,
                 original == null ? null : json.writeValueAsString(Snapshot.from(original)),
                 json.writeValueAsString(proposed), request.reason().trim());
-        return correctionView(corrections.saveAndFlush(c));
+        corrections.saveAndFlush(c);
+        notifications.correction(c.getId(),"PENDING",userId,null,c.getWorkDate());
+        return correctionView(c);
     }
 
     @Transactional
@@ -129,6 +132,7 @@ public class AttendanceService {
         AttendanceCorrection c = corrections.findByIdAndUserId(requestId, userId).orElseThrow(this::notFound);
         expectPending(c, request.revision());
         c.cancel();
+        notifications.correction(c.getId(),"CANCELLED",userId,null,c.getWorkDate());
         return correctionView(c);
     }
 
@@ -170,6 +174,7 @@ public class AttendanceService {
             records.save(current);
         }
         c.review(approve, actor, time.now(), comment);
+        notifications.correction(c.getId(),approve?"APPROVED":"REJECTED",owner,actor,c.getWorkDate());
         return correctionView(c);
     }
 
@@ -263,5 +268,5 @@ public class AttendanceService {
     }
     private Pageable page(int page, String sort) { return PageRequest.of(Math.max(0, page), 20, Sort.by(Sort.Direction.DESC, sort, "id")); }
     private BusinessException notFound() { return new BusinessException(ErrorCode.NOT_FOUND); }
-    private IllegalStateException conflict(String message) { return new IllegalStateException(message); }
+    private IllegalStateException conflict(String message) { return new OperationFailure(message); }
 }

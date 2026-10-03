@@ -25,7 +25,14 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @RestControllerAdvice
+@lombok.RequiredArgsConstructor
 public class GlobalExceptionHandler {
+    private final cc.ataglace.molebutter.service.notification.FailureNotificationService notifications;
+    private void notifyFailure(HttpServletRequest request,String message) {
+        try { notifications.record(request,message); }
+        catch(Exception failure) { log.error("알림 저장 실패",failure); }
+    }
+
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     protected ResponseEntity<ApiResponse<Void>> handleArgumentTypeMismatch(MethodArgumentTypeMismatchException e) {
@@ -91,7 +98,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     protected ResponseEntity<ApiResponse<Void>> handleOptimisticLockingFailureException(
-            ObjectOptimisticLockingFailureException e) {
+            ObjectOptimisticLockingFailureException e, HttpServletRequest request) {
+        notifyFailure(request,"다른 작업에서 변경되었습니다. 다시 확인해 주세요.");
         log.warn("ObjectOptimisticLockingFailureException : {}", e.getMessage());
         return ResponseEntity
                 .status(ErrorCode.OPTIMISTIC_LOCKING_FAILURE.getStatus())
@@ -135,7 +143,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(IllegalStateException.class)
-    protected ResponseEntity<ApiResponse<Void>> handleIllegalStateException(IllegalStateException e) {
+    protected ResponseEntity<ApiResponse<Void>> handleIllegalStateException(IllegalStateException e, HttpServletRequest request) {
+        if(e instanceof OperationFailure)notifyFailure(request,e.getMessage());
         log.warn("IllegalStateException : {}", e.getMessage());
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
@@ -173,12 +182,13 @@ public class GlobalExceptionHandler {
      * 그 외 예상치 못한 모든 예외 처리 (서버 내부 오류)
      */
     @ExceptionHandler(Exception.class)
-    protected ResponseEntity<ApiResponse<Void>> handleException(Exception e) {
+    protected ResponseEntity<ApiResponse<Void>> handleException(Exception e, HttpServletRequest request) {
         if (isClientAbort(e)) {
             log.debug("Client aborted response before it could be written: {}", e.getMessage());
             return ResponseEntity.noContent().build();
         }
         log.error("Unhandled Exception : {}", e.getMessage(), e);
+        notifyFailure(request,"처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error(ErrorCode.INTERNAL_SERVER_ERROR));

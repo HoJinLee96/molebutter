@@ -170,5 +170,14 @@ class MigrationUpgradeIT {
             try(var r=st.executeQuery("SELECT store_id FROM supplier_preference WHERE id=99")){r.next();assertThat(r.getLong(1)).isEqualTo(99);}
         }
 
+        var notifications=Flyway.configure().dataSource(url,user,password).target("15").load();
+        assertThat(notifications.migrate().migrationsExecuted).isEqualTo(1);notifications.validate();
+        assertThat(notifications.info().current().getVersion().getVersion()).isEqualTo("15");
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
+            for(String table:java.util.List.of("notification_event","user_notification"))
+                try(var r=st.executeQuery("SELECT COUNT(*) FROM "+table)){r.next();assertThat(r.getLong(1)).isZero();}
+            try(var r=st.executeQuery("SELECT supplier_id FROM product_supplier_selection WHERE product_id=1")){r.next();assertThat(r.getLong(1)).isEqualTo(1);}
+            try(var r=st.executeQuery("SELECT manual_store_id,last_price FROM product_supplier WHERE id=1")){r.next();assertThat(r.getLong(1)).isEqualTo(99);assertThat(r.getLong(2)).isEqualTo(94000);}
+        }
     }
 }
