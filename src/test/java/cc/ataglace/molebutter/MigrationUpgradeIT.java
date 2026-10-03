@@ -226,5 +226,41 @@ class MigrationUpgradeIT {
             }
             try(var r=st.executeQuery("SELECT supplier_id FROM product_supplier_selection WHERE product_id=1")){r.next();assertThat(r.getLong(1)).isEqualTo(1);}
         }
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
+            st.executeUpdate("INSERT INTO inventory_purchase(id,purchased_on,payment_method,payment_alias,private_note,created_by,request_id,request_hash,created_at,updated_at) VALUES(100,'2026-10-01','기존 결제 수단','기존 카드','기존 메모',1,'legacy-order','legacy-hash',NOW(6),NOW(6))");
+            st.executeUpdate("INSERT INTO inventory_item(id,purchase_id,product_id,origin_product_id,purchased_code,purchased_name,original_ordered_quantity,ordered_quantity,on_hand,pending,unit_price,created_at,updated_at) VALUES(100,100,1,1,'SNAPSHOT','기존 구매명',3,3,2,1,12345,NOW(6),NOW(6))");
+            st.executeUpdate("INSERT INTO inventory_movement(id,item_id,kind,quantity,hand_delta,pending_delta,occurred_at,actor_id,request_id,request_hash,created_at) VALUES(100,100,'RECEIPT',2,2,-2,NOW(6),1,'legacy-receipt','legacy-hash',NOW(6))");
+        }
+        var payment=Flyway.configure().dataSource(url,user,password).target("23").load();assertThat(payment.migrate().migrationsExecuted).isEqualTo(1);payment.validate();
+        assertThat(payment.info().current().getVersion().getVersion()).isEqualTo("23");assertThat(payment.migrate().migrationsExecuted).isZero();
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
+            try(var r=st.executeQuery("SELECT payment_method,payment_alias,private_note,payment_method_id,payment_amount FROM inventory_purchase WHERE id=100")){r.next();assertThat(r.getString(1)).isEqualTo("기존 결제 수단");assertThat(r.getString(2)).isEqualTo("기존 카드");assertThat(r.getString(3)).isEqualTo("기존 메모");assertThat(r.getObject(4)).isNull();assertThat(r.getObject(5)).isNull();}
+            try(var r=st.executeQuery("SELECT purchased_code,purchased_name,on_hand,pending,unit_price FROM inventory_item WHERE id=100")){r.next();assertThat(r.getString(1)).isEqualTo("SNAPSHOT");assertThat(r.getString(2)).isEqualTo("기존 구매명");assertThat(r.getLong(3)).isEqualTo(2);assertThat(r.getLong(4)).isEqualTo(1);assertThat(r.getLong(5)).isEqualTo(12345);}
+            try(var r=st.executeQuery("SELECT COUNT(*) FROM inventory_movement WHERE id=100 AND kind='RECEIPT'")){r.next();assertThat(r.getInt(1)).isEqualTo(1);}
+            try(var r=st.executeQuery("SELECT COUNT(*) FROM inventory_payment_method WHERE deleted_at IS NULL")){r.next();assertThat(r.getInt(1)).isEqualTo(3);}
+        }
+        var deletion=Flyway.configure().dataSource(url,user,password).target("24").load();assertThat(deletion.migrate().migrationsExecuted).isEqualTo(1);deletion.validate();
+        assertThat(deletion.info().current().getVersion().getVersion()).isEqualTo("24");assertThat(deletion.migrate().migrationsExecuted).isZero();
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
+            try(var r=st.executeQuery("SELECT deleted_at,deleted_by,delete_request_id,delete_request_hash FROM inventory_purchase WHERE id=100")){assertThat(r.next()).isTrue();for(int col=1;col<=4;col++)assertThat(r.getObject(col)).isNull();}
+            try(var r=st.executeQuery("SELECT on_hand,pending FROM inventory_item WHERE id=100")){r.next();assertThat(r.getLong(1)).isEqualTo(2);assertThat(r.getLong(2)).isEqualTo(1);}
+            try(var r=st.executeQuery("SELECT COUNT(*) FROM inventory_movement WHERE id=100")){r.next();assertThat(r.getInt(1)).isEqualTo(1);}
+        }
+        var productInformation=Flyway.configure().dataSource(url,user,password).target("25").load();
+        assertThat(productInformation.migrate().migrationsExecuted).isEqualTo(1);productInformation.validate();
+        assertThat(productInformation.info().current().getVersion().getVersion()).isEqualTo("25");assertThat(productInformation.migrate().migrationsExecuted).isZero();
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
+            try(var r=st.executeQuery("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='inventory_item' AND column_name IN ('purchased_code','purchased_name')")){r.next();assertThat(r.getInt(1)).isZero();}
+            try(var r=st.executeQuery("SELECT product_id,origin_product_id,on_hand,pending,unit_price FROM inventory_item WHERE id=100")){r.next();assertThat(r.getLong(1)).isEqualTo(1);assertThat(r.getLong(2)).isEqualTo(1);assertThat(r.getLong(3)).isEqualTo(2);assertThat(r.getLong(4)).isEqualTo(1);assertThat(r.getLong(5)).isEqualTo(12345);}
+            try(var r=st.executeQuery("SELECT request_hash FROM inventory_purchase WHERE id=100")){r.next();assertThat(r.getString(1)).isEqualTo("legacy-hash");}
+            try(var r=st.executeQuery("SELECT quantity,hand_delta,pending_delta,request_hash FROM inventory_movement WHERE id=100")){r.next();assertThat(r.getLong(1)).isEqualTo(2);assertThat(r.getLong(2)).isEqualTo(2);assertThat(r.getLong(3)).isEqualTo(-2);assertThat(r.getString(4)).isEqualTo("legacy-hash");}
+        }
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()){st.executeUpdate("UPDATE inventory_item SET location='legacy location' WHERE id=100");}
+        var noLocation=Flyway.configure().dataSource(url,user,password).load();assertThat(noLocation.migrate().migrationsExecuted).isEqualTo(1);noLocation.validate();assertThat(noLocation.info().current().getVersion().getVersion()).isEqualTo("26");assertThat(noLocation.migrate().migrationsExecuted).isZero();
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
+            try(var r=st.executeQuery("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='inventory_item' AND column_name='location'")){r.next();assertThat(r.getInt(1)).isZero();}
+            try(var r=st.executeQuery("SELECT product_id,on_hand,pending,unit_price FROM inventory_item WHERE id=100")){r.next();assertThat(r.getLong(1)).isEqualTo(1);assertThat(r.getLong(2)).isEqualTo(2);assertThat(r.getLong(3)).isEqualTo(1);assertThat(r.getLong(4)).isEqualTo(12345);}
+            try(var r=st.executeQuery("SELECT COUNT(*) FROM inventory_movement WHERE id=100")){r.next();assertThat(r.getInt(1)).isEqualTo(1);}
+        }
     }
 }
