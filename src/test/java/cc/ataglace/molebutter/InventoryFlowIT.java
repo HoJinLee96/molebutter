@@ -383,6 +383,7 @@ class InventoryFlowIT {
         }
         var staffBrowser=new Browser(staff);var viewerBrowser=new Browser(viewer);var ownerBrowser=new Browser(admin);
         assertThat(viewerBrowser.get("/api/inventory/items").statusCode()).isEqualTo(403);assertThat(viewerBrowser.get("/inventory").statusCode()).isEqualTo(403);
+        assertThat(staffBrowser.get("/inventory").body()).doesNotContain("name=\"unitPrice\"","name=\"paymentAlias\"","id=\"purchase-create\"");
         assertThat(staffBrowser.get("/api/inventory/purchases/"+o.get("id")).body()).doesNotContain("private-note","orderUrl");
         assertThat(ownerBrowser.send("POST","/api/inventory/purchases",order(line(product,1,null,0)),false).statusCode()).isEqualTo(403);
         assertThat(staffBrowser.send("POST","/api/inventory/purchases",order(line(product,1,null,0)),true).statusCode()).isEqualTo(403);
@@ -416,6 +417,7 @@ class InventoryFlowIT {
         assertThatThrownBy(()->inventory.create(admin,request(),input)).hasMessageContaining("사용 가능한");
         assertThat(inventory.purchase(staff,id(o))).doesNotContainKeys("paymentAmount","paymentMethodId","paymentMethod","privateNote");
         var staffBrowser=new Browser(staff);assertThat(staffBrowser.get("/api/settings/payment-methods").statusCode()).isEqualTo(403);
+        assertThat(staffBrowser.get("/settings?tab=payment-methods").body()).doesNotContain("id=\"payment-create-form\"");
         var owner=new Browser(admin);assertThat(owner.get("/api/settings/payment-methods").statusCode()).isEqualTo(200);
         assertThat(owner.send("POST","/api/settings/payment-methods",Map.of("name","HTTP 카드-"+request()),false).statusCode()).isEqualTo(403);
         assertThat(owner.send("POST","/api/settings/payment-methods",Map.of("name","HTTP 카드-"+request()),true).statusCode()).isEqualTo(200);

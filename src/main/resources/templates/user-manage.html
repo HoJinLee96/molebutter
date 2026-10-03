@@ -1,12 +1,11 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{fragments/head :: common('직원 관리')}"></head>
-<body>
+<body class="app-layout">
 <header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
 
-<main class="page wide">
+<main id="main-content" tabindex="-1" class="page wide">
     <h1>직원 관리</h1>
-    <p class="sub">가입 승인, 역할 지정, 정지·잠금 해제를 처리합니다.</p>
 
     <div class="tabs" id="status-tabs">
         <button type="button" class="tab active" data-status="">전체</button>
@@ -44,9 +43,6 @@
     const ROLES = [['ADMIN', '관리자'], ['PRODUCT', '상품 담당'], ['VIEWER', '조회 전용']];
     let currentStatus = '';
 
-    document.getElementById('signout-btn').addEventListener('click', async () => {
-        try { await apiPost('/api/auth/signout'); } finally { location.href = '/signin'; }
-    });
 
     document.getElementById('status-tabs').addEventListener('click', (event) => {
         const tab = event.target.closest('.tab');

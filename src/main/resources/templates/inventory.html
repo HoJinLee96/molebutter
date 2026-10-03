@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('재고')}"></head>
+<body class="app-layout" th:attr="data-inventory-admin=${inventoryAdmin}">
+<header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
+<main id="main-content" tabindex="-1" class="page inventory-page">
+    <h1>재고</h1>
+    <p id="inventory-error" class="form-error" role="alert" hidden></p><p id="inventory-success" class="form-success" role="status" hidden></p>
+    <section class="panel">
+        <div class="inventory-heading inventory-table-heading">
+            <nav class="tabs" aria-label="재고 업무"><button class="tab active" type="button" data-tab="items">보유 재고</button><button class="tab" type="button" data-tab="purchases">구매 주문</button><button class="tab" type="button" data-tab="movements">입출고 이력</button></nav>
+            <button id="purchase-create" class="btn primary" type="button" th:if="${inventoryAdmin}">매입 주문 등록</button>
+        </div>
+        <p id="inventory-brand-error" class="form-error" role="alert" hidden></p>
+        <form id="inventory-filter" class="toolbar">
+            <div class="field inventory-search-field"><label for="inventory-q">상품코드·상품명 / 주문 구매처</label><input id="inventory-q" type="search" maxlength="255"></div>
+
+            <div class="field inventory-brand-field"><label for="inventory-brand">브랜드</label><select id="inventory-brand" disabled><option value="">전체 브랜드</option><option value="UNASSIGNED">미지정</option></select></div>
+            <div class="field inventory-size-field"><label for="inventory-size">페이지당 보기</label><select id="inventory-size"><option value="20">20개</option><option value="50">50개</option><option value="100" selected>100개</option></select></div><button class="btn primary">조회</button><button id="inventory-clear-product" class="btn" type="button" hidden>전체 상품 보기</button>
+        </form>
+        <p id="inventory-context" class="field-hint" role="status"></p>
+        <div class="inventory-total list-summary" aria-live="polite"><span>총 보유 수량 <span id="inventory-total-quantity">—</span></span><span id="inventory-filtered-total" hidden></span></div>
+        <div id="inventory-results" class="table-wrap" aria-live="polite"></div><div id="inventory-pager" class="pager"></div>
+    </section>
+</main>
+<dialog id="purchase-dialog" class="attendance-dialog inventory-dialog inventory-purchase-dialog" aria-labelledby="purchase-title" th:if="${inventoryAdmin}">
+    <div class="inventory-heading"><h2 id="purchase-title">매입 주문 등록</h2><button type="button" class="btn small" data-close="purchase-dialog">닫기</button></div>
+    <p id="purchase-error" class="form-error" role="alert" hidden></p>
+    <form id="purchase-form" class="form">
+        <div class="purchase-order-fields">
+            <div class="purchase-order-row purchase-order-row--three">
+                <label><span><span class="required-mark" aria-hidden="true">*</span>매입일</span><input name="purchasedOn" type="date" required></label><label>결제일 <input name="paidOn" type="date"></label>
+                <label class="inventory-date-sync"><input id="purchase-same-date" type="checkbox" checked> 일치</label>
+            </div>
+            <div class="purchase-order-row purchase-order-row--three">
+                <label>주문번호 <input name="orderNumber" maxlength="255"></label><label>주문서 URL <input name="orderUrl" type="url" maxlength="2000" placeholder="https://"></label>
+                <label>실제 구매처·지점 <input name="supplierName" maxlength="255"></label>
+            </div>
+            <div class="purchase-order-row">
+                <label>매입 합계 (원, 주문 수량 기준) <input id="purchase-amount" type="text" readonly value="미확인" aria-live="polite"></label>
+                <label>결제 수단 <select name="paymentMethodId"><option value="">미입력</option></select></label>
+            </div>
+            <label>결제 메모 <input name="privateNote" type="text" maxlength="2000"></label>
+        </div>
+        <section id="purchase-items-section"><h3>구매 상품</h3><div id="purchase-items"></div><button id="purchase-add-item" type="button" class="btn">상품 추가</button></section>
+        <button class="btn primary" type="submit">주문 저장</button>
+    </form>
+</dialog>
+<dialog id="purchase-view-dialog" class="attendance-dialog inventory-dialog inventory-purchase-dialog" aria-labelledby="purchase-view-title">
+    <div class="inventory-heading"><h2 id="purchase-view-title">매입 주문 상세</h2><button type="button" class="btn small" data-close="purchase-view-dialog">닫기</button></div><p id="purchase-view-error" class="form-error" role="alert" hidden></p><div id="purchase-view-content"></div>
+    <div class="inventory-order-footer" th:if="${inventoryAdmin}"><div class="inventory-actions"><button id="purchase-edit" type="button" class="btn">수정</button><button id="purchase-save" type="submit" form="purchase-view-form" class="btn primary" hidden>저장</button><button id="purchase-edit-cancel" type="button" class="btn" hidden>취소</button></div><div class="inventory-order-delete"><p id="purchase-delete-blocked" class="field-hint" hidden></p><button id="purchase-delete" type="button" class="btn danger">구매 주문 삭제</button></div></div>
+</dialog>
+<dialog id="purchase-delete-dialog" class="attendance-dialog" aria-labelledby="purchase-delete-title" th:if="${inventoryAdmin}">
+    <h2 id="purchase-delete-title">구매 주문 삭제</h2><p id="purchase-delete-summary"></p><p>남은 미입고 수량을 취소하고 구매 주문 목록에서 제외합니다. 구매 정보와 입출고·환불 이력은 보존되며, 삭제 후에는 변경할 수 없습니다.</p>
+    <p id="purchase-delete-error" class="form-error" role="alert" hidden></p><form id="purchase-delete-form" class="inventory-actions"><button type="button" class="btn" data-close="purchase-delete-dialog">취소</button><button type="submit" class="btn danger">구매 주문 삭제</button></form>
+</dialog>
+<dialog id="stock-dialog" class="attendance-dialog inventory-dialog inventory-stock-dialog" aria-labelledby="stock-title">
+    <div class="inventory-heading"><h2 id="stock-title">상품 재고</h2><button type="button" class="btn small" data-close="stock-dialog">닫기</button></div>
+    <p id="stock-error" class="form-error" role="alert" hidden></p><div id="stock-summary"></div>
+    <section><h3>옵션별 재고</h3><div id="stock-options" class="table-wrap"></div></section>
+    <section><h3>매입 내역</h3><div id="stock-items" class="table-wrap"></div><div id="stock-item-pager" class="pager"></div></section>
+    <section><h3>상품 입출고 이력</h3><div id="stock-movements" class="table-wrap"></div><div id="stock-movement-pager" class="pager"></div></section>
+</dialog>
+<dialog id="purchase-receipt-dialog" class="attendance-dialog inventory-dialog" aria-labelledby="purchase-receipt-title">
+    <div class="inventory-heading"><h2 id="purchase-receipt-title">입고 확인</h2><button type="button" class="btn small" data-close="purchase-receipt-dialog">닫기</button></div>
+    <p id="purchase-receipt-summary"></p>
+    <p id="purchase-receipt-error" class="form-error" role="alert" hidden></p><p id="purchase-receipt-success" class="form-success" role="status" hidden></p>
+    <div class="field"><label for="purchase-receipt-date">입고일시 (한국 시간)</label><input id="purchase-receipt-date" type="datetime-local" required></div>
+    <div id="purchase-receipt-items" class="inventory-receipt-items" aria-live="polite"></div>
+</dialog>
+<dialog id="product-picker-dialog" class="attendance-dialog inventory-product-picker" aria-labelledby="product-picker-title" th:if="${inventoryAdmin}">
+    <div class="inventory-heading"><h2 id="product-picker-title">등록 상품 선택</h2><button type="button" class="btn small" data-close="product-picker-dialog">닫기</button></div>
+    <form id="product-picker-form" class="toolbar"><label class="field field--wide">브랜드·상품코드 <input id="product-picker-query" type="search" maxlength="255"></label><button class="btn primary">검색</button></form>
+    <p id="product-picker-error" class="form-error" role="alert" hidden></p><div id="product-picker-results" class="inventory-product-list" aria-live="polite"></div><div id="product-picker-pager" class="pager"></div>
+</dialog>
+<dialog id="movement-dialog" class="attendance-dialog" aria-labelledby="movement-title">
+    <div class="inventory-heading"><h2 id="movement-title">입고</h2><button type="button" class="btn small" data-close="movement-dialog">닫기</button></div>
+    <p id="movement-error" class="form-error" role="alert" hidden></p>
+    <form id="movement-form" class="form"><label>수량 <input name="quantity" type="number" min="1" max="1000000" step="1" required></label>
+        <label>발생일시 (한국 시간) <input name="occurredAt" type="datetime-local" required></label><label>사유 <input name="reason" maxlength="1000"></label>
+        <button id="movement-submit" class="btn primary" type="submit">입고 처리</button>
+    </form>
+</dialog>
+<dialog id="refund-dialog" class="attendance-dialog" aria-labelledby="refund-title" th:if="${inventoryAdmin}">
+    <div class="inventory-heading"><h2 id="refund-title">매입 반품 환불</h2><button type="button" class="btn small" data-close="refund-dialog">닫기</button></div><p id="refund-error" class="form-error" role="alert" hidden></p>
+    <form id="refund-form" class="form"><label>상태 <select name="status"><option value="NONE">기록 없음</option><option value="PENDING">환불 대기</option><option value="COMPLETED">환불 완료</option></select></label><label>환불액 (원) <input name="amount" type="number" min="0" max="1000000000000000" step="1"></label><label>환불일 <input name="refundedOn" type="date"></label><button class="btn primary">환불 저장</button></form>
+</dialog>
+<script defer th:src="@{/js/api.js}"></script><script defer th:src="@{/js/mall-tag.js}"></script><script defer th:src="@{/js/inventory.js}"></script>
+</body></html>

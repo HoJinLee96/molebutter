@@ -73,6 +73,5 @@ const AttendanceUI = (() => {
         if (restoreFocus) currentButton?.focus();
     }
     document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => $(button.dataset.close).close()));
-    $('signout-btn').addEventListener('click', async () => { try { await apiPost('/api/auth/signout'); } finally { location.href = '/signin'; } });
     return { $, escape, stamp, duration, badge, snapshot, correction, pager };
 })();

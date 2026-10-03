@@ -11,7 +11,7 @@ public enum MenuSection {
     DASHBOARD("대시보드", pages("/dashboard")),
 
     /** 전 계정 공통 본인 출퇴근/휴게 기록. VIEWER의 첫 실사용 landing이 되도록 VERSION_HISTORY 앞에 둔다. */
-    ATTENDANCE("근태", pages("/attendance"), apis("/api/attendance/**")),
+    ATTENDANCE("내 근태", pages("/attendance"), apis("/api/attendance/**")),
     /** 대표 전용 전체 근태 조회·정정·집계·CSV. */
     ATTENDANCE_MANAGE("근태 관리", pages("/attendance-manage"), apis("/api/attendance-manage/**")),
     /** 대표 전용 로그인/인증 감사 로그(IP/User-Agent 포함). */

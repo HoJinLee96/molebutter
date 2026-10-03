@@ -125,13 +125,18 @@
     });
     $('corrections-list').addEventListener('click', async event => {
         const button = event.target.closest('[data-request]'); if (!button) return;
+        openRequest(button.dataset.request);
+    });
+    async function openRequest(id) {
         try {
-            selectedRequest = await apiGet(`/api/attendance/corrections/${button.dataset.request}`);
+            selectedRequest = await apiGet(`/api/attendance/corrections/${encodeURIComponent(id)}`);
             $('request-detail').innerHTML = correction(selectedRequest);
             $('cancel-request').hidden = selectedRequest.status !== 'PENDING';
             message('request-error', null); $('request-dialog').showModal();
         } catch (error) { message('page-error', error.message); }
-    });
+    }
+    const linkedCorrection=new URLSearchParams(location.search).get('correction');
+    if(linkedCorrection&&/^[0-9]+$/.test(linkedCorrection))openRequest(linkedCorrection);
     $('cancel-request').addEventListener('click', async () => {
         const button = $('cancel-request'); if (button.disabled || !confirm('정정 요청을 취소하시겠습니까?')) return;
         button.disabled = true;

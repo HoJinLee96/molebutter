@@ -1,11 +1,10 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{fragments/head :: common('근태 관리')}"></head>
-<body class="attendance-page">
+<body class="app-layout attendance-page">
 <header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
-<main class="page">
+<main id="main-content" tabindex="-1" class="page">
     <h1>근태 관리</h1>
-    <p class="sub">직원의 근태 기록과 월별 집계를 확인하고 정정 요청을 처리하세요. 모든 시각은 한국 시간입니다.</p>
     <p id="page-error" class="form-error attendance-message" role="alert" hidden></p>
     <p id="page-success" class="form-success attendance-message" role="status" hidden></p>
     <div class="tabs" role="tablist" aria-label="근태 관리">
@@ -17,11 +16,10 @@
         <form id="records-filter" class="toolbar attendance-filters">
             <div class="field"><label for="records-from">시작일</label><input id="records-from" name="from" type="date" required></div>
             <div class="field"><label for="records-to">종료일</label><input id="records-to" name="to" type="date" required></div>
-            <div class="field"><label for="records-q">직원 이름 / 이메일</label><input id="records-q" name="q" maxlength="255" type="search" placeholder="이름 또는 이메일"></div>
-            <div class="field"><label for="records-status">근태 상태</label><select id="records-status" name="status"><option value="">전체</option><option value="COMPLETED">퇴근 완료</option><option value="WORKING">근무 중</option><option value="ON_BREAK">휴게 중</option><option value="MISSING">퇴근 누락</option></select></div>
+            <div class="field field--search"><label for="records-q">직원 이름 / 이메일</label><input id="records-q" name="q" maxlength="255" type="search" placeholder="이름 또는 이메일"></div>
+            <div class="field field--short"><label for="records-status">근태 상태</label><select id="records-status" name="status"><option value="">전체</option><option value="COMPLETED">퇴근 완료</option><option value="WORKING">근무 중</option><option value="ON_BREAK">휴게 중</option><option value="MISSING">퇴근 누락</option></select></div>
             <button class="btn primary" type="submit">조회</button><button id="records-download" class="btn" type="button">CSV 다운로드</button>
         </form>
-        <p class="field-hint">최대 366일을 조회합니다. 시간은 퇴근 완료 기록만 확정하며 CSV에는 조회 조건의 전체 결과가 포함됩니다.</p>
         <p id="records-count" class="field-hint" role="status"></p>
         <div class="table-wrap"><table class="data"><thead><tr><th>직원</th><th>계정 상태</th><th>근무일</th><th>근태 상태</th><th>출근</th><th>퇴근</th><th>확정 순근무</th><th>확정 휴게</th><th>상세</th></tr></thead><tbody id="records-body"></tbody></table></div>
         <div id="records-pager" class="pager"></div>
@@ -29,10 +27,9 @@
     <section id="panel-summary" class="panel" role="tabpanel" aria-labelledby="tab-summary" hidden>
         <form id="summary-filter" class="toolbar attendance-filters">
             <div class="field"><label for="summary-month">집계 월</label><input id="summary-month" name="month" type="month" required></div>
-            <div class="field"><label for="summary-q">직원 이름 / 이메일</label><input id="summary-q" name="q" maxlength="255" type="search" placeholder="이름 또는 이메일"></div>
+            <div class="field field--search"><label for="summary-q">직원 이름 / 이메일</label><input id="summary-q" name="q" maxlength="255" type="search" placeholder="이름 또는 이메일"></div>
             <button class="btn primary" type="submit">조회</button><button id="summary-download" class="btn" type="button">CSV 다운로드</button>
         </form>
-        <p class="field-hint">퇴근 완료 기록만 시간 합계에 포함합니다. 야간 근무는 출근한 날짜의 월에 포함하며 기록 없는 날을 결근으로 판단하지 않습니다. 계정 상태는 현재 값입니다.</p>
         <p id="summary-count" class="field-hint" role="status"></p>
         <div class="table-wrap"><table class="data"><thead><tr><th>직원</th><th>계정 상태</th><th>기록일</th><th>퇴근 완료일</th><th>확정 순근무</th><th>확정 휴게</th><th>근무 중</th><th>휴게 중</th><th>퇴근 누락</th><th>미확정 합계</th></tr></thead><tbody id="summary-body"></tbody></table></div>
         <div id="summary-pager" class="pager"></div>

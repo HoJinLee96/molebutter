@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('상품')}"></head>
+<body class="app-layout" data-product-view="lookup-v11" th:attr="data-page=${productPage},data-product-admin=${productAdmin}">
+<header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
+<main id="main-content" tabindex="-1" class="page product-page">
+<h1 id="page-title">상품</h1>
+<p id="page-error" class="form-error" role="alert" hidden></p><p id="page-success" class="form-success" role="status" hidden></p>
+<section id="products-panel" class="panel" th:if="${productPage == 'products'}">
+    <div class="product-list-heading">
+    <nav id="management-tabs" class="tabs" aria-label="관리 구분"><button type="button" class="tab active" data-mode="ALL">전체</button><button type="button" class="tab" data-mode="AUTO">자동관리</button><button type="button" class="tab" data-mode="MANUAL">수동관리</button></nav>
+    <div id="product-registration" class="product-registration">
+        <button id="product-register" type="button" class="btn primary" aria-expanded="false" aria-controls="product-register-options"><span>상품 등록</span><svg class="product-register-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button>
+        <div id="product-register-options" class="product-register-options" hidden>
+            <button id="product-create" class="btn" type="button">수동 등록</button>
+            <button id="product-import" class="btn" type="button">일괄등록</button>
+        </div>
+    </div>
+    </div>
+    <form id="product-filter" class="toolbar">
+        <div class="field product-search-field"><label for="product-q">브랜드·상품코드·검색어</label><input id="product-q" maxlength="255" type="search"></div>
+        <div class="field product-status-field"><label for="product-status">조회 상태</label><select id="product-status"><option value="">전체</option><option value="NOT_CHECKED">미조회</option><option value="SUCCESS">조회 완료</option><option value="PARTIAL">일부 확인 필요</option><option value="SOLD_OUT">품절</option><option value="UNCONFIRMED">확인 필요</option><option value="FAILED">조회 실패</option><option value="PENDING">대기</option><option value="CHECKING">조회 중</option><option value="CANCELLED">취소</option></select></div>
+        <div class="field product-page-size-field"><label for="product-page-size">페이지당 보기</label><select id="product-page-size"><option value="20">20개</option><option value="50">50개</option><option value="100" selected>100개</option></select></div><button id="product-query" class="btn primary">조회</button>
+    </form>
+    <div id="product-change-filters" class="change-filters" aria-label="변동 필터"><button class="btn small" type="button" data-change-filter="ALL" aria-pressed="true">전체</button><button class="btn small" type="button" data-change-filter="SELECTED" aria-pressed="false">선정 매입처 변동 <b id="selected-change-count">0</b></button><button class="btn small" type="button" data-change-filter="ANY" aria-pressed="false">전체 변동 <b id="all-change-count">0</b></button></div>
+    <div class="product-selection-bar">
+        <p id="product-selection" class="list-summary" role="status"></p>
+    <div class="toolbar product-bulk-actions"><button id="refresh-selected" class="btn" type="button" disabled>선택 상품 최신화</button><button id="bulk-on" class="btn" type="button" disabled>자동관리 켜기</button><button id="bulk-off" class="btn" type="button" disabled>자동관리 끄기</button><button id="bulk-brand" class="btn" type="button" disabled>브랜드 지정</button><button id="bulk-brand-infer" class="btn" type="button" disabled>브랜드 자동 판단</button><button id="product-delete-selected" class="btn danger" type="button" disabled>삭제</button></div>
+    </div>
+    <div class="table-wrap"><table class="data product-table">
+        <colgroup><col class="product-col-select"><col class="product-col-identity"><col class="product-col-supplier"><col class="product-col-status"><col class="product-col-managed"><col class="product-col-actions"></colgroup>
+        <thead><tr><th><input id="product-select-page" type="checkbox" aria-label="현재 페이지 전체 선택"></th><th>상품</th><th>선정 매입처 / 사입 기준가</th><th>조회 상태</th><th>자동관리</th><th>작업</th></tr></thead><tbody id="product-rows"></tbody></table></div><div id="product-pager" class="pager"></div>
+</section>
+<section id="refresh-panel" class="panel" th:if="${productPage == 'product-refresh'}">
+    <div class="settings-notice"><p id="schedule-summary">예약 설정 조회 중…</p><a href="/settings?tab=schedule">자동 최신화 설정</a></div>
+    <div class="toolbar"><button id="refresh-all" class="btn primary" type="button">자동관리 상품 전체 최신화</button><button id="runs-reload" class="btn" type="button">상태 새로고침</button></div>
+    <section id="run-active" class="run-active" aria-labelledby="run-active-title" hidden><h2 id="run-active-title">진행 중인 작업</h2><p class="field-hint">현재 조회 조건에 포함되지 않아 따로 표시합니다.</p><div class="table-wrap"><table class="data"><thead><tr><th>시작 시각</th><th>상태 / 진행</th><th>안내</th><th>작업</th></tr></thead><tbody id="run-active-rows"></tbody></table></div></section>
+    <form id="run-filter" class="toolbar run-filter" aria-label="최신화 작업 조회 조건">
+        <div class="field"><label for="run-from">시작일</label><input id="run-from" name="from" type="date"></div>
+        <div class="field"><label for="run-to">종료일</label><input id="run-to" name="to" type="date"></div>
+        <div class="field field--short"><label for="run-status">작업 상태</label><select id="run-status" name="status"><option value="">전체</option><option value="RUNNING">진행 중</option><option value="PAUSED">중단</option><option value="RETRY_WAIT">자동 재개 대기</option><option value="BLOCKED">접속 제한</option><option value="COMPLETED">완료</option><option value="CANCELLED">취소</option></select></div>
+        <label class="run-filter-check"><input id="run-failed" name="failed" type="checkbox" value="true"> 실패 있는 작업만</label>
+        <div class="field field--short"><label for="run-page-size">페이지당 보기</label><select id="run-page-size" name="size"><option value="20">20개</option><option value="50">50개</option><option value="100">100개</option></select></div>
+        <button id="run-query" class="btn primary">조회</button>
+    </form>
+    <div id="search-gate" class="lookup-progress" role="status" hidden></div>
+    <p id="run-count" class="field-hint run-count" role="status"></p>
+    <div class="table-wrap"><table class="data"><thead><tr><th>시작 시각</th><th>상태 / 진행</th><th>안내</th><th>작업</th></tr></thead><tbody id="run-rows"></tbody></table></div><div id="run-pager" class="pager"></div>
+    <section id="run-detail" hidden><h2>상품별 조회 결과 <span id="run-detail-meta" class="run-detail-meta"></span></h2><div class="table-wrap"><table class="data"><thead><tr><th>상품코드</th><th>조회 상태</th><th>선정 사입 기준가</th><th>안내</th><th>작업</th></tr></thead><tbody id="run-item-rows"></tbody></table></div><div id="run-item-pager" class="pager"></div>
+    <details id="search-attempts"><summary>네이버 검색 시도·대기 이력</summary>
+        <form id="search-attempt-filter" class="toolbar"><label>원인 <select id="search-attempt-code"><option value="">전체</option><option value="API_LOGIN_REDIRECT">검색 API 로그인 요구</option><option value="LOGIN_REQUIRED">로그인 화면</option><option value="SEARCH_NO_REQUEST">검색 요청 없음</option><option value="SEARCH_RESPONSE_TIMEOUT">응답 지연</option><option value="SEARCH_NETWORK_ERROR">통신 오류</option><option value="RESPONSE_MISMATCH">응답 검증 불일치</option><option value="RESPONSE_SCHEMA_CHANGED">응답 형식</option><option value="UI_ELEMENT_MISSING">화면 요소</option><option value="INTERRUPTED">실행 중단</option><option value="ACCESS_RESTRICTED">접속 제한</option></select></label>
+        <label>상품 <select id="search-attempt-product"><option value="">전체 상품</option></select></label><button class="btn small" type="submit">조회</button></form>
+        <div id="search-attempt-results"></div><div id="search-attempt-pager" class="pager"></div>
+    </details></section>
+</section>
+</main>
+<dialog id="product-dialog" class="attendance-dialog product-dialog" aria-labelledby="product-dialog-title">
+    <div class="product-dialog-head"><h2 id="product-dialog-title">매입처 가격·재고 비교</h2><button class="btn small" type="button" data-close="product-dialog">닫기</button></div>
+    <p id="detail-error" class="form-error" role="alert" hidden></p><p id="detail-success" class="form-success" role="status" hidden></p>
+    <div id="detail-summary"></div>
+    <div class="detail-refresh-row"><div id="detail-status" class="detail-status"></div><div class="detail-refresh-actions"><button id="detail-refresh" class="btn primary" type="button">최신화</button><button id="detail-reload" class="btn" type="button">결과 새로고침</button></div></div>
+    <div id="detail-progress" class="lookup-progress" role="status" aria-live="polite" hidden>
+        <span id="detail-spinner" class="lookup-spinner" aria-hidden="true" hidden></span>
+        <span id="detail-progress-text"></span><a id="detail-run-link" hidden>작업 확인</a>
+    </div>
+    <div id="product-change-summary"></div>
+    <div id="stock-lookup-jobs" class="stock-lookup-jobs" aria-label="개별 재고 조회 작업" hidden></div>
+    <section id="selected-supplier-section" class="product-detail-section" hidden><h3>선정 매입처</h3><div id="selected-supplier-results"></div></section>
+    <section class="product-detail-section"><h3>선호 매입처</h3><div id="supplier-results"></div></section>
+    <section id="recommendation-section" class="product-detail-section" hidden><h3>비선호 매입처 추천</h3><div id="recommendation-results"></div></section>
+    <details class="product-detail-section"><summary>이전 정상 조회 · 참고용</summary><div id="previous-result"></div></details>
+    <details id="value-change-history" class="product-detail-section"><summary>가격·재고 변동 이력</summary><form id="value-change-filter" class="toolbar"><div class="field"><label for="change-supplier">판매글</label><select id="change-supplier"><option value="">전체 판매글</option></select></div><div class="field"><label for="change-kind">변동 항목</label><select id="change-kind"><option value="ALL">전체</option><option value="PRICE">상품가</option><option value="DELIVERY">배송비</option><option value="STOCK">재고 수량</option><option value="STATE">구매 상태·판매글·옵션</option><option value="REVIEW">검토 기록</option></select></div><button class="btn small" type="submit">조회</button></form><div id="value-change-results"></div><div id="value-change-pager" class="pager"></div></details>
+    <details id="lookup-history" class="product-detail-section"><summary>조회 이력</summary><div id="history-results"></div><div id="history-pager" class="pager"></div></details>
+    <details class="product-detail-section"><summary>기본 정보 수정</summary><form id="edit-form" class="form product-form">
+        <div class="field"><label for="edit-brand">브랜드</label><select id="edit-brand" disabled><option value="">미지정</option></select></div>
+        <div class="field field--code"><label for="edit-code">전체 상품코드</label><input id="edit-code" maxlength="100" required></div>
+        <div class="field field--wide"><label for="edit-query">네이버 검색어</label><input id="edit-query" maxlength="255" required></div>
+        <div class="toolbar"><button class="btn primary">기본 정보 저장</button></div>
+    </form></details>
+    <details id="duplicate-section" class="product-detail-section" hidden><summary>동일 전체 코드 통합 후보</summary><p class="field-hint">현재 상품의 브랜드·코드·검색어·자동관리 상태를 대표값으로 사용합니다. 시즌이 다른 상품은 별도로 유지합니다.</p><div id="duplicate-list"></div><div class="field"><label for="merge-selection">통합 후 유지할 선정 매입처</label><select id="merge-selection"></select></div><button id="merge-selected" class="btn" type="button">선택한 중복 상품 통합</button></details>
+</dialog>
+<dialog id="import-panel" class="attendance-dialog" aria-labelledby="import-title" th:if="${productPage == 'products'}">
+    <div class="attendance-title"><h2 id="import-title">상품 일괄등록</h2><button class="btn small" type="button" data-close="import-panel">닫기</button></div>
+    <form id="import-form" class="form">
+        <div class="field field--wide"><label for="import-file">엑셀 파일</label><input id="import-file" type="file" accept=".xlsx" required><p class="field-hint">최대 10MB · 5,000행</p></div>
+        <p id="import-error" class="form-error" role="alert" hidden></p>
+        <div class="toolbar"><button id="import-submit" class="btn primary">등록</button></div>
+    </form>
+    <p id="import-result" role="status"></p><ul id="import-warnings" class="field-hint"></ul>
+</dialog>
+<dialog id="product-image-dialog" class="attendance-dialog product-image-dialog" aria-label="상품 이미지">
+    <div class="product-image-stage"><img id="product-image-full" alt="" referrerpolicy="no-referrer" hidden><p id="product-image-status" role="status">이미지를 불러오는 중…</p></div>
+</dialog>
+<dialog id="create-dialog" class="attendance-dialog" aria-labelledby="create-title"><h2 id="create-title">상품 수동 등록</h2><form id="create-form" class="form product-form">
+    <div class="field"><label for="create-brand">브랜드</label><select id="create-brand" disabled><option value="">미지정</option></select></div><div class="field"><label for="create-code">전체 상품코드</label><input id="create-code" maxlength="100" required></div>
+
+    <div class="field"><label for="create-query">네이버 검색어</label><input id="create-query" maxlength="255" required></div><p id="create-error" class="form-error" role="alert" hidden></p><div class="toolbar"><button type="button" class="btn" data-close="create-dialog">취소</button><button class="btn primary">등록</button></div>
+</form></dialog>
+<dialog id="product-delete-dialog" class="attendance-dialog" aria-labelledby="product-delete-title"><h2 id="product-delete-title">상품 삭제</h2><p id="product-delete-count"></p><p>목록과 최신화 대상에서 제외합니다. 기존 조회 이력은 보존합니다.</p><p id="product-delete-error" class="form-error" role="alert" hidden></p><form id="product-delete-form" class="toolbar"><button type="button" class="btn" data-close="product-delete-dialog">취소</button><button class="btn danger">삭제</button></form></dialog>
+<dialog id="brand-dialog" class="attendance-dialog" aria-labelledby="brand-title"><h2 id="brand-title">선택 상품 브랜드 지정</h2><form id="brand-form" class="form"><div class="field"><label for="bulk-brand-name">등록된 브랜드</label><select id="bulk-brand-name" disabled><option value="">미지정</option></select></div><p id="brand-error" class="form-error" role="alert" hidden></p><div class="toolbar"><button type="button" class="btn" data-close="brand-dialog">취소</button><button class="btn primary">저장</button></div></form></dialog>
+
+<script th:src="@{/js/api.js}"></script><script th:src="@{/js/attendance-ui.js}"></script><script th:src="@{/js/product-source-search.js}"></script><script th:src="@{/js/product-refresh-watch.js}"></script><script th:src="@{/js/supplier-editor.js}"></script><script th:src="@{/js/product-changes.js}"></script><script th:src="@{/js/mall-tag.js}"></script><script th:src="@{/js/products.js}"></script><script defer th:src="@{/js/product-inventory.js}"></script>
+</body></html>

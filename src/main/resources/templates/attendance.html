@@ -1,11 +1,10 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{fragments/head :: common('내 근태')}"></head>
-<body class="attendance-page">
+<body class="app-layout attendance-page">
 <header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
-<main class="page">
+<main id="main-content" tabindex="-1" class="page">
     <h1>내 근태</h1>
-    <p class="sub">출퇴근과 휴게를 기록하고, 내 근무 내역을 확인하세요. 모든 시각은 한국 시간입니다.</p>
     <p id="page-error" class="form-error attendance-message" role="alert" hidden></p>
     <p id="page-success" class="form-success attendance-message" role="status" hidden></p>
     <section class="panel" aria-labelledby="current-heading">
@@ -23,7 +22,6 @@
             <button id="break-end" class="btn" type="button" hidden>휴게 종료</button>
             <button id="clock-out" class="btn" type="button" hidden>퇴근</button>
         </div>
-        <p class="field-hint">하루 한 번 출퇴근합니다. 휴게 중 퇴근하면 휴게도 함께 종료됩니다.</p>
     </section>
     <section class="panel" aria-labelledby="history-heading">
         <div class="attendance-title"><h2 id="history-heading">내 기록</h2><button id="new-correction" class="btn small" type="button">누락일 정정 신청</button></div>
@@ -33,7 +31,6 @@
     </section>
     <section class="panel" aria-labelledby="requests-heading">
         <h2 id="requests-heading">정정 요청 내역</h2>
-        <p class="field-hint">선택한 월의 요청입니다. 승인 전에는 원래 기록이 유지됩니다.</p>
         <div id="corrections-list" class="attendance-requests"></div>
         <div id="corrections-pager" class="pager"></div>
     </section>
@@ -44,7 +41,6 @@
 </dialog>
 <dialog id="correction-dialog" class="attendance-dialog" aria-labelledby="correction-title">
     <div class="attendance-title"><h2 id="correction-title">근태 정정 신청</h2><button class="btn small" type="button" data-close="correction-dialog">닫기</button></div>
-    <p class="field-hint">출퇴근과 휴게 전체를 입력하세요. 관리자가 승인하면 반영됩니다.</p>
     <form id="correction-form" class="auth-form">
         <div class="field"><label for="work-date">근무일 (출근 날짜)</label><input id="work-date" type="date" required></div>
         <div class="attendance-columns">
