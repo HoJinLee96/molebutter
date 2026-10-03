@@ -259,6 +259,44 @@ class ProductFlowIT {
         assertThat(plan.after()).isEqualTo("PARTIAL");assertThat(statusRepair.apply(plan)).isTrue();assertThat(statusRepair.preview()).isEmpty();
         assertThat(current(p).latestResult().message()).contains("재고 미확인 1건");
     }
+    @Test void searchStatusRepairKeepsUnknownSelectedSupplierOutsidePreferences(){
+        verifySearchRepairSelectedUnknown(false);
+    }
+    @Test void searchStatusRepairKeepsUnknownSelectionDespiteHealthyPreferredSupplier(){
+        verifySearchRepairSelectedUnknown(true);
+    }
+    void verifySearchRepairSelectedUnknown(boolean healthyOther){
+        var p=create("ABCD6F123BK");
+        finish(p,List.of(listing(Mall.LFMALL,"selected",100,"온라인점","CONFIRMED")));
+        choose(p,byMall(p,Mall.LFMALL));
+        var selected=byMall(p,Mall.LFMALL).result();
+        preferred.deleteMall(actor,Mall.LFMALL,preferred.get(actor).revision());
+        start(current(p));var work=refresh.claim("repair-selection");
+        var unknown=new SupplierResult(selected.offer(),selected.match(),"CONFIRMED",List.of(new SourceOption("FREE","FREE",null,"STOCK_UNKNOWN")),null,null,null,null,selected.branch());
+        var observations=new ArrayList<SupplierResult>();observations.add(unknown);
+        if(healthyOther)observations.add(listing(Mall.HAZZYS,"healthy",120,"온라인점","CONFIRMED"));
+        var offers=observations.stream().map(SupplierResult::offer).toList();
+        refresh.cache(work,new SearchResult(offers,true,null,"COMPLETED",offers.stream().map(SupplierStorePolicy::listingKey).toList()));
+        var result=SearchCompletion.summarize(observations,"COMPLETED",time.now(),work.preferences(),work.manualStores(),false,List.of(),work.selectionBasis());
+        assertThat(result.status()).isEqualTo("PARTIAL");
+        refresh.finish("repair-selection",work,result);refresh.claim("repair-selection");
+        // A legacy search notice still needs repair, but must not discard the selected stock problem.
+        jdbc.update("UPDATE catalog_product SET latest_result=JSON_SET(latest_result,'$.message','검색 일부 조회') WHERE id=?",p.id());
+        var before=current(p);
+        var history=jdbc.queryForList("SELECT * FROM product_lookup_history WHERE product_id=?",p.id());
+        var entry=jdbc.queryForMap("SELECT * FROM product_refresh_entry WHERE run_id=? AND product_id=?",work.runId(),p.id());
+        var plan=statusRepair.preview().stream().filter(c->c.productId()==Long.parseLong(p.id())).findFirst().orElseThrow();
+        assertThat(plan.after()).isEqualTo("PARTIAL");assertThat(plan.message()).contains("재고 미확인 1건");
+        assertThat(statusRepair.apply(plan)).isTrue();assertThat(statusRepair.apply(plan)).isFalse();
+        var after=current(p);
+        assertThat(after.latestStatus()).isEqualTo("PARTIAL");assertThat(after.latestResult().message()).contains("재고 미확인 1건").doesNotContain("검색 일부 조회");
+        assertThat(after.selectedSupplier()).isEqualTo(before.selectedSupplier());
+        assertThat(after.latestResult().suppliers()).isEqualTo(before.latestResult().suppliers());
+        assertThat(after.latestAt()).isEqualTo(before.latestAt());
+        assertThat(jdbc.queryForList("SELECT * FROM product_lookup_history WHERE product_id=?",p.id())).isEqualTo(history);
+        assertThat(jdbc.queryForMap("SELECT * FROM product_refresh_entry WHERE run_id=? AND product_id=?",work.runId(),p.id())).isEqualTo(entry);
+        assertThat(statusRepair.preview()).noneMatch(c->c.productId()==Long.parseLong(p.id()));
+    }
     @Autowired RecommendationLookupService recommendationJournal;
     RecommendationDiagnostic recommendationDiagnostic(ProductRefreshService.Work w,Mall mall,String id,String kind){return new RecommendationDiagnostic(Long.toString(w.runId()),Long.toString(w.productId()),mall+":"+id+":nv",mall,id,150190L,"https://www.lotteimall.com/goods/viewGoodsDetail.lotte?goods_no="+id,kind,"HTTP_RESTRICTED",403,time.now());}
     @Test void recommendationJournalSurvivesLeaseRecoveryAndRejectsStaleWorkers()throws Exception{

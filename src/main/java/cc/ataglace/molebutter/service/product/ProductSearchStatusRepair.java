@@ -17,7 +17,7 @@ public class ProductSearchStatusRepair {
     public record Change(long productId,String productCode,long revision,long runId,String before,String after,String message,String reason,String originalJson) {}
     private static final String ELIGIBLE="""
         SELECT p.id,p.product_code,p.revision,p.latest_status,p.latest_result,p.latest_at,
-               e.run_id,r.preference_snapshot,c.result search_result
+               e.run_id,r.preference_snapshot,e.selection_snapshot,c.result search_result
         FROM catalog_product p
         JOIN product_refresh_entry e ON e.product_id=p.id AND e.lookup_revision=p.lookup_revision
             AND e.query=p.search_query AND e.product_code=p.product_code AND e.checked_at=p.latest_at
@@ -47,7 +47,7 @@ public class ProductSearchStatusRepair {
                 String reason=SearchCompletion.reason(search);
                 if(latest==null||preferences==null||!SearchCompletion.normal(reason)||latest.checkedAt()==null
                     ||!latest.checkedAt().equals(row.get("latest_at") instanceof java.sql.Timestamp t?t.toLocalDateTime():row.get("latest_at")))continue;
-                var next=SearchCompletion.summarize(latest.suppliers(),reason,latest.checkedAt(),preferences,Map.of(),latest.recommendationLimited(),latest.recommendationDiagnostics());
+                var next=SearchCompletion.summarize(latest.suppliers(),reason,latest.checkedAt(),preferences,Map.of(),latest.recommendationLimited(),latest.recommendationDiagnostics(),db.decode((String)row.get("selection_snapshot"),cc.ataglace.molebutter.dto.product.SupplierDtos.SelectionBasis.class));
                 String notice=next.message();
                 if(latest.status().equals(next.status())&&Objects.equals(latest.message(),notice)&&Objects.equals(latest.completionReason(),reason))continue;
                 changes.add(new Change(product,(String)row.get("product_code"),((Number)row.get("revision")).longValue(),((Number)row.get("run_id")).longValue(),(String)row.get("latest_status"),next.status(),notice,reason,original));
