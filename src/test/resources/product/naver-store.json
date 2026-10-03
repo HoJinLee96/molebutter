@@ -1,0 +1,24 @@
+{
+  "_id": "13381746601",
+  "channel": {
+    "channelUid": "2sWDypI3EEpBrgnBQJTgr",
+    "name": "헤지스핸드백",
+    "verticalType": "DEPARTMENT",
+    "storeCategory": {
+      "id": "10001006",
+      "name": "천호점",
+      "wholeIds": [
+        "10001",
+        "10001006"
+      ],
+      "wholeNames": [
+        "현대백화점",
+        "천호점"
+      ]
+    }
+  },
+  "contents": {
+    "id": 13381746601,
+    "name": "[헤지스] HJBA6E011 남녀공용 베이지 체크 썸머 니트 플랩백"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "requestedId": "6617877030",
+  "_id": "6617877030",
+  "channel": {
+    "channelUid": "2sWDx2kDr1Vivr1fXGyLp",
+    "name": "헤지스ACC",
+    "storeCategory": {
+      "id": "10001004",
+      "name": "목동점",
+      "wholeIds": [
+        "10001",
+        "10001004"
+      ],
+      "wholeNames": [
+        "현대백화점",
+        "목동점"
+      ]
+    },
+    "id": "1000008804"
+  },
+  "contents": {
+    "id": 6617877030,
+    "channelServiceType": "WINDOW",
+    "productStatusType": "SALE",
+    "channelProductStatusType": "NORMAL",
+    "channelProductDisplayStatusType": "ON",
+    "stockQuantity": 13,
+    "optionUsable": false,
+    "naverShoppingSearchInfo": {
+      "manufacturerName": "(주)인성컴퍼니",
+      "brandName": "헤지스",
+      "modelName": "HIBA2E113"
+    }
+  }
+}

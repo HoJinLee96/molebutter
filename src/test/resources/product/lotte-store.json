@@ -1,0 +1,25 @@
+{
+  "data": {
+    "basicInfo": {
+      "pdNo": "LE1204272674",
+      "pdNm": "[선물포장/쇼핑백동봉]블랙 가죽 DD로고 2단 탑지퍼 반지갑 DCWA2E417BK",
+      "sitmNo": "LE1204272674_1222907552",
+      "sitmNm": "단일상품",
+      "trGrpNm": "롯데백화점",
+      "trNo": "LE10016",
+      "trNm": "롯데쇼핑(주)잠실점",
+      "lrtrNo": "SLE31075",
+      "lrtrNm": "잠실점(국내피혁_닥스ACC)"
+    },
+    "slrInfo": {
+      "trBase": {
+        "trGrpNm": "롯데백화점",
+        "trNo": "LE10016",
+        "trNm": "롯데쇼핑(주)잠실점",
+        "lrtrNo": "SLE31075",
+        "lrtrNm": "잠실점(국내피혁_닥스ACC)"
+      }
+    }
+  },
+  "returnCode": "200"
+}

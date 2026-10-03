@@ -1,0 +1,22 @@
+{
+  "returnCode": "200",
+  "data": {
+    "basicInfo": {
+      "pdNo": "LO2630710241", "sitmNo": "LO2630710241_2630710242",
+      "sitmNoList": ["LO2630710241_2630710242"], "sitmNm": "FREE", "sitmSlStatCd": "SALE",
+      "mdlNo": "WCBA5E052BK", "trNm": "주식회사 LF", "trNo": "LO10004813",
+      "lrtrNm": "LFMALL", "lrtrNo": "SLO1000000015008", "trGrpNm": "일반셀러"
+    },
+    "slrInfo": {"sellerNm": "헤지스", "trBase": {
+      "trNm": "주식회사 LF", "trNo": "LO10004813", "lrtrNm": "LFMALL", "lrtrNo": "SLO1000000015008", "trGrpNm": "일반셀러"
+    }},
+    "optionInfo": {
+      "optionList": [{"title":"사이즈","options":[{"label":"FREE","value":"720679812FREE","disabled":false}]}],
+      "optionMappingInfo": {"720679812FREE": {
+        "spdNo":"LO2630710241","sitmNo":"LO2630710241_2630710242",
+        "spdNoSlStatCd":"SALE","sitmNoSlStatCd":"SALE","stkQty":2,"hideStkQty":false
+      }}
+    },
+    "stckInfo": {"stkQty":2,"stkMgtYn":"Y","hideStkQty":false}
+  }
+}

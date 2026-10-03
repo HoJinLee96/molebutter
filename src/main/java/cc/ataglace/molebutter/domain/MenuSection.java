@@ -20,6 +20,8 @@ public enum MenuSection {
     USER_MANAGE("직원 관리", pages("/user-manage"), apis("/api/admin/users/**")),
 
     PRODUCTS("상품", pages("/products"), apis("/api/products/**")),
+    PRODUCT_REFRESH("상품 최신화", pages("/product-refresh"), apis("/api/product-refresh/**")),
+    SETTINGS("공통 설정", pages("/settings"), apis("/api/settings/**")),
     VERSION_HISTORY("버전 기록", pages("/version-history"));
 
     /** 섹션 권한 authority 접두사. JwtAuthenticationFilter 부여 ↔ SecurityConfig·메뉴 노출 검사에서 공유. */

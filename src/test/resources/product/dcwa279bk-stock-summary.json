@@ -1,0 +1,1310 @@
+{
+  "status": "PARTIAL",
+  "message": "검색 일부 조회",
+  "checkedAt": "2026-09-28T03:52:14.766326",
+  "suppliers": [
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "HI_THEHYUNDAI",
+        "price": 156450,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "0",
+        "mallProductId": "0",
+        "mallName": "더현대Hi",
+        "title": "",
+        "url": "https://fixture.test/0"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "00001",
+          "label": "블랙",
+          "state": "AVAILABLE",
+          "stock": 100
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "HI_THEHYUNDAI",
+        "price": 156450,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "1",
+        "mallProductId": "1",
+        "mallName": "더현대Hi",
+        "title": "",
+        "url": "https://fixture.test/1"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "00001",
+          "label": "블랙",
+          "state": "AVAILABLE",
+          "stock": 199
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 160920,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "2",
+        "mallProductId": "2",
+        "mallName": "닥스핸드백",
+        "title": "",
+        "url": "https://fixture.test/2"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "11163560006",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 98
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 160920,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "3",
+        "mallProductId": "3",
+        "mallName": "닥스핸드백",
+        "title": "",
+        "url": "https://fixture.test/3"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 160920,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "4",
+        "mallProductId": "4",
+        "mallName": "닥스핸드백",
+        "title": "",
+        "url": "https://fixture.test/4"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 160920,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "5",
+        "mallProductId": "5",
+        "mallName": "닥스핸드백",
+        "title": "",
+        "url": "https://fixture.test/5"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 160920,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "6",
+        "mallProductId": "6",
+        "mallName": "닥스핸드백",
+        "title": "",
+        "url": "https://fixture.test/6"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 160920,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "7",
+        "mallProductId": "7",
+        "mallName": "닥스핸드백",
+        "title": "",
+        "url": "https://fixture.test/7"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 160920,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "8",
+        "mallProductId": "8",
+        "mallName": "닥스핸드백",
+        "title": "",
+        "url": "https://fixture.test/8"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 160920,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "9",
+        "mallProductId": "9",
+        "mallName": "닥스핸드백",
+        "title": "",
+        "url": "https://fixture.test/9"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "HI_THEHYUNDAI",
+        "price": 166880,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "10",
+        "mallProductId": "10",
+        "mallName": "더현대Hi",
+        "title": "",
+        "url": "https://fixture.test/10"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "00001",
+          "label": "없음",
+          "state": "AVAILABLE",
+          "stock": 30
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "HI_THEHYUNDAI",
+        "price": 166880,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "11",
+        "mallProductId": "11",
+        "mallName": "더현대Hi",
+        "title": "",
+        "url": "https://fixture.test/11"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "00001",
+          "label": "DCWA6F279BK",
+          "state": "AVAILABLE",
+          "stock": 50
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "HI_THEHYUNDAI",
+        "price": 166880,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "12",
+        "mallProductId": "12",
+        "mallName": "더현대Hi",
+        "title": "",
+        "url": "https://fixture.test/12"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "00001",
+          "label": "없음",
+          "state": "AVAILABLE",
+          "stock": 29
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "HI_THEHYUNDAI",
+        "price": 166880,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "13",
+        "mallProductId": "13",
+        "mallName": "더현대Hi",
+        "title": "",
+        "url": "https://fixture.test/13"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "00001",
+          "label": "없음",
+          "state": "AVAILABLE",
+          "stock": 30
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "HI_THEHYUNDAI",
+        "price": 166880,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "14",
+        "mallProductId": "14",
+        "mallName": "더현대Hi",
+        "title": "",
+        "url": "https://fixture.test/14"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "00001",
+          "label": "없음",
+          "state": "AVAILABLE",
+          "stock": 30
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "HI_THEHYUNDAI",
+        "price": 166880,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "15",
+        "mallProductId": "15",
+        "mallName": "더현대Hi",
+        "title": "",
+        "url": "https://fixture.test/15"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "00001",
+          "label": "없음",
+          "state": "AVAILABLE",
+          "stock": 50
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "HI_THEHYUNDAI",
+        "price": 166880,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "16",
+        "mallProductId": "16",
+        "mallName": "더현대Hi",
+        "title": "",
+        "url": "https://fixture.test/16"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "00001",
+          "label": "없음",
+          "state": "AVAILABLE",
+          "stock": 26
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "HI_THEHYUNDAI",
+        "price": 166880,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "17",
+        "mallProductId": "17",
+        "mallName": "더현대Hi",
+        "title": "",
+        "url": "https://fixture.test/17"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "00001",
+          "label": "없음",
+          "state": "AVAILABLE",
+          "stock": 50
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "HI_THEHYUNDAI",
+        "price": 166880,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "18",
+        "mallProductId": "18",
+        "mallName": "더현대Hi",
+        "title": "",
+        "url": "https://fixture.test/18"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "00001",
+          "label": "없음",
+          "state": "AVAILABLE",
+          "stock": 50
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "HI_THEHYUNDAI",
+        "price": 166880,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "19",
+        "mallProductId": "19",
+        "mallName": "더현대Hi",
+        "title": "",
+        "url": "https://fixture.test/19"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "00001",
+          "label": "없음",
+          "state": "AVAILABLE",
+          "stock": 50
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "HI_THEHYUNDAI",
+        "price": 166880,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "20",
+        "mallProductId": "20",
+        "mallName": "더현대Hi",
+        "title": "",
+        "url": "https://fixture.test/20"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "00001",
+          "label": "없음",
+          "state": "AVAILABLE",
+          "stock": 50
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "HI_THEHYUNDAI",
+        "price": 166880,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "21",
+        "mallProductId": "21",
+        "mallName": "더현대Hi",
+        "title": "",
+        "url": "https://fixture.test/21"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "00001",
+          "label": "없음",
+          "state": "AVAILABLE",
+          "stock": 50
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 168980,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "22",
+        "mallProductId": "22",
+        "mallName": "닥스 핸드백",
+        "title": "",
+        "url": "https://fixture.test/22"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "5619195517",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 42
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "23",
+        "mallProductId": "23",
+        "mallName": "닥스핸드백",
+        "title": "",
+        "url": "https://fixture.test/23"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "10655145832",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 999
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "24",
+        "mallProductId": "24",
+        "mallName": "닥스 핸드백",
+        "title": "",
+        "url": "https://fixture.test/24"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "10775890115",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 100
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "25",
+        "mallProductId": "25",
+        "mallName": "닥스핸드백",
+        "title": "",
+        "url": "https://fixture.test/25"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "26",
+        "mallProductId": "26",
+        "mallName": "닥스 핸드백",
+        "title": "",
+        "url": "https://fixture.test/26"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "27",
+        "mallProductId": "27",
+        "mallName": "닥스 핸드백",
+        "title": "",
+        "url": "https://fixture.test/27"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "28",
+        "mallProductId": "28",
+        "mallName": "닥스 핸드백",
+        "title": "",
+        "url": "https://fixture.test/28"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "29",
+        "mallProductId": "29",
+        "mallName": "닥스 핸드백",
+        "title": "",
+        "url": "https://fixture.test/29"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "30",
+        "mallProductId": "30",
+        "mallName": "닥스 핸드백",
+        "title": "",
+        "url": "https://fixture.test/30"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "31",
+        "mallProductId": "31",
+        "mallName": "닥스 핸드백",
+        "title": "",
+        "url": "https://fixture.test/31"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "32",
+        "mallProductId": "32",
+        "mallName": "닥스 핸드백",
+        "title": "",
+        "url": "https://fixture.test/32"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "33",
+        "mallProductId": "33",
+        "mallName": "닥스 핸드백",
+        "title": "",
+        "url": "https://fixture.test/33"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "34",
+        "mallProductId": "34",
+        "mallName": "닥스핸드백",
+        "title": "",
+        "url": "https://fixture.test/34"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "35",
+        "mallProductId": "35",
+        "mallName": "닥스 핸드백",
+        "title": "",
+        "url": "https://fixture.test/35"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "36",
+        "mallProductId": "36",
+        "mallName": "닥스 핸드백",
+        "title": "",
+        "url": "https://fixture.test/36"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "37",
+        "mallProductId": "37",
+        "mallName": "닥스핸드백",
+        "title": "",
+        "url": "https://fixture.test/37"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "38",
+        "mallProductId": "38",
+        "mallName": "닥스 핸드백",
+        "title": "",
+        "url": "https://fixture.test/38"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "NAVER_SMART_STORE",
+        "price": 171640,
+        "deliveryFee": 0,
+        "naverChannel": {
+          "type": "WINDOW",
+          "vertical": "DEPARTMENT"
+        },
+        "naverProductId": "39",
+        "mallProductId": "39",
+        "mallName": "닥스 핸드백",
+        "title": "",
+        "url": "https://fixture.test/39"
+      },
+      "state": "SKIPPED_SAME_STORE",
+      "options": []
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "LOTTE_ON",
+        "price": 178800,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "40",
+        "mallProductId": "40",
+        "mallName": "롯데ON",
+        "title": "",
+        "url": "https://fixture.test/40"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "LE1202538327_1213133847",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 997
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "LOTTE_ON",
+        "price": 178800,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "41",
+        "mallProductId": "41",
+        "mallName": "롯데ON",
+        "title": "",
+        "url": "https://fixture.test/41"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "LE1204051252_1221514447",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 3002
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "LOTTE_ON",
+        "price": 178800,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "42",
+        "mallProductId": "42",
+        "mallName": "롯데ON",
+        "title": "",
+        "url": "https://fixture.test/42"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "LE1203495701_1218273331",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 998
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "LOTTE_ON",
+        "price": 178800,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "43",
+        "mallProductId": "43",
+        "mallName": "롯데ON",
+        "title": "",
+        "url": "https://fixture.test/43"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "LE1205223865_1228536755",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 999
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "LOTTE_ON",
+        "price": 178800,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "44",
+        "mallProductId": "44",
+        "mallName": "롯데ON",
+        "title": "",
+        "url": "https://fixture.test/44"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "LE1206503798_1235523673",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 999
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "LOTTE_ON",
+        "price": 178800,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "45",
+        "mallProductId": "45",
+        "mallName": "롯데백화점",
+        "title": "",
+        "url": "https://fixture.test/45"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "LE1206503798_1235523673",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 999
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "LOTTE_ON",
+        "price": 178800,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "46",
+        "mallProductId": "46",
+        "mallName": "롯데백화점",
+        "title": "",
+        "url": "https://fixture.test/46"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "LE1211432258_1264698498",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 3027
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "LOTTE_ON",
+        "price": 178800,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "47",
+        "mallProductId": "47",
+        "mallName": "롯데ON",
+        "title": "",
+        "url": "https://fixture.test/47"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "LE1211432258_1264698498",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 3027
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "LOTTE_ON",
+        "price": 178800,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "48",
+        "mallProductId": "48",
+        "mallName": "롯데백화점",
+        "title": "",
+        "url": "https://fixture.test/48"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "LE1207172031_1239193937",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 999
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "LOTTE_ON",
+        "price": 178800,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "49",
+        "mallProductId": "49",
+        "mallName": "롯데ON",
+        "title": "",
+        "url": "https://fixture.test/49"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "LE1209052433_1249020379",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 4001
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "LOTTE_ON",
+        "price": 178800,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "50",
+        "mallProductId": "50",
+        "mallName": "롯데ON",
+        "title": "",
+        "url": "https://fixture.test/50"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "LE1207172031_1239193937",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 999
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "LOTTE_ON",
+        "price": 178800,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "51",
+        "mallProductId": "51",
+        "mallName": "롯데ON",
+        "title": "",
+        "url": "https://fixture.test/51"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "LE1208611300_1246794108",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 998
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "LOTTE_ON",
+        "price": 178800,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "52",
+        "mallProductId": "52",
+        "mallName": "롯데백화점",
+        "title": "",
+        "url": "https://fixture.test/52"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "LE1208611300_1246794108",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 998
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "LOTTE_ON",
+        "price": 178800,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "53",
+        "mallProductId": "53",
+        "mallName": "롯데백화점",
+        "title": "",
+        "url": "https://fixture.test/53"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "LE1209052433_1249020379",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 4001
+        }
+      ]
+    },
+    {
+      "match": {
+        "state": "SEARCH_RESULT"
+      },
+      "offer": {
+        "mall": "LOTTE_ON",
+        "price": 178800,
+        "deliveryFee": 0,
+        "naverChannel": null,
+        "naverProductId": "54",
+        "mallProductId": "54",
+        "mallName": "롯데백화점",
+        "title": "",
+        "url": "https://fixture.test/54"
+      },
+      "state": "CONFIRMED",
+      "options": [
+        {
+          "id": "LE1210341406_1257410737",
+          "label": "단일상품",
+          "state": "AVAILABLE",
+          "stock": 999
+        }
+      ]
+    }
+  ],
+  "searchMall": "더현대Hi",
+  "searchPrice": 156450,
+  "searchDeliveryFee": 0,
+  "recommendationLimited": false
+}
