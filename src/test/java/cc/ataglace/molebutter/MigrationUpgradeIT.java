@@ -179,5 +179,52 @@ class MigrationUpgradeIT {
             try(var r=st.executeQuery("SELECT supplier_id FROM product_supplier_selection WHERE product_id=1")){r.next();assertThat(r.getLong(1)).isEqualTo(1);}
             try(var r=st.executeQuery("SELECT manual_store_id,last_price FROM product_supplier WHERE id=1")){r.next();assertThat(r.getLong(1)).isEqualTo(99);assertThat(r.getLong(2)).isEqualTo(94000);}
         }
+
+        var recommendations=Flyway.configure().dataSource(url,user,password).target("16").load();
+        assertThat(recommendations.migrate().migrationsExecuted).isEqualTo(1);recommendations.validate();
+        assertThat(recommendations.info().current().getVersion().getVersion()).isEqualTo("16");
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
+            try(var r=st.executeQuery("SELECT COUNT(*) FROM product_refresh_entry WHERE selection_snapshot IS NOT NULL")){r.next();assertThat(r.getLong(1)).isZero();}
+            try(var r=st.executeQuery("SELECT supplier_id FROM product_supplier_selection WHERE product_id=1")){r.next();assertThat(r.getLong(1)).isEqualTo(1);}
+            try(var r=st.executeQuery("SELECT manual_store_id,last_price FROM product_supplier WHERE id=1")){r.next();assertThat(r.getLong(1)).isEqualTo(99);assertThat(r.getLong(2)).isEqualTo(94000);}
+        }
+
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
+            st.executeUpdate("INSERT INTO product_refresh_run(id,status,trigger_type,created_at) VALUES(900,'BLOCKED','MANUAL',NOW(6))");
+        }
+        var retry=Flyway.configure().dataSource(url,user,password).target("20").load();
+        assertThat(retry.migrate().migrationsExecuted).isEqualTo(4);retry.validate();
+        assertThat(retry.info().current().getVersion().getVersion()).isEqualTo("20");
+        assertThat(retry.migrate().migrationsExecuted).isZero();
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
+            try(var r=st.executeQuery("SELECT status,login_retry_count,next_retry_at,block_reason FROM product_refresh_run WHERE id=900")){
+                r.next();assertThat(r.getString(1)).isEqualTo("BLOCKED");assertThat(r.getInt(2)).isZero();assertThat(r.getObject(3)).isNull();assertThat(r.getObject(4)).isNull();
+            }
+            try(var r=st.executeQuery("SELECT next_search_at FROM product_settings WHERE id=1")){r.next();assertThat(r.getObject(1)).isNull();}
+            try(var r=st.executeQuery("SELECT supplier_id FROM product_supplier_selection WHERE product_id=1")){r.next();assertThat(r.getLong(1)).isEqualTo(1);}
+            try(var r=st.executeQuery("SELECT manual_store_id,last_price FROM product_supplier WHERE id=1")){r.next();assertThat(r.getLong(1)).isEqualTo(99);assertThat(r.getLong(2)).isEqualTo(94000);}
+        }
+
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
+            st.executeUpdate("INSERT INTO product_refresh_run(id,status,trigger_type,created_at,login_retry_count,block_reason,next_retry_at) VALUES(901,'RETRY_WAIT','MANUAL',NOW(6),2,'LOGIN_REQUIRED','2026-09-30 12:30:00')");
+        }
+        var recovery=Flyway.configure().dataSource(url,user,password).target("21").load();assertThat(recovery.migrate().migrationsExecuted).isEqualTo(1);recovery.validate();
+        assertThat(recovery.info().current().getVersion().getVersion()).isEqualTo("21");
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
+            try(var r=st.executeQuery("SELECT status,search_retry_count,next_retry_at FROM product_refresh_run WHERE id=901")){r.next();assertThat(r.getString(1)).isEqualTo("RETRY_WAIT");assertThat(r.getInt(2)).isEqualTo(2);assertThat(r.getTimestamp(3).toLocalDateTime()).isEqualTo(java.time.LocalDateTime.parse("2026-09-30T12:30:00"));}
+            try(var r=st.executeQuery("SELECT search_gate_run_id,search_cooldown_until,search_manual_resume_required FROM product_settings WHERE id=1")){r.next();assertThat(r.getLong(1)).isEqualTo(901);assertThat(r.getTimestamp(2).toLocalDateTime()).isEqualTo(java.time.LocalDateTime.parse("2026-09-30T12:30:00"));assertThat(r.getBoolean(3)).isFalse();}
+            try(var r=st.executeQuery("SELECT status,next_retry_at FROM product_refresh_run WHERE id=900")){r.next();assertThat(r.getString(1)).isEqualTo("BLOCKED");assertThat(r.getObject(2)).isNull();}
+            try(var r=st.executeQuery("SELECT COUNT(*) FROM product_search_attempt")){r.next();assertThat(r.getInt(1)).isZero();}
+        }
+        var owned=Flyway.configure().dataSource(url,user,password).target("22").load();
+        assertThat(owned.migrate().migrationsExecuted).isEqualTo(1);owned.validate();
+        assertThat(owned.info().current().getVersion().getVersion()).isEqualTo("22");
+        assertThat(owned.migrate().migrationsExecuted).isZero();
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
+            for(String table:java.util.List.of("inventory_purchase","inventory_item","inventory_movement")) {
+                try(var r=st.executeQuery("SELECT COUNT(*) FROM "+table)){r.next();assertThat(r.getInt(1)).isZero();}
+            }
+            try(var r=st.executeQuery("SELECT supplier_id FROM product_supplier_selection WHERE product_id=1")){r.next();assertThat(r.getLong(1)).isEqualTo(1);}
+        }
     }
 }

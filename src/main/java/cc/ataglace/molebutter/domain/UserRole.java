@@ -12,7 +12,7 @@ public enum UserRole {
     ADMIN("관리자", EnumSet.allOf(MenuSection.class)),
 
     PRODUCT("상품 담당", EnumSet.of(
-            MenuSection.PRODUCTS,
+            MenuSection.PRODUCTS, MenuSection.PRODUCT_REFRESH, MenuSection.SETTINGS,
             MenuSection.ATTENDANCE,
             MenuSection.VERSION_HISTORY)),
 

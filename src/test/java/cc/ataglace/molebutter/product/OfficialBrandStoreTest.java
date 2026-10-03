@@ -14,6 +14,10 @@ class OfficialBrandStoreTest {
     Store official=new Store("1",mall,"BRAND_STORE","관리자 표시명","external:NAVER_CHANNEL:uid",List.of("헤지스"),0,null,List.of(new ExternalIdentity("NAVER_CHANNEL","uid")));
     BranchInfo branch(String uid){return new BranchInfo("헤지스","CONFIRMED","META","헤지스",new StoreEvidence("SELLER",null,"헤지스","NAVER_CHANNEL",uid));}
     Offer offer=new Offer("nv","ABCD6E123BK","헤지스","123","https://brand.naver.com/test/products/123",100L,0L,Mall.NAVER_SMART_STORE,null);
+    @Test void onlySupportedProductUrlsCanBeResolved(){
+        for(String url:List.of("https://brand.naver.com/daks/products/123?x=1","https://shopping.naver.com/window-products/brandfashion/123","https://shopping.naver.com/window-products/department/123","https://shopping.naver.com/outlink/itemdetail/123"))assertThat(OfficialBrandStoreService.productId(url)).isEqualTo("123");
+        for(String url:List.of("https://smartstore.naver.com/daks/products/123","https://brand.naver.com/daks","https://brand.naver.com.evil.test/daks/products/123","http://localhost/products/123","https://user@brand.naver.com/daks/products/123","https://brand.naver.com:443/daks/products/123","https://brand.naver.com/daks/products/OTHER","https://brand.naver.com/daks/products/123/other","file:///etc/passwd"))assertThatThrownBy(()->OfficialBrandStoreService.productId(url)).isInstanceOf(IllegalArgumentException.class);
+    }
     @Test void officialIdentitySurvivesRenameButNeverMergesByName(){
         var identity=SupplierStorePolicy.identity(offer,branch("uid"));
         assertThat(SupplierStorePolicy.resolve(List.of(official),mall,identity)).isEqualTo(official);
