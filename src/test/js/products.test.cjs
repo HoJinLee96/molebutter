@@ -30,6 +30,66 @@ test('deletion requires confirmation and blocks duplicate submits',async()=>{con
 test('selected refresh is allowed with no supplier links and uses product ids',async()=>{const f=fixture({post:async()=>({id:'run'})});await settle();assert.doesNotMatch(f.$('product-rows').innerHTML,/data-refresh="42" disabled/);f.select();f.click('refresh-selected');await settle();assert.equal(JSON.stringify(f.posts[0].body),JSON.stringify({scope:'SELECTED',ids:['42']}));});
 
 const detailOf=p=>({product:{...p},suppliers:[],history:pageOf([]),lastGoodResult:null});
+const historyPage=(marker,page=0)=>pageOf([{createdAt:marker,payload:{status:'SUCCESS',suppliers:[]}}],page);
+test('history ignores late success and failure after switching, reopening or closing a product modal',async()=>{
+ for(const transition of ['switch','reopen','close'])for(const failed of [false,true]) {
+  const pending=deferred();
+  const f=fixture({load:async url=>{
+   if(url==='/api/products/42/history?page=1')return pending.promise;
+   if(url.endsWith('/duplicates'))return [];
+   const match=/^\/api\/products\/(42|43)$/.exec(url);
+   if(match)return {...detailOf({...product,id:match[1]}),history:historyPage('current-'+match[1])};
+   return pageOf();
+  }});
+  await settle();f.row({detail:'42'});await settle();
+  const request=f.pagers['history-pager'].change(1);
+  f.$('product-dialog').close();
+  if(transition!=='close'){f.row({detail:transition==='switch'?'43':'42'});await settle();}
+  const before=f.$('history-results').innerHTML,pagerBefore=f.pagers['history-pager'];
+  if(failed)pending.reject(Error('old-history-error'));else pending.resolve(historyPage('old-history',1));
+  await request;await settle();
+  assert.equal(f.$('history-results').innerHTML,before,transition);
+  assert.equal(f.pagers['history-pager'],pagerBefore,transition);
+  assert.equal(f.$('detail-error').hidden,true,transition);
+  assert.equal(f.$('product-dialog').open,transition!=='close');
+ }
+});
+test('current history pages still load and a failed page can be retried',async()=>{
+ let attempts=0;
+ const f=fixture({load:async url=>{
+  if(url==='/api/products/42/history?page=1'){if(++attempts===1)throw Error('current-history-error');return historyPage('current-page-1',1);}
+  if(url.endsWith('/duplicates'))return [];
+  if(url==='/api/products/42')return {...detailOf(product),history:historyPage('current-page-0')};
+  return pageOf();
+ }});
+ await settle();f.row({detail:'42'});await settle();
+ await f.pagers['history-pager'].change(1);
+ assert.equal(f.$('detail-error').textContent,'current-history-error');
+ assert.match(f.$('history-results').innerHTML,/current-page-0/);
+ await f.pagers['history-pager'].change(1);
+ assert.match(f.$('history-results').innerHTML,/current-page-1/);
+ assert.equal(f.pagers['history-pager'].data.page,1);
+});
+test('only the latest history page request may update the current modal',async()=>{
+ for(const failed of [false,true]) {
+  const old=deferred(),latest=deferred();
+  const f=fixture({load:async url=>{
+   if(url==='/api/products/42/history?page=1')return old.promise;
+   if(url==='/api/products/42/history?page=2')return latest.promise;
+   if(url.endsWith('/duplicates'))return [];
+   if(url==='/api/products/42')return detailOf(product);
+   return pageOf();
+  }});
+  await settle();f.row({detail:'42'});await settle();
+  const first=f.pagers['history-pager'].change(1),second=f.pagers['history-pager'].change(2);
+  latest.resolve(historyPage('latest-page-2',2));await second;
+  if(failed)old.reject(Error('old-page-error'));else old.resolve(historyPage('old-page-1',1));
+  await first;
+  assert.match(f.$('history-results').innerHTML,/latest-page-2/);
+  assert.equal(f.pagers['history-pager'].data.page,2);
+  assert.equal(f.$('detail-error').hidden,true);
+ }
+});
 test('modal shows loading, polls only status, applies completion and preserves unsaved fields and revision',async()=>{
  let status='CHECKING',gets=0;
  const f=fixture({load:async url=>{

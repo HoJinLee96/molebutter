@@ -254,9 +254,22 @@
                 </div></div></article>`;
         }).join('');
     }
+    let historySequence=0;
+    async function loadHistoryPage(page,id,sequence) {
+        const currentDetail=()=>sequence===detailSequence&&$('product-dialog').open&&detail?.product.id===id;
+        if(!currentDetail())return;
+        const request=++historySequence;
+        const current=()=>request===historySequence&&currentDetail();
+        try {
+            const data=await apiGet(`/api/products/${id}/history?page=${page}`);
+            if(current())historyRows(data);
+        } catch(err) {if(current())error(err,'detail-error');}
+    }
     function historyRows(data) {
+        historySequence++;
+        const id=detail.product.id,sequence=detailSequence;
         $('history-results').innerHTML=data.items.map(h=>h.legacy?`<details class="lookup-history-item"><summary>${e(stamp(h.createdAt))} · 구조 전환 전 조회</summary><p>${e(h.payload.optionLabel||'이전 옵션 조회')} · ${e(h.payload.latestStatus||h.payload.status||'참고 이력')}</p>${(h.payload.latestResult?.observations||h.payload.result?.observations||h.payload.lastGoodResult?.observations||[]).map(o=>`<p>${link(o.url,o.mall)} · ${e(o.optionLabel)} · ${e(o.state)}</p>`).join('')}<p class="field-hint">이전 조회 기준의 참고 이력입니다. 현재 가격은 다시 조회해 주세요.</p></details>`:`<details class="lookup-history-item"><summary>${e(stamp(h.createdAt))} · ${e(label(h.payload.status))}</summary>${supplierCards(h.payload.suppliers||[],'',{mallTag:true})}</details>`).join('')||'<p class="field-hint">조회 이력이 없습니다.</p>';
-        pager('history-pager',data,p=>apiGet(`/api/products/${detail.product.id}/history?page=${p}`).then(historyRows).catch(err=>error(err,'detail-error')),{numbered:true});
+        pager('history-pager',data,p=>loadHistoryPage(p,id,sequence),{numbered:true});
     }
     function renderDetail(fillForm=true) {
         const p=detail.product,r=p.latestResult,items=r?.suppliers||[];
