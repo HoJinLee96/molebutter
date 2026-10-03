@@ -19,6 +19,7 @@ public enum MenuSection {
     /** 대표 전용 직원 계정 관리(가입 승인·역할 지정·정지·잠금 해제). */
     USER_MANAGE("직원 관리", pages("/user-manage"), apis("/api/admin/users/**")),
 
+    INVENTORY("재고", pages("/inventory"), apis("/api/inventory/**")),
     PRODUCTS("상품", pages("/products"), apis("/api/products/**")),
     PRODUCT_REFRESH("상품 최신화", pages("/product-refresh"), apis("/api/product-refresh/**")),
     SETTINGS("공통 설정", pages("/settings"), apis("/api/settings/**")),
