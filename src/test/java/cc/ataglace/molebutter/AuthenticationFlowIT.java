@@ -27,7 +27,9 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -48,7 +50,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /** scripts/test-integration.sh가 준비한 임시 MySQL/Redis에만 연결한다. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "spring.config.import=classpath:bootstrap-admin-test.properties", "spring.datasource.username=test_app",
+        "product.refresh.worker-enabled=false", "spring.config.import=classpath:bootstrap-admin-test.properties", "spring.datasource.username=test_app",
         "spring.datasource.password=isolated-test-app-password",
         "spring.flyway.user=test_migrator", "spring.flyway.password=isolated-test-migration-password",
         "spring.data.redis.host=127.0.0.1", "spring.data.redis.password=", "mail.provider=test",
@@ -94,6 +96,42 @@ class AuthenticationFlowIT {
     @Autowired JwtService jwt;
     @Autowired EmailVerificationService verification;
     @Autowired AdminBootstrap bootstrap;
+    @Autowired ApplicationContext context;
+
+    @Test
+    void defaultInMemoryAuthenticationIsNotCreated() {
+        assertThat(context.getBeansOfType(UserDetailsService.class)).isEmpty();
+        assertThat(context.containsBean("inMemoryUserDetailsManager")).isFalse();
+    }
+
+    @Test
+    void accountStateConflictsNotifyAdminWithoutChangingAccountAndValidationDoesNot() throws Exception {
+        String email = uniqueEmail();
+        signup(email);
+        long id = users.findByEmail(email).orElseThrow().getId();
+        Browser admin = admin();
+        long before = json.readTree(admin.get("/api/notifications/summary").body()).path("data").path("count").asLong();
+        String route = "/api/admin/users/" + id;
+        long version = users.findById(id).orElseThrow().getAuthVersion();
+        assertStatus(admin.post(route + "/role", Map.of("role", "PRODUCT")), 409);
+        assertThat(users.findById(id).orElseThrow().getStatus()).isEqualTo(UserStatus.PENDING);
+        assertThat(users.findById(id).orElseThrow().getAuthVersion()).isEqualTo(version);
+        assertStatus(admin.post(route + "/approve", Map.of("role", "VIEWER")), 200);
+        version = users.findById(id).orElseThrow().getAuthVersion();
+        for (String action : List.of("approve", "unsuspend", "unlock")) {
+            assertStatus(admin.post(route + "/" + action, action.equals("approve") ? Map.of("role", "VIEWER") : Map.of()), 409);
+            assertThat(users.findById(id).orElseThrow().getStatus()).isEqualTo(UserStatus.ACTIVE);
+            assertThat(users.findById(id).orElseThrow().getAuthVersion()).isEqualTo(version);
+        }
+        assertStatus(admin.post(route + "/suspend", Map.of()), 200);
+        version = users.findById(id).orElseThrow().getAuthVersion();
+        assertStatus(admin.post(route + "/suspend", Map.of()), 409);
+        assertStatus(admin.post(route + "/role", Map.of("role", "VIEWER")), 400);
+        assertThat(users.findById(id).orElseThrow().getStatus()).isEqualTo(UserStatus.SUSPENDED);
+        assertThat(users.findById(id).orElseThrow().getAuthVersion()).isEqualTo(version);
+        assertThat(json.readTree(admin.get("/api/notifications/summary").body()).path("data").path("count").asLong())
+                .isEqualTo(before + 5);
+    }
 
     @Test
     void signupApprovalSigninAndRoleRestrictions() throws Exception {

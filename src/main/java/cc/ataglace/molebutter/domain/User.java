@@ -126,7 +126,7 @@ public class User extends BaseEntity {
     /** 가입 승인: PENDING → ACTIVE + 실제 역할 지정. */
     public void approve(UserRole role) {
         if (this.status != UserStatus.PENDING) {
-            throw new IllegalStateException("승인 대기 상태의 계정만 승인할 수 있습니다.");
+            throw new cc.ataglace.molebutter.exception.OperationFailure("승인 대기 상태의 계정만 승인할 수 있습니다.");
         }
         this.role = role;
         this.status = UserStatus.ACTIVE;
@@ -135,7 +135,7 @@ public class User extends BaseEntity {
     /** 역할 변경. 기존 토큰은 무효화되어 다음 요청부터 재로그인이 필요하다. */
     public void changeRole(UserRole role) {
         if (this.status == UserStatus.PENDING) {
-            throw new IllegalStateException("승인 대기 계정은 승인하면서 역할을 지정하세요.");
+            throw new cc.ataglace.molebutter.exception.OperationFailure("승인 대기 계정은 승인하면서 역할을 지정하세요.");
         }
         if (this.role == role) {
             throw new IllegalArgumentException("이미 해당 역할입니다.");
@@ -147,7 +147,7 @@ public class User extends BaseEntity {
     /** 계정 정지. PENDING 계정에 쓰면 가입 거절의 의미가 된다. */
     public void suspend() {
         if (this.status == UserStatus.SUSPENDED) {
-            throw new IllegalStateException("이미 정지된 계정입니다.");
+            throw new cc.ataglace.molebutter.exception.OperationFailure("이미 정지된 계정입니다.");
         }
         this.status = UserStatus.SUSPENDED;
         this.authVersion++;
@@ -156,7 +156,7 @@ public class User extends BaseEntity {
     /** 정지 해제: SUSPENDED → ACTIVE. */
     public void unsuspend() {
         if (this.status != UserStatus.SUSPENDED) {
-            throw new IllegalStateException("정지 상태의 계정이 아닙니다.");
+            throw new cc.ataglace.molebutter.exception.OperationFailure("정지 상태의 계정이 아닙니다.");
         }
         this.status = UserStatus.ACTIVE;
         this.failedLoginAttempts = 0;
@@ -165,7 +165,7 @@ public class User extends BaseEntity {
     /** 잠금 해제: LOCKED → ACTIVE (비밀번호 재설정 없이 대표가 풀어주는 경로). */
     public void unlock() {
         if (this.status != UserStatus.LOCKED) {
-            throw new IllegalStateException("잠금 상태의 계정이 아닙니다.");
+            throw new cc.ataglace.molebutter.exception.OperationFailure("잠금 상태의 계정이 아닙니다.");
         }
         this.status = UserStatus.ACTIVE;
         this.failedLoginAttempts = 0;
