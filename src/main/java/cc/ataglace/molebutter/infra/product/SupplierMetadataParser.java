@@ -89,8 +89,9 @@ final class SupplierMetadataParser {
         var names=new LinkedHashSet<String>();var retailers=new LinkedHashSet<String>();
         for(var node:List.of(basic,seller)){
             for(String field:List.of("lrtrNm","trNm"))names.addAll(SupplierBranchText.names(text(node,field)));
-            retailers.addAll(SupplierBranchText.retailers(text(node,"trGrpNm")));
+            for(String field:List.of("lrtrNm","trNm","trGrpNm"))retailers.addAll(SupplierBranchText.retailers(text(node,field)));
         }
+        if(retailers.size()>1)return new StoreEvidence("CONFLICT",null,String.join(" / ",retailers)+" "+String.join(" / ",names),null,null,refs);
         if(companies.contains("주식회사 LF")){
             if(!names.isEmpty()||!retailers.isEmpty())return new StoreEvidence("CONFLICT",null,"주식회사 LF / 백화점 지점",null,null,refs);
             if(ids.isEmpty())return null;

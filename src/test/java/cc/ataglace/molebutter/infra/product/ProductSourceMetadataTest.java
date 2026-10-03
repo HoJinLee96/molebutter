@@ -93,4 +93,82 @@ class ProductSourceMetadataTest {
     private String naverChannels(String outer,String inner) {
         return "{\"id\":\"42\",\"channel\":"+outer+",\"contents\":{\"id\":\"42\",\"channel\":"+inner+"}}";
     }
+
+    @Test void conflictingProductNumbersCannotBecomeSearchCandidates() {
+        Map<Mall,String> urls=Map.of(
+                Mall.HAZZYS,"https://www.hazzys.com/product.do?PROD_CD=P1",
+                Mall.LFMALL,"https://www.lfmall.co.kr/app/product/P1",
+                Mall.HI_THEHYUNDAI,"https://hi.thehyundai.com/product/P1",
+                Mall.HMALL,"https://www.hmall.com/p/pda/itemPtc.do?slitmCd=P1",
+                Mall.LOTTE_IMALL,"https://www.lotteimall.com/goods/viewGoodsDetail.lotte?goods_no=P1",
+                Mall.NAVER_SMART_STORE,"https://shopping.naver.com/window-products/department/P1");
+        var json=new ObjectMapper();var search=new NaverSearchPayload(json);
+        urls.forEach((mall,url)->{
+            assertThat(ProductSourceMetadata.productId(mall,url,"P2")).isEmpty();
+            assertThat(ProductSourceMetadata.productId(mall,url,"p1")).isEmpty();
+            for(String supplied:java.util.List.of("P1","","invalid id"))
+                assertThat(ProductSourceMetadata.productId(mall,url,supplied)).isEqualTo("P1");
+            var rows=java.util.List.of(
+                    Map.of("nvMid","bad","mallName",mall.getDisplayName(),"purchaseUrl",url,"mallProductId","P2","price",1000),
+                    Map.of("nvMid","good","mallName",mall.getDisplayName(),"purchaseUrl",url,"mallProductId","P1","price",2000));
+            var result=search.parse(json.writeValueAsString(Map.of("products",rows)));
+            assertThat(result.offers()).singleElement().satisfies(o->{
+                assertThat(o.naverProductId()).isEqualTo("good");assertThat(o.mallProductId()).isEqualTo("P1");
+                assertThat(o.price()).isEqualTo(2000L);
+            });
+        });
+        assertThat(ProductSourceMetadata.productId(Mall.HAZZYS,"https://www.hazzys.com/product.do","P1")).isEqualTo("P1");
+        // 롯데 pdNo와 sitmNo는 다른 종류의 번호이므로 URL의 판매 SKU를 사용한다.
+        assertThat(ProductSourceMetadata.productId(Mall.LOTTE_ON,
+                "https://www.lotteon.com/p/product/PD1?sitmNo=PD1_2","PD1")).isEqualTo("PD1_2");
+    }
+
+    @Test void hyundaiOptionsAndTitleStopAtTheMainProductBoundary() {
+        var parser=new MallOptionParser(new ObjectMapper());
+        String recommendation="""
+                {"slitmCd":"B","productName":"추천 B","sellUitmList":[
+                  {"uitmCd":"B1","uitmTotNm":"M","sellPossQty":7}]}
+                """;
+        for(String payload:java.util.List.of(
+                "{\"slitmCd\":\"A\",\"recommendations\":["+recommendation+"]}",
+                "{\"data\":{\"slitmCd\":\"A\",\"recommendations\":["+recommendation+"]}}",
+                "{\"slitmCd\":\"B\",\"recommendations\":["+recommendation+"]}")) {
+            var detail=parser.details(Mall.HI_THEHYUNDAI,payload,"B");
+            assertThat(detail.options()).isEmpty();assertThat(detail.optionsComplete()).isFalse();
+            assertThat(detail.title()).isEmpty();
+        }
+        var matched=parser.details(Mall.HI_THEHYUNDAI,"{\"data\":"+recommendation+"}","B");
+        assertThat(matched.title()).isEqualTo("추천 B");assertThat(matched.optionsComplete()).isTrue();
+        assertThat(matched.options()).singleElement().satisfies(o->assertThat(o.stock()).isEqualTo(7L));
+    }
+
+    @Test void lotteRetailerNamesMustAgreeBeforeAssigningAStore() {
+        var json=new ObjectMapper();var parser=new MallOptionParser(json);
+        var offer=new Offer("nv","상품","롯데ON","L1","https://www.lotteon.com/p?sitmNo=L1",1L,0L,Mall.LOTTE_ON,null);
+        for(String basicRetailer:java.util.List.of("현대백화점","롯데백화점")) {
+            String other=basicRetailer.equals("현대백화점")?"롯데백화점":"현대백화점";
+            for(String retailerField:java.util.List.of("lrtrNm","trNm")) {
+                var basic=new java.util.LinkedHashMap<String,Object>(Map.of("sitmNo","L1","trNo","10","trNm","판매자",
+                        "lrtrNm",basicRetailer+" 목동점","trGrpNm",basicRetailer));
+                var seller=new java.util.LinkedHashMap<String,Object>(Map.of("trNo","10","trNm","판매자","lrtrNm",other+" 목동점"));
+                if(retailerField.equals("trNm")) {
+                    basic.put("trNm",other+" 목동점");seller.put("trNm",other+" 목동점");
+                    seller.put("lrtrNm","목동점");
+                }
+                String payload=json.writeValueAsString(Map.of("returnCode","200","data",
+                        Map.of("basicInfo",basic,"slrInfo",Map.of("trBase",seller))));
+                var detail=parser.details(Mall.LOTTE_ON,payload,"L1");
+                var branch=cc.ataglace.molebutter.service.product.SupplierBranch.resolve(offer,detail);
+                assertThat(detail.storeEvidence().kind()).isEqualTo("CONFLICT");
+                assertThat(branch.state()).isEqualTo("CONFLICT");
+                assertThat(cc.ataglace.molebutter.service.product.SupplierStorePolicy.identity(offer,branch)).isNull();
+            }
+        }
+        String matching=json.writeValueAsString(Map.of("returnCode","200","data",Map.of(
+                "basicInfo",Map.of("sitmNo","L1","trNo","10","trNm","판매자","lrtrNm","현대백화점 목동점"),
+                "slrInfo",Map.of("trBase",Map.of("trNo","10","trNm","판매자","lrtrNm","현대백화점 목동점")))));
+        var agreed=parser.details(Mall.LOTTE_ON,matching,"L1");
+        assertThat(agreed.storeEvidence().retailer()).isEqualTo("현대백화점");
+        assertThat(cc.ataglace.molebutter.service.product.SupplierBranch.resolve(offer,agreed).state()).isEqualTo("CONFIRMED");
+    }
 }

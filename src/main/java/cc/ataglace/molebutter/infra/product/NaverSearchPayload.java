@@ -104,9 +104,14 @@ final class NaverSearchPayload {
                 continue;
             String url = productUrl(p);
             Mall source = ProductSourceMetadata.mall(url);
+            String supplied = text(p, "mallProductId", "channelProductId", "chnlProdNo");
+            String productId = ProductSourceMetadata.productId(source, url, supplied);
+            // 충돌한 후보를 빈 번호로 남기면 후속 호출이 URL에서 번호를 다시 확정할 수 있다.
+            if (source != null && productId.isBlank() && !supplied.isBlank()
+                    && !ProductSourceMetadata.productId(source, url, "").isBlank())
+                continue;
             offers.add(new Offer(nv, text(p, "productName", "productTitle"), mall,
-                    ProductSourceMetadata.productId(source, url,
-                            text(p, "mallProductId", "channelProductId", "chnlProdNo")),
+                    productId,
                     url, number(p, "price", "discountedSalePrice", "salePrice", "lowPrice"),
                     number(p, "deliveryFee", "dlvryFee", "krwDlvryFee"), source,
                     ProductSourceMetadata.imageUrl(text(p, "imageUrl", "image", "image_url")),

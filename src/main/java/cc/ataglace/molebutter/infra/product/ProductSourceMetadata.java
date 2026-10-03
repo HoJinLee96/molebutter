@@ -50,8 +50,9 @@ public final class ProductSourceMetadata {
     public static String productId(Mall mall,String url,String supplied) {
         // 롯데온의 판매 옵션 API는 pdNo가 아닌 링크에 명시된 sitmNo를 사용한다.
         if(mall==Mall.LOTTE_ON)try {String sku=query(URI.create(url),"sitmNo");if(sku.matches("[A-Za-z0-9_-]{1,100}"))return sku;}catch(Exception ignored){}
-        if(supplied!=null&&supplied.matches("[A-Za-z0-9_-]{1,100}"))return supplied;
-        if(mall==null)return "";
+        String provided=supplied!=null&&supplied.matches("[A-Za-z0-9_-]{1,100}")?supplied:"";
+        if(mall==null)return provided;
+        String linked="";
         try {
             URI uri=URI.create(url);
             String value=switch(mall) {
@@ -64,8 +65,11 @@ public final class ProductSourceMetadata {
                 case NAVER_SMART_STORE -> first(after(uri,"products"),after(uri,"outlink/itemdetail"),
                     after(uri,"window-products/department"),after(uri,"window-products/brandfashion"));
             };
-            return value.matches("[A-Za-z0-9_-]{1,100}")?value:"";
-        } catch(Exception e) {return "";}
+            linked=value.matches("[A-Za-z0-9_-]{1,100}")?value:"";
+        } catch(Exception ignored) {}
+        // 같은 종류의 상품 번호가 서로 다르면 URL·가격과 다른 상품을 연결하지 않는다.
+        if(!linked.isBlank()&&!provided.isBlank()&&!linked.equals(provided))return "";
+        return linked.isBlank()?provided:linked;
     }
     private static String query(URI uri,String key) {
         if(uri.getRawQuery()==null)return "";

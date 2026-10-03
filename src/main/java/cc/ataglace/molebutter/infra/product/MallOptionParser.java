@@ -232,8 +232,8 @@ public final class MallOptionParser {
     private static JsonNode mainProduct(JsonNode node, String id, int depth) {
         if (depth > 18)
             return null;
-        if (node.isObject() && id.equals(text(node, "slitmCd")) && node.path("sellUitmList").isArray())
-            return node;
+        if (node.isObject() && node.has("slitmCd"))
+            return id.equals(text(node, "slitmCd")) && node.path("sellUitmList").isArray() ? node : null;
         for (JsonNode c : node)
             if (c.isObject() || c.isArray()) {
                 var match = mainProduct(c, id, depth + 1);
@@ -255,7 +255,10 @@ public final class MallOptionParser {
     private static void hi(JsonNode node, String productId, OptionSet out, int depth) {
         if (depth > 18)
             return;
-        if (node.isObject() && productId.equals(text(node, "slitmCd"))) {
+        if (node.isObject() && node.has("slitmCd")) {
+            // 본상품 경계 안의 추천 상품을 요청한 상품의 응답으로 사용하지 않는다.
+            if (!productId.equals(text(node, "slitmCd")))
+                return;
             out.found = true;
             var rows = node.path("sellUitmList");
             if (!rows.isArray() || rows.isEmpty()) {
