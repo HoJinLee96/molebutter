@@ -1,0 +1,49 @@
+{
+  "_id": "12610379894",
+  "channel": {
+    "channelUid": "2sWE1WGFN4WlhA9zOaxvG",
+    "name": "헤지스",
+    "verticalType": "BRAND_FASHION",
+    "storeCategory": {
+      "id": "10343",
+      "name": "트래디셔널캐주얼",
+      "wholeIds": [
+        "10343"
+      ],
+      "wholeNames": [
+        "트래디셔널캐주얼"
+      ]
+    }
+  },
+  "contents": {
+    "id": 12610379894,
+    "name": "헤지스 액세서리 블랙 단색 나일론 미니숄더백 HIWA6E450BK",
+    "productStatusType": "SALE",
+    "channelProductStatusType": "NORMAL",
+    "stockQuantity": 3,
+    "optionUsable": true,
+    "optionCombinations": [
+      {
+        "id": 53129032179,
+        "optionName1": "FREE",
+        "stockQuantity": 3,
+        "price": 0,
+        "regOrder": 0
+      }
+    ],
+    "options": [
+      {
+        "id": 10934920737,
+        "optionType": "COMBINATION",
+        "groupName": "사이즈"
+      }
+    ],
+    "naverShoppingSearchInfo": {
+      "brandId": 39,
+      "manufacturerName": "LF",
+      "brandName": "헤지스",
+      "modelName": "HIWA6E450BK"
+    },
+    "channelServiceType": "WINDOW"
+  }
+}

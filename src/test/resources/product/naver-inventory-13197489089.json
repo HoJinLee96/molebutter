@@ -1,0 +1,49 @@
+{
+  "_id": "13197489089",
+  "channel": {
+    "channelUid": "2sWE1WHVrXUFoJpa77gZb",
+    "name": "닥스 DAKS",
+    "verticalType": "BRAND_FASHION",
+    "storeCategory": {
+      "id": "10343",
+      "name": "트래디셔널캐주얼",
+      "wholeIds": [
+        "10343"
+      ],
+      "wholeNames": [
+        "트래디셔널캐주얼"
+      ]
+    }
+  },
+  "contents": {
+    "id": 13197489089,
+    "name": "닥스 액세서리 여성 [스테디셀러] 블랙 DD로고 소가죽 숄더백 WCBA5E052BK",
+    "productStatusType": "SALE",
+    "channelProductStatusType": "NORMAL",
+    "stockQuantity": 2,
+    "optionUsable": true,
+    "optionCombinations": [
+      {
+        "id": 56549039311,
+        "optionName1": "FREE",
+        "stockQuantity": 2,
+        "price": 0,
+        "regOrder": 0
+      }
+    ],
+    "options": [
+      {
+        "id": 11426437520,
+        "optionType": "COMBINATION",
+        "groupName": "사이즈"
+      }
+    ],
+    "naverShoppingSearchInfo": {
+      "brandId": 1217,
+      "manufacturerName": "LF",
+      "brandName": "닥스",
+      "modelName": "WCBA5E052BK"
+    },
+    "channelServiceType": "WINDOW"
+  }
+}

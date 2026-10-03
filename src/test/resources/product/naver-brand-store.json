@@ -1,0 +1,23 @@
+{
+  "_id": "13197489089",
+  "channel": {
+    "channelUid": "2sWE1WHVrXUFoJpa77gZb",
+    "name": "닥스 DAKS",
+    "verticalType": "BRAND_FASHION",
+    "storeCategory": {
+      "id": "10343",
+      "name": "트래디셔널캐주얼",
+      "wholeIds": [
+        "10343"
+      ],
+      "wholeNames": [
+        "트래디셔널캐주얼"
+      ]
+    }
+  },
+  "contents": {
+    "id": 13197489089,
+    "name": "닥스 액세서리 여성 [스테디셀러] 블랙 DD로고 소가죽 숄더백 WCBA5E052BK",
+    "channelServiceType": "WINDOW"
+  }
+}
