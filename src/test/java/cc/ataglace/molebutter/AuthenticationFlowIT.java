@@ -242,7 +242,8 @@ class AuthenticationFlowIT {
     @Test
     void migrationsValidateAndRuntimeAccountCannotCreateTables() {
         flyway.validate();
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("5");
+        assertThat(flyway.info().current()).isNotNull();
+        assertThat(flyway.info().pending()).isEmpty();
         assertThatThrownBy(() -> jdbc.execute("CREATE TABLE forbidden_ddl (id BIGINT)"))
                 .isInstanceOf(org.springframework.dao.DataAccessException.class);
     }
