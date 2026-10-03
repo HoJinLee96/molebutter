@@ -63,7 +63,13 @@ public class NaverPriceSearch {
     public SearchResult search(String query,Set<String> targetIds,int maxPages) {
         if(query==null||query.isBlank()||query.length()>255)throw new IllegalArgumentException("검색어를 입력해 주세요.");
         if(!browserBusy.compareAndSet(false,true))throw new NaverSearchFailure(NaverSearchFailure.Code.BROWSER_UNAVAILABLE,"BROWSER",Map.of());
-        Future<SearchResult> future=executor.submit(()->{try{return searchBrowser(query.trim(),Set.copyOf(targetIds),Math.min(3,Math.max(1,maxPages)));}finally{browserBusy.set(false);}});
+        var future=new BrowserTask(()->searchBrowser(query.trim(),Set.copyOf(targetIds),Math.min(3,Math.max(1,maxPages))));
+        try {executor.execute(future);}
+        catch(RuntimeException e) {
+            future.cancel(false);
+            if(e instanceof RejectedExecutionException)throw new NaverSearchFailure(NaverSearchFailure.Code.BROWSER_UNAVAILABLE,"BROWSER",Map.of());
+            throw e;
+        }
         try { return future.get(180,TimeUnit.SECONDS); }
         catch(ExecutionException e) {
             if(e.getCause() instanceof IllegalStateException state)throw state;
@@ -71,6 +77,23 @@ public class NaverPriceSearch {
         }
         catch(InterruptedException e) {cleanupRequired=true;future.cancel(true);Thread.currentThread().interrupt();throw new IllegalStateException("검색이 중단되었습니다.");}
         catch(TimeoutException e) {cleanupRequired=true;future.cancel(true);throw new NaverSearchFailure(NaverSearchFailure.Code.SEARCH_RESPONSE_TIMEOUT,"SEARCH",Map.of("overallTimeout",true));}
+    }
+
+    /** Future cancellation may complete before browser cleanup actually exits. */
+    final class BrowserTask extends FutureTask<SearchResult> {
+        private boolean running;
+        BrowserTask(Callable<SearchResult> work){super(work);}
+        @Override public void run() {
+            synchronized(this) {
+                if(isCancelled())return;
+                running=true;
+            }
+            try {super.run();}
+            finally {browserBusy.set(false);}
+        }
+        @Override protected synchronized void done() {
+            if(!running)browserBusy.set(false);
+        }
     }
 
     private void ensureBrowser() {

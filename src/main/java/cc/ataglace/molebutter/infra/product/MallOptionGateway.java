@@ -3,8 +3,12 @@ package cc.ataglace.molebutter.infra.product;
 import java.net.*;
 import java.net.http.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.regex.*;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.*;
@@ -18,9 +22,14 @@ import cc.ataglace.molebutter.infra.product.NaverPriceSearch.SearchBlocked;
 public class MallOptionGateway implements ProductSourceGateway {
     private final ObjectMapper json;
     private final HttpClient http;
+    private final Duration requestTimeout;
     @org.springframework.beans.factory.annotation.Autowired
     public MallOptionGateway(ObjectMapper json){this(json,HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8)).followRedirects(HttpClient.Redirect.NEVER).build());}
-    MallOptionGateway(ObjectMapper json,HttpClient http){this.json=json;this.http=http;}
+    MallOptionGateway(ObjectMapper json,HttpClient http){this(json,http,Duration.ofSeconds(20));}
+    MallOptionGateway(ObjectMapper json,HttpClient http,Duration timeout){
+        if(timeout.isZero()||timeout.isNegative())throw new IllegalArgumentException("Request timeout must be positive");
+        this.json=json;this.http=http;this.requestTimeout=timeout;
+    }
     @Override public String validateUrl(Mall mall,String url) {
         try {URI u=URI.create(url);
             if(mall==null||ProductSourceMetadata.mall(url)!=mall||url.length()>2000)throw new IllegalArgumentException();
@@ -71,21 +80,60 @@ public class MallOptionGateway implements ProductSourceGateway {
     }
     private String fetch(Mall mall,String productId,String url) {
         for(int attempt=0;attempt<2;attempt++)try {
-            var request=HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(20)).header("Accept","application/json,text/html").header("User-Agent",ProductPublicHeaders.userAgent()).header("Accept-Language","ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7").GET().build();
-            var response=http.send(request,HttpResponse.BodyHandlers.ofInputStream());
-            try(var in=response.body()) {
-                if(response.statusCode()==403||response.statusCode()==418||response.statusCode()==429)throw blocked(mall,productId,url,"HTTP_RESTRICTED",response.statusCode());
-                if(response.statusCode()==204)return "";
-                if(response.statusCode()>=500&&attempt==0)continue;
-                if(response.statusCode()!=200)throw new SupplierLookupFailure(SupplierLookupFailure.Code.HTTP,"FETCH",response.statusCode(),null);
-                byte[] bytes=in.readNBytes(5_000_001);if(bytes.length>5_000_000)throw new SupplierLookupFailure(SupplierLookupFailure.Code.RESPONSE_FORMAT,"READ",null,null);
-                String body=new String(bytes,StandardCharsets.UTF_8);
-                for(String marker:List.of("비정상적인 접근","접근이 제한","보안 확인"))
-                    if(body.contains(marker))throw blocked(mall,productId,url,"SECURITY_CHECK",null);
-                return body;
-            }
+            var request=HttpRequest.newBuilder(URI.create(url)).timeout(requestTimeout).header("Accept","application/json,text/html").header("User-Agent",ProductPublicHeaders.userAgent()).header("Accept-Language","ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7").GET().build();
+            var response=receive(request);
+            if(response.statusCode()==403||response.statusCode()==418||response.statusCode()==429)throw blocked(mall,productId,url,"HTTP_RESTRICTED",response.statusCode());
+            if(response.statusCode()==204)return "";
+            if(response.statusCode()>=500&&attempt==0)continue;
+            if(response.statusCode()!=200)throw new SupplierLookupFailure(SupplierLookupFailure.Code.HTTP,"FETCH",response.statusCode(),null);
+            String body=new String(response.body(),StandardCharsets.UTF_8);
+            for(String marker:List.of("비정상적인 접근","접근이 제한","보안 확인"))
+                if(body.contains(marker))throw blocked(mall,productId,url,"SECURITY_CHECK",null);
+            return body;
         }catch(SearchBlocked e){throw e;}catch(InterruptedException e){Thread.currentThread().interrupt();throw new SupplierLookupFailure(SupplierLookupFailure.Code.INTERNAL,"FETCH",null,e);}catch(java.io.IOException e){if(attempt==1)throw new SupplierLookupFailure(e instanceof HttpTimeoutException?SupplierLookupFailure.Code.TIMEOUT:SupplierLookupFailure.Code.NETWORK,"FETCH",null,e);}
         throw new IllegalStateException("옵션 조회에 실패했습니다.");
+    }
+    private HttpResponse<byte[]> receive(HttpRequest request)throws IOException,InterruptedException {
+        var body=new LimitedBodySubscriber();
+        var response=http.sendAsync(request,info->{body.read=info.statusCode()==200;return body;});
+        try {return response.get(requestTimeout.toNanos(),TimeUnit.NANOSECONDS);}
+        catch(TimeoutException e) {
+            var timeout=new HttpTimeoutException("Supplier response deadline exceeded");
+            body.abort(timeout);response.cancel(true);throw timeout;
+        }catch(InterruptedException e) {
+            body.abort(e);response.cancel(true);throw e;
+        }catch(ExecutionException e) {
+            if(e.getCause() instanceof IOException failure)throw failure;
+            if(e.getCause() instanceof RuntimeException failure)throw failure;
+            throw new IOException("Supplier response failed",e.getCause());
+        }
+    }
+    /** Bound memory during receipt and cancel the HTTP subscription on timeout or overflow. */
+    static final class LimitedBodySubscriber implements HttpResponse.BodySubscriber<byte[]> {
+        private final CompletableFuture<byte[]> result=new CompletableFuture<>();
+        private final ByteArrayOutputStream bytes=new ByteArrayOutputStream();
+        private Flow.Subscription subscription;
+        private boolean read=true;
+        @Override public CompletionStage<byte[]> getBody(){return result;}
+        @Override public synchronized void onSubscribe(Flow.Subscription value) {
+            if(subscription!=null){value.cancel();return;}
+            subscription=value;
+            if(result.isDone()||!read){result.complete(new byte[0]);value.cancel();}
+            else value.request(1);
+        }
+        @Override public synchronized void onNext(List<ByteBuffer> buffers) {
+            if(result.isDone())return;
+            for(var buffer:buffers) {
+                if(buffer.remaining()>5_000_000-bytes.size()) {
+                    abort(new SupplierLookupFailure(SupplierLookupFailure.Code.RESPONSE_FORMAT,"READ",null,null));return;
+                }
+                byte[] chunk=new byte[buffer.remaining()];buffer.get(chunk);bytes.writeBytes(chunk);
+            }
+            subscription.request(1);
+        }
+        @Override public synchronized void onError(Throwable error){abort(error);}
+        @Override public synchronized void onComplete(){result.complete(bytes.toByteArray());}
+        synchronized void abort(Throwable error){result.completeExceptionally(error);if(subscription!=null)subscription.cancel();}
     }
     private SearchBlocked blocked(Mall mall,String productId,String url,String code,Integer httpStatus) {
         var target=URI.create(url);
