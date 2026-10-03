@@ -19,6 +19,7 @@ public enum MenuSection {
     /** 대표 전용 직원 계정 관리(가입 승인·역할 지정·정지·잠금 해제). */
     USER_MANAGE("직원 관리", pages("/user-manage"), apis("/api/admin/users/**")),
 
+    PRODUCTS("상품", pages("/products"), apis("/api/products/**")),
     VERSION_HISTORY("버전 기록", pages("/version-history"));
 
     /** 섹션 권한 authority 접두사. JwtAuthenticationFilter 부여 ↔ SecurityConfig·메뉴 노출 검사에서 공유. */
