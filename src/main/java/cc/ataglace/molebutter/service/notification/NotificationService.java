@@ -18,8 +18,8 @@ public class NotificationService {
     public record Summary(long count,String latestId) {}
     public record Target(String url,String reason) {}
     private record Event(long id,String type,String severity,String title,String message,String target,Long targetId,LocalDateTime at) {}
-    private LocalDateTime now(){return LocalDateTime.now(ZoneId.of("Asia/Seoul"));}
-    private long id(){return com.github.f4b6a3.tsid.TsidCreator.getTsid().toLong();}
+    private LocalDateTime now(){return cc.ataglace.molebutter.service.common.BusinessTime.koreaNow();}
+    private long id(){return cc.ataglace.molebutter.service.common.BusinessIds.next();}
     private UserRole actor(long user) {
         var rows=jdbc.queryForList("SELECT user_role,user_status FROM `user` WHERE id=?",user);
         if(rows.isEmpty()||!"ACTIVE".equals(rows.getFirst().get("user_status")))throw new BusinessException(ErrorCode.HANDLE_ACCESS_DENIED);

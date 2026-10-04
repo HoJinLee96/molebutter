@@ -8,6 +8,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class AttendanceTime {
     public LocalDateTime now() {
-        return LocalDateTime.now(ZoneId.of("Asia/Seoul")).truncatedTo(ChronoUnit.MICROS);
+        return cc.ataglace.molebutter.service.common.BusinessTime.koreaNow();
     }
 }
