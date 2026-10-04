@@ -71,6 +71,7 @@ public class NotificationService {
     private boolean allowed(UserRole role,long user,Event e) {
         return switch(e.target) {
             case "PRODUCT","PRODUCTS","REFRESH","IMPORT","SETTINGS" -> role.getSections().contains(MenuSection.PRODUCTS);
+            case "INVENTORY" -> role.getSections().contains(MenuSection.INVENTORY);
             case "USERS" -> role==UserRole.ADMIN;
             case "CORRECTION" -> role==UserRole.ADMIN||jdbc.queryForObject("SELECT COUNT(*) FROM attendance_correction WHERE id=? AND user_id=?",Long.class,e.targetId,user)>0;
             case "ATTENDANCE","PROFILE" -> true;
@@ -86,6 +87,7 @@ public class NotificationService {
             case "CORRECTION" -> exists("SELECT COUNT(*) FROM attendance_correction WHERE id=?",e.targetId)?(exists("SELECT COUNT(*) FROM attendance_correction WHERE id=? AND user_id="+user,e.targetId)?"/attendance":"/attendance-manage")+"?correction="+e.targetId:null;
             case "IMPORT" -> "/products#import-panel";
             case "PRODUCTS" -> "/products";
+            case "INVENTORY" -> "/inventory";
             case "SETTINGS" -> "/settings";
             case "USERS" -> "/user-manage";
             case "ATTENDANCE" -> "/attendance";
