@@ -26,6 +26,6 @@ public class ProductStore {
     }
     static LocalDateTime date(ResultSet r,String name)throws SQLException{var t=r.getTimestamp(name);return t==null?null:t.toLocalDateTime();}
     public static void revision(long current,Long requested){cc.ataglace.molebutter.service.common.BusinessRevision.check(current,requested);}
-    static String text(String value,int max,boolean required){String s=value==null?"":value.trim();if(s.length()>max||required&&s.isEmpty())throw new IllegalArgumentException("필수 입력값과 입력 길이를 확인해 주세요.");return s;}
+    static String text(String value,int max,boolean required){String s=value==null?"":value.trim();if(s.length()>max||required&&s.isEmpty())throw new InputValidationFailure("필수 입력값과 입력 길이를 확인해 주세요.");return s;}
     public static List<Long> ids(List<String> ids) { return cc.ataglace.molebutter.service.common.BusinessIds.parseList(ids); }
 }

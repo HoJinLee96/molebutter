@@ -1,5 +1,6 @@
 package cc.ataglace.molebutter.service.admin;
 
+import cc.ataglace.molebutter.exception.InputValidationFailure;
 import java.util.List;
 
 import org.springframework.data.domain.Sort;
@@ -98,7 +99,7 @@ public class UserAdminService {
     /** 대표가 본인 계정을 정지·강등하는 사고 방지. */
     private void guardSelf(Long actorId, Long userId) {
         if (actorId != null && actorId.equals(userId)) {
-            throw new IllegalArgumentException("본인 계정은 여기서 변경할 수 없습니다.");
+            throw new InputValidationFailure("본인 계정은 여기서 변경할 수 없습니다.");
         }
     }
 }

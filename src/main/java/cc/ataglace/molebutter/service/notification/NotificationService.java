@@ -54,8 +54,8 @@ public class NotificationService {
     }
     @Transactional(readOnly=true)
     public Inbox list(long user,String cursor,int size) {
-        UserRole role=actor(user);if(size<1||size>50)throw new IllegalArgumentException("알림 조회 개수를 확인해 주세요.");
-        long before=Long.MAX_VALUE;try{if(cursor!=null)before=Long.parseLong(cursor);if(before<=0)throw new NumberFormatException();}catch(NumberFormatException e){throw new IllegalArgumentException("알림 조회 위치를 확인해 주세요.");}
+        UserRole role=actor(user);if(size<1||size>50)throw new InputValidationFailure("알림 조회 개수를 확인해 주세요.");
+        long before=Long.MAX_VALUE;try{if(cursor!=null)before=Long.parseLong(cursor);if(before<=0)throw new NumberFormatException();}catch(NumberFormatException e){throw new InputValidationFailure("알림 조회 위치를 확인해 주세요.");}
         var rows=jdbc.query("SELECT e.* FROM user_notification n JOIN notification_event e ON e.id=n.event_id WHERE n.user_id=? AND n.dismissed_at IS NULL AND e.id<? ORDER BY e.id DESC LIMIT ?",(r,n)->new Event(r.getLong("id"),r.getString("event_type"),r.getString("severity"),r.getString("title"),r.getString("message"),r.getString("target_type"),(Long)r.getObject("target_id"),r.getTimestamp("occurred_at").toLocalDateTime()),user,before,size+1);
         boolean more=rows.size()>size;var page=rows.subList(0,Math.min(size,rows.size()));
         return new Inbox(page.stream().map(e->{boolean access=allowed(role,user,e);return new Notice(Long.toString(e.id),e.type,e.severity,access?e.title:"접근 권한 없음",access?e.message:"",e.at,access);}).toList(),more?Long.toString(page.getLast().id):null);

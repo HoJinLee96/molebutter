@@ -87,7 +87,7 @@ public class AttendanceService {
                 if (a.getStatus() != AttendanceStatus.ON_BREAK) throw conflict("진행 중인 휴게가 없습니다.");
                 a.endBreak(now);
             }
-            default -> throw new IllegalArgumentException("지원하지 않는 근태 동작입니다.");
+            default -> throw new InputValidationFailure("지원하지 않는 근태 동작입니다.");
         }
         return view(a, now);
     }
@@ -155,7 +155,7 @@ public class AttendanceService {
         AttendanceCorrection c = corrections.findById(requestId).orElseThrow(this::notFound);
         expectPending(c, request.revision());
         String comment = request.comment() == null ? null : request.comment().trim();
-        if (!approve && (comment == null || comment.isBlank())) throw new IllegalArgumentException("반려 사유를 입력해 주세요.");
+        if (!approve && (comment == null || comment.isBlank())) throw new InputValidationFailure("반려 사유를 입력해 주세요.");
         if (approve) {
             Attendance current = records.findByUserIdAndWorkDate(owner, c.getWorkDate()).orElse(null);
             if (c.getAttendanceId() == null) {
@@ -183,13 +183,13 @@ public class AttendanceService {
         LocalDateTime now = time.now();
         if (p.clockIn() == null || p.clockOut() == null || !date.equals(p.clockIn().toLocalDate())
                 || !p.clockOut().isAfter(p.clockIn()) || p.clockOut().isAfter(now)) {
-            throw new IllegalArgumentException("출근 날짜와 시간을 확인해 주세요. 퇴근은 출근 이후이며 미래 시각일 수 없습니다.");
+            throw new InputValidationFailure("출근 날짜와 시간을 확인해 주세요. 퇴근은 출근 이후이며 미래 시각일 수 없습니다.");
         }
         LocalDateTime lastEnd = p.clockIn();
         for (BreakTime b : p.breaks()) {
             if (b.startedAt() == null || b.endedAt() == null || b.startedAt().isBefore(lastEnd)
                     || b.endedAt().isBefore(b.startedAt()) || b.endedAt().isAfter(p.clockOut())) {
-                throw new IllegalArgumentException("휴게시간은 근무 구간 안에 있어야 하며 서로 겹칠 수 없습니다.");
+                throw new InputValidationFailure("휴게시간은 근무 구간 안에 있어야 하며 서로 겹칠 수 없습니다.");
             }
             lastEnd = b.endedAt();
         }
@@ -260,11 +260,11 @@ public class AttendanceService {
 
     private Snapshot snapshot(String value) { return value == null ? null : json.readValue(value, Snapshot.class); }
     private Long id(String value) {
-        try { return Long.valueOf(value); } catch (NumberFormatException ex) { throw new IllegalArgumentException("기록 ID를 확인해 주세요."); }
+        try { return Long.valueOf(value); } catch (NumberFormatException ex) { throw new InputValidationFailure("기록 ID를 확인해 주세요."); }
     }
     private YearMonth month(String value) {
         if (value == null || value.isBlank()) return YearMonth.from(time.now());
-        try { return YearMonth.parse(value); } catch (java.time.format.DateTimeParseException ex) { throw new IllegalArgumentException("조회 월은 YYYY-MM 형식으로 입력해 주세요."); }
+        try { return YearMonth.parse(value); } catch (java.time.format.DateTimeParseException ex) { throw new InputValidationFailure("조회 월은 YYYY-MM 형식으로 입력해 주세요."); }
     }
     private Pageable page(int page, String sort) { return PageRequest.of(Math.max(0, page), 20, Sort.by(Sort.Direction.DESC, sort, "id")); }
     private BusinessException notFound() { return new BusinessException(ErrorCode.NOT_FOUND); }
