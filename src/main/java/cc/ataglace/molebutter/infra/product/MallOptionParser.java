@@ -14,14 +14,14 @@ public final class MallOptionParser {
         this.json = json;
     }
 
-    public List<SourceOption> parse(Mall mall, String payload, String productId) {
+    public List<SourceOption> parse(ProcurementMall mall, String payload, String productId) {
         return parseOptions(mall, payload, productId).options();
     }
 
-    private ParsedOptions parseOptions(Mall mall, String payload, String productId) {
-        if (mall == Mall.HAZZYS)
+    private ParsedOptions parseOptions(ProcurementMall mall, String payload, String productId) {
+        if (mall == ProcurementMall.HAZZYS)
             return hazzys(payload, productId).finish();
-        if (mall == Mall.LOTTE_IMALL)
+        if (mall == ProcurementMall.LOTTE_IMALL)
             return imall(payload, productId).finish();
         var out = new OptionSet();
         for (JsonNode root : roots(mall, payload))
@@ -113,7 +113,7 @@ public final class MallOptionParser {
         }
     }
 
-    private List<JsonNode> roots(Mall mall, String payload) {
+    private List<JsonNode> roots(ProcurementMall mall, String payload) {
         List<JsonNode> roots = new ArrayList<>();
         try {
             roots.add(json.readTree(payload));
@@ -126,7 +126,7 @@ public final class MallOptionParser {
                     roots.add(json.readTree(scripts.group(1)));
                 } catch (Exception ignored2) {
                 }
-            if (mall == Mall.HI_THEHYUNDAI) {
+            if (mall == ProcurementMall.HI_THEHYUNDAI) {
                 StringBuilder flight = new StringBuilder();
                 Matcher chunks = Pattern.compile("self\\.__next_f\\.push\\((.*?)\\)</script>", Pattern.DOTALL)
                         .matcher(payload);
@@ -150,9 +150,9 @@ public final class MallOptionParser {
         return roots;
     }
 
-    public SourceDetails details(Mall mall, String payload, String productId) {
+    public SourceDetails details(ProcurementMall mall, String payload, String productId) {
         String title = "", model = "", brand = "", store = "";
-        if (mall == Mall.NAVER_SMART_STORE) {
+        if (mall == ProcurementMall.NAVER_SMART_STORE) {
             var rs = roots(mall, payload);
             var evidence = SupplierMetadataParser.parse(mall, rs, productId);
             var matching = rs.stream().filter(r -> SupplierMetadataParser.naverMatches(r, productId)).distinct()
@@ -172,16 +172,16 @@ public final class MallOptionParser {
         }
         for (var root : roots(mall, payload)) {
             JsonNode main = null;
-            if (mall == Mall.LFMALL) {
+            if (mall == ProcurementMall.LFMALL) {
                 main = root.path("body").path("productBasicDTO");
                 if (productId.equals(text(main, "productCode")))
                     model = text(main, "productCode");
                 else
                     main = null;
             }
-            if (mall == Mall.NAVER_SMART_STORE && productId.equals(text(root, "id", "channelProductNo")))
+            if (mall == ProcurementMall.NAVER_SMART_STORE && productId.equals(text(root, "id", "channelProductNo")))
                 main = root;
-            if (mall == Mall.LOTTE_ON) {
+            if (mall == ProcurementMall.LOTTE_ON) {
                 var data = root.path("data");
                 var basic = data.path("basicInfo");
                 if (LotteProductPayload.matches(root, productId)) {
@@ -191,7 +191,7 @@ public final class MallOptionParser {
                         store = text(data.path("slrInfo").path("trBase"), "lrtrNm", "trNm");
                 }
             }
-            if (mall == Mall.HI_THEHYUNDAI)
+            if (mall == ProcurementMall.HI_THEHYUNDAI)
                 main = mainProduct(root, productId, 0);
             if (main != null) {
                 title = text(main, "productName", "name", "pdNm", "sitmNm", "slitmNm");
@@ -203,14 +203,14 @@ public final class MallOptionParser {
                 break;
             }
         }
-        if (mall == Mall.HAZZYS && productId.equals(input(payload, "CARTITEMCD"))) {
+        if (mall == ProcurementMall.HAZZYS && productId.equals(input(payload, "CARTITEMCD"))) {
             model = productId;
             title = input(payload, "PRODNAME");
         }
         var parsed = parseOptions(mall, payload, productId);
         var options = parsed.options();
         // 페이지 자체의 제목 메타데이터만 읽고 추천 상품이나 전체 본문을 지점 근거로 쓰지 않는다.
-        if (title.isBlank() && (mall == Mall.HAZZYS || mall == Mall.LOTTE_IMALL || mall == Mall.HI_THEHYUNDAI)
+        if (title.isBlank() && (mall == ProcurementMall.HAZZYS || mall == ProcurementMall.LOTTE_IMALL || mall == ProcurementMall.HI_THEHYUNDAI)
                 && !options.isEmpty())
             title = pageTitle(payload);
         var evidence = SupplierMetadataParser.parse(mall, roots(mall, payload), productId);

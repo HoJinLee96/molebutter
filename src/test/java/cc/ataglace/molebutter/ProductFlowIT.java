@@ -39,9 +39,9 @@ class ProductFlowIT {
         @Bean @Primary BrandGateway brandGateway(){return new BrandGateway();}}
     static class BrandGateway implements cc.ataglace.molebutter.infra.product.SupplierProductGateway {
         String payload="";
-        public String validateUrl(Mall mall,String url){return url;}
-        public List<SourceOption> options(Mall mall,String id,String url){throw new AssertionError("공식몰 등록은 재고를 조회하지 않는다");}
-        public SourceDetails inspect(Mall mall,String id,String url){return new cc.ataglace.molebutter.infra.product.MallOptionParser(new ObjectMapper()).details(mall,payload,id);}
+        public String validateUrl(ProcurementMall mall,String url){return url;}
+        public List<SourceOption> options(ProcurementMall mall,String id,String url){throw new AssertionError("공식몰 등록은 재고를 조회하지 않는다");}
+        public SourceDetails inspect(ProcurementMall mall,String id,String url){return new cc.ataglace.molebutter.infra.product.MallOptionParser(new ObjectMapper()).details(mall,payload,id);}
     }
     @Autowired BrandGateway brandGateway; @Autowired OfficialBrandStoreService officialStores;
     static class TestTime extends BusinessTime {volatile LocalDateTime value=LocalDateTime.parse("2026-09-24T18:00:00");@Override public LocalDateTime now(){return value;}}
@@ -62,11 +62,11 @@ class ProductFlowIT {
         jdbc.update("UPDATE supplier_mall_policy SET branch_required=(mall NOT IN ('LFMALL','HAZZYS'))");
         time.value=LocalDateTime.parse("2026-09-24T18:00:00");actor=users.findByEmail("admin@example.com").orElseThrow().getId();
         brand=settings.saveBrand(actor,null,new cc.ataglace.molebutter.dto.NamedSettingInput("헤지스",null)).id();
-        for(var mall:Mall.values())preferred.saveRule(actor,null,new RuleInput(null,mall,null));
+        for(var mall:ProcurementMall.values())preferred.saveRule(actor,null,new RuleInput(null,mall,null));
     }
     @Autowired ProductChangeService changeService;
     SupplierResult deltaListing(long price,Long stock){
-        var x=listing(Mall.LFMALL,"delta",price,"온라인점","CONFIRMED");
+        var x=listing(ProcurementMall.LFMALL,"delta",price,"온라인점","CONFIRMED");
         return new SupplierResult(x.offer(),x.match(),stock==null?"OPTIONS_UNKNOWN":"CONFIRMED",stock==null?List.of():List.of(new SourceOption("black","블랙",stock,stock==0?"SOLD_OUT":"AVAILABLE")),null,null,null,null,x.branch());
     }
     void deltaFinish(CatalogProduct p,SupplierResult... results){
@@ -90,7 +90,7 @@ class ProductFlowIT {
         assertThat(entries.getFirst().get("operation_id").toString()).isEqualTo(UUID.fromString(entries.getFirst().get("operation_id").toString()).toString());
     }
     @Test void deltasKeepReviewBaselineAcrossRefreshesAndRevertWithoutDeletingHistory(){
-        var p=create("DCWA279BK");deltaFinish(p,deltaListing(156450,100L));choose(p,byMall(p,Mall.LFMALL));
+        var p=create("DCWA279BK");deltaFinish(p,deltaListing(156450,100L));choose(p,byMall(p,ProcurementMall.LFMALL));
         assertThat(changeService.summary(Long.parseLong(p.id())).anyChanged()).isFalse();
         deltaFinish(p,deltaListing(149900,37L));var changes=changeService.summary(Long.parseLong(p.id()));
         assertThat(changes.selectedChanged()).isTrue();assertThat(changes.listings().getFirst().deltas()).extracting(cc.ataglace.molebutter.dto.product.ChangeDtos.Delta::difference).containsExactly(-6550L,-63L);
@@ -112,7 +112,7 @@ class ProductFlowIT {
         var p=create("DCWA279BK");deltaFinish(p,deltaListing(156450,100L));deltaFinish(p,deltaListing(156450,null));
         long id=Long.parseLong(p.id());assertThat(changeService.summary(id).anyChanged()).isFalse();
         changeService.review(actor,id,new cc.ataglace.molebutter.dto.product.ChangeDtos.ReviewInput(changeService.summary(id).version()));
-        deltaFinish(p,deltaListing(156450,37L),listing(Mall.LFMALL,"other",100000,"온라인점","CONFIRMED"));
+        deltaFinish(p,deltaListing(156450,37L),listing(ProcurementMall.LFMALL,"other",100000,"온라인점","CONFIRMED"));
         assertThat(changeService.summary(id).listings()).anyMatch(l->l.fresh()).anyMatch(l->l.deltas().stream().anyMatch(d->Objects.equals(d.difference(),-63L)));
     }
     @Test void missingUsesSearchMembershipRatherThanCollectedSuppliersAndDoesNotRepeatAfterReview(){
@@ -123,12 +123,12 @@ class ProductFlowIT {
         deltaFinish(p,deltaListing(156450,100L));assertThat(changeService.history(actor,id,"","STATE",0).items()).anyMatch(h->h.changes().stream().anyMatch(d->d.kind().equals("REAPPEARED")));
     }
     @Test void changeFiltersCountsAndPreferenceChangesAreServerSide(){
-        var p=create("DCWA279BK");deltaFinish(p,deltaListing(156450,100L));choose(p,byMall(p,Mall.LFMALL));deltaFinish(p,deltaListing(149900,37L));
+        var p=create("DCWA279BK");deltaFinish(p,deltaListing(156450,100L));choose(p,byMall(p,ProcurementMall.LFMALL));deltaFinish(p,deltaListing(149900,37L));
         assertThat(products.list(actor,"DCWA","ALL","",0,20,"SELECTED").items()).hasSize(1);
         assertThat(products.changeCounts(actor,"DCWA","ALL","").selected()).isEqualTo(1);
         supplierService.select(actor,Long.parseLong(p.id()),new SelectionInput(current(p).revision(),null));
         assertThat(products.changeCounts(actor,"DCWA","ALL","").selected()).isZero();
-        preferred.deleteMall(actor,Mall.LFMALL,preferred.get(actor).revision());
+        preferred.deleteMall(actor,ProcurementMall.LFMALL,preferred.get(actor).revision());
         assertThat(products.changeCounts(actor,"DCWA","ALL","").all()).isZero();
     }
     @Test void changesRejectStaleReviewDuringRefreshAndNewSearchCriteriaResetTheBaseline(){
@@ -173,8 +173,8 @@ class ProductFlowIT {
         assertThat(changeService.summary(Long.parseLong(p.id())).reviewable()).isTrue();
     }
     @Test void cheaperAlternativesRequireConfirmedPositiveStockAndExactThreshold(){
-        var p=create("DCWA279BK");deltaFinish(p,deltaListing(156450,100L));choose(p,byMall(p,Mall.LFMALL));
-        var cheap=listing(Mall.LFMALL,"cheap",155450,"온라인점","CONFIRMED");var near=listing(Mall.LFMALL,"near",155451,"온라인점","CONFIRMED");var unknown=listing(Mall.LFMALL,"unknown",100000,"온라인점","OPTIONS_UNKNOWN");
+        var p=create("DCWA279BK");deltaFinish(p,deltaListing(156450,100L));choose(p,byMall(p,ProcurementMall.LFMALL));
+        var cheap=listing(ProcurementMall.LFMALL,"cheap",155450,"온라인점","CONFIRMED");var near=listing(ProcurementMall.LFMALL,"near",155451,"온라인점","CONFIRMED");var unknown=listing(ProcurementMall.LFMALL,"unknown",100000,"온라인점","OPTIONS_UNKNOWN");
         deltaFinish(p,deltaListing(156450,100L),cheap,near,new SupplierResult(unknown.offer(),unknown.match(),"OPTIONS_UNKNOWN",List.of(),null));
         var summary=changeService.summary(Long.parseLong(p.id()));assertThat(summary.alternatives()).hasSize(1);assertThat(summary.alternatives().getFirst().saving()).isEqualTo(1000);
         assertThat(summary.groups().getFirst().cheapestChanged()).isTrue();assertThat(summary.groups().getFirst().difference()).isEqualTo(-56450);
@@ -201,8 +201,8 @@ class ProductFlowIT {
     }
     @Autowired ProductStatusRepair productStatusRepair;
     @Test void selectedMissingUsesRawSearchKeysAndPreservesChoiceAndReviewHistory(){
-        var p=create("DCWA279BK");var selected=deltaListing(156450,100L);deltaFinish(p,selected);choose(p,byMall(p,Mall.LFMALL));
-        var before=current(p).selectedSupplier();var alternative=listing(Mall.HAZZYS,"other",140000,"온라인점","CONFIRMED");
+        var p=create("DCWA279BK");var selected=deltaListing(156450,100L);deltaFinish(p,selected);choose(p,byMall(p,ProcurementMall.LFMALL));
+        var before=current(p).selectedSupplier();var alternative=listing(ProcurementMall.HAZZYS,"other",140000,"온라인점","CONFIRMED");
         deltaFinish(p,alternative);
         var missing=current(p).selectedSupplier();assertThat(missing.selectedMissing()).isTrue();assertThat(missing.selectedSearchAt()).isNotNull();
         assertThat(current(p).latestStatus()).isEqualTo("SUCCESS");assertThat(missing.id()).isEqualTo(before.id());assertThat(missing.referencePrice()).isEqualTo(156450);
@@ -214,7 +214,7 @@ class ProductFlowIT {
         deltaFinish(p,selected);assertThat(current(p).selectedSupplier().selectedMissing()).isFalse();
     }
     @Test void selectedInRawSearchButDetailFailsIsNotMissingAndCancelledSearchHasNoMissingEvidence(){
-        var p=create("DCWA279BK");var selected=deltaListing(100,2L);deltaFinish(p,selected);choose(p,byMall(p,Mall.LFMALL));
+        var p=create("DCWA279BK");var selected=deltaListing(100,2L);deltaFinish(p,selected);choose(p,byMall(p,ProcurementMall.LFMALL));
         start(current(p));var w=refresh.claim("evidence");refresh.cache(w,new SearchResult(List.of(),true,null,"COMPLETED",List.of(SupplierStorePolicy.listingKey(selected.offer()))));
         var failed=new SupplierResult(selected.offer(),selected.match(),"FAILED",List.of(),"재고 조회 시간 초과");
         refresh.finish("evidence",w,SearchCompletion.summarize(List.of(failed),"COMPLETED",time.now(),w.preferences(),w.manualStores(),false,List.of(),w.selectionBasis()));refresh.claim("evidence");
@@ -240,13 +240,13 @@ class ProductFlowIT {
     SupplierRefreshService.Work legacyLimitedResult(CatalogProduct p,boolean stockProblem){
         start(p);var w=refresh.claim("repair-test");
         refresh.cache(w,new SearchResult(List.of(),false,"최대 3페이지 범위의 검색 결과입니다. 이후 페이지는 확인하지 않았습니다."));
-        var listing=listing(Mall.LFMALL,"one",100,"온라인점","CONFIRMED");
+        var listing=listing(ProcurementMall.LFMALL,"one",100,"온라인점","CONFIRMED");
         if(stockProblem)listing=new SupplierResult(listing.offer(),listing.match(),"OPTIONS_PARTIAL",listing.options(),null);
         refresh.finish("repair-test",w,new RefreshResult("PARTIAL",100L,"LF몰",0L,List.of(listing),time.now(),"검색 일부 조회"));
         refresh.claim("repair-test");return w;
     }
     @Test void statusRepairPreservesHistorySelectionAndTimestampsAndIsIdempotent(){
-        var p=create("DCWA279BK");var w=legacyLimitedResult(p,false);choose(p,byMall(p,Mall.LFMALL));
+        var p=create("DCWA279BK");var w=legacyLimitedResult(p,false);choose(p,byMall(p,ProcurementMall.LFMALL));
         var before=current(p);var history=jdbc.queryForList("SELECT * FROM product_lookup_history WHERE product_id=?",p.id());
         var entry=jdbc.queryForMap("SELECT * FROM product_refresh_entry WHERE product_id=?",p.id());
         var good=jdbc.queryForObject("SELECT last_good_result FROM catalog_product WHERE id=?",String.class,p.id());
@@ -280,14 +280,14 @@ class ProductFlowIT {
     }
     void verifySearchRepairSelectedUnknown(boolean healthyOther){
         var p=create("ABCD6F123BK");
-        finish(p,List.of(listing(Mall.LFMALL,"selected",100,"온라인점","CONFIRMED")));
-        choose(p,byMall(p,Mall.LFMALL));
-        var selected=byMall(p,Mall.LFMALL).result();
-        preferred.deleteMall(actor,Mall.LFMALL,preferred.get(actor).revision());
+        finish(p,List.of(listing(ProcurementMall.LFMALL,"selected",100,"온라인점","CONFIRMED")));
+        choose(p,byMall(p,ProcurementMall.LFMALL));
+        var selected=byMall(p,ProcurementMall.LFMALL).result();
+        preferred.deleteMall(actor,ProcurementMall.LFMALL,preferred.get(actor).revision());
         start(current(p));var work=refresh.claim("repair-selection");
         var unknown=new SupplierResult(selected.offer(),selected.match(),"CONFIRMED",List.of(new SourceOption("FREE","FREE",null,"STOCK_UNKNOWN")),null,null,null,null,selected.branch());
         var observations=new ArrayList<SupplierResult>();observations.add(unknown);
-        if(healthyOther)observations.add(listing(Mall.HAZZYS,"healthy",120,"온라인점","CONFIRMED"));
+        if(healthyOther)observations.add(listing(ProcurementMall.HAZZYS,"healthy",120,"온라인점","CONFIRMED"));
         var offers=observations.stream().map(SupplierResult::offer).toList();
         refresh.cache(work,new SearchResult(offers,true,null,"COMPLETED",offers.stream().map(SupplierStorePolicy::listingKey).toList()));
         var result=SearchCompletion.summarize(observations,"COMPLETED",time.now(),work.preferences(),work.manualStores(),false,List.of(),work.selectionBasis());
@@ -311,29 +311,29 @@ class ProductFlowIT {
         assertThat(statusRepair.preview()).noneMatch(c->c.productId()==Long.parseLong(p.id()));
     }
     @Autowired RecommendationLookupService recommendationJournal;
-    RecommendationDiagnostic recommendationDiagnostic(SupplierRefreshService.Work w,Mall mall,String id,String kind){return new RecommendationDiagnostic(Long.toString(w.runId()),Long.toString(w.productId()),mall+":"+id+":nv",mall,id,150190L,"https://www.lotteimall.com/goods/viewGoodsDetail.lotte?goods_no="+id,kind,"HTTP_RESTRICTED",403,time.now());}
+    RecommendationDiagnostic recommendationDiagnostic(SupplierRefreshService.Work w,ProcurementMall mall,String id,String kind){return new RecommendationDiagnostic(Long.toString(w.runId()),Long.toString(w.productId()),mall+":"+id+":nv",mall,id,150190L,"https://www.lotteimall.com/goods/viewGoodsDetail.lotte?goods_no="+id,kind,"HTTP_RESTRICTED",403,time.now());}
     @Test void recommendationJournalSurvivesLeaseRecoveryAndRejectsStaleWorkers()throws Exception{
-        var p=create("DBBA468BK");start(p);var work=refresh.claim("first");var d=recommendationDiagnostic(work,Mall.LOTTE_IMALL,"42","FAILED");
+        var p=create("DBBA468BK");start(p);var work=refresh.claim("first");var d=recommendationDiagnostic(work,ProcurementMall.LOTTE_IMALL,"42","FAILED");
         var pool=Executors.newFixedThreadPool(2);try{var a=pool.submit(()->recommendationJournal.record("first",work,d,true));var b=pool.submit(()->recommendationJournal.record("first",work,d,true));a.get();b.get();}finally{pool.shutdownNow();}
         assertThat(recommendationJournal.list(work.runId(),work.productId())).hasSize(1);
-        assertThat(recommendationJournal.restrictions(work.runId())).containsKey(Mall.LOTTE_IMALL);
+        assertThat(recommendationJournal.restrictions(work.runId())).containsKey(ProcurementMall.LOTTE_IMALL);
         time.value=time.value.plusMinutes(11);var recovered=refresh.claim("second");assertThat(recovered.runId()).isEqualTo(work.runId());
-        assertThatThrownBy(()->recommendationJournal.record("first",work,recommendationDiagnostic(work,Mall.LOTTE_IMALL,"43","FAILED"),true)).isInstanceOf(IllegalStateException.class);
-        recommendationJournal.record("second",recovered,recommendationDiagnostic(recovered,Mall.LOTTE_IMALL,"43","SKIPPED"),false);
+        assertThatThrownBy(()->recommendationJournal.record("first",work,recommendationDiagnostic(work,ProcurementMall.LOTTE_IMALL,"43","FAILED"),true)).isInstanceOf(IllegalStateException.class);
+        recommendationJournal.record("second",recovered,recommendationDiagnostic(recovered,ProcurementMall.LOTTE_IMALL,"43","SKIPPED"),false);
         var item=refresh.items(actor,work.runId(),0).items().getFirst();assertThat(item.get("recommendationFailed")).isEqualTo(1L);assertThat(item.get("recommendationSkipped")).isEqualTo(1L);
         refresh.control(actor,work.runId(),"cancel");assertThatThrownBy(()->recommendationJournal.record("second",recovered,d,true)).isInstanceOf(IllegalStateException.class);
         assertThat(recommendationJournal.list(work.runId(),work.productId())).hasSize(2);
         long next=Long.parseLong(start(p));assertThat(recommendationJournal.restrictions(next)).isEmpty();
     }
     @Test void recommendationFailurePersistsNormalResultsAndIsReadableThroughAuthorizedApi()throws Exception{
-        var p=create("DBBA468BK");finish(p,List.of(listing(Mall.HI_THEHYUNDAI,"selected",166880,"목동점","CONFIRMED")));choose(p,byMall(p,Mall.HI_THEHYUNDAI));
+        var p=create("DBBA468BK");finish(p,List.of(listing(ProcurementMall.HI_THEHYUNDAI,"selected",166880,"목동점","CONFIRMED")));choose(p,byMall(p,ProcurementMall.HI_THEHYUNDAI));
         jdbc.update("DELETE FROM supplier_preference WHERE mall='LOTTE_IMALL'");start(p);var work=refresh.claim("w");
-        var previousOffer=byMall(p,Mall.HI_THEHYUNDAI).result().offer();
-        var selected=new Offer(previousOffer.naverProductId(),previousOffer.title(),"더현대Hi",previousOffer.mallProductId(),"https://hi.thehyundai.com/product/"+previousOffer.mallProductId(),166880L,0L,Mall.HI_THEHYUNDAI,null);
-        var candidate=new Offer("candidate","가방","롯데홈쇼핑","42","https://www.lotteimall.com/goods/viewGoodsDetail.lotte?goods_no=42",150190L,0L,Mall.LOTTE_IMALL,null);
+        var previousOffer=byMall(p,ProcurementMall.HI_THEHYUNDAI).result().offer();
+        var selected=new Offer(previousOffer.naverProductId(),previousOffer.title(),"더현대Hi",previousOffer.mallProductId(),"https://hi.thehyundai.com/product/"+previousOffer.mallProductId(),166880L,0L,ProcurementMall.HI_THEHYUNDAI,null);
+        var candidate=new Offer("candidate","가방","롯데홈쇼핑","42","https://www.lotteimall.com/goods/viewGoodsDetail.lotte?goods_no=42",150190L,0L,ProcurementMall.LOTTE_IMALL,null);
         var calls=new ArrayList<String>();var gateway=new cc.ataglace.molebutter.infra.product.SupplierProductGateway(){
-            public String validateUrl(Mall mall,String url){return url;}public List<SourceOption> options(Mall mall,String id,String url){return inspect(mall,id,url).options();}
-            public SourceDetails inspect(Mall mall,String id,String url){calls.add(id);if(mall==Mall.LOTTE_IMALL)throw new cc.ataglace.molebutter.infra.product.SupplierAccessRestricted(mall,"HTTP_RESTRICTED",403);return new SourceDetails("商品","","",List.of(new SourceOption("FREE","FREE",50L,"AVAILABLE")),"목동점");}
+            public String validateUrl(ProcurementMall mall,String url){return url;}public List<SourceOption> options(ProcurementMall mall,String id,String url){return inspect(mall,id,url).options();}
+            public SourceDetails inspect(ProcurementMall mall,String id,String url){calls.add(id);if(mall==ProcurementMall.LOTTE_IMALL)throw new cc.ataglace.molebutter.infra.product.SupplierAccessRestricted(mall,"HTTP_RESTRICTED",403);return new SourceDetails("商品","","",List.of(new SourceOption("FREE","FREE",50L,"AVAILABLE")),"목동점");}
         };
         var lookup=new SupplierLookupService(gateway,time,recommendationJournal);var result=lookup.lookup(work,new SearchResult(List.of(selected,candidate),true,null),()->refresh.heartbeat("w",work),"w");
         // Recover after a process/lease loss before the product result was committed.
@@ -347,19 +347,19 @@ class ProductFlowIT {
         status(new Browser().get("/api/product-refresh/"+work.runId()),401);status(login(account(UserRole.VIEWER)).get("/api/product-refresh/"+work.runId()),403);
         var response=login(account(UserRole.PRODUCT)).get("/api/product-refresh/"+work.runId());status(response,200);assertThat(response.body()).contains("recommendationDiagnostics","HTTP_RESTRICTED","150190");
         // A new lookup instance represents restart; the persisted restriction prevents another request.
-        var recorded=recommendationJournal.restrictions(work.runId());assertThat(recorded).containsKey(Mall.LOTTE_IMALL);
+        var recorded=recommendationJournal.restrictions(work.runId());assertThat(recorded).containsKey(ProcurementMall.LOTTE_IMALL);
     }
     @Test void recommendationRestrictionPreventsManualStockBypass(){
         var p=stockProduct();var job=enqueueStock(p);long run=jdbc.queryForObject("SELECT run_id FROM supplier_stock_lookup WHERE id=?",Long.class,job.id());
         // Install the same persisted restriction another product in this run can record after enqueue.
-        var d=new RecommendationDiagnostic(Long.toString(run),p.id(),"blocked",Mall.NAVER_SMART_STORE,"blocked",100L,"https://shopping.naver.com/","FAILED","HTTP_RESTRICTED",429,time.now());
-        jdbc.update("INSERT INTO recommendation_lookup_diagnostic(id,run_id,product_id,listing_key,mall,kind,cause_code,http_status,restricted,created_at,payload) VALUES(?,?,?,?,?,'FAILED','HTTP_RESTRICTED',429,TRUE,?,?)",ProductStore.id(),run,p.id(),"blocked",Mall.NAVER_SMART_STORE.name(),time.now(),json.writeValueAsString(d));
+        var d=new RecommendationDiagnostic(Long.toString(run),p.id(),"blocked",ProcurementMall.NAVER_SMART_STORE,"blocked",100L,"https://shopping.naver.com/","FAILED","HTTP_RESTRICTED",429,time.now());
+        jdbc.update("INSERT INTO recommendation_lookup_diagnostic(id,run_id,product_id,listing_key,mall,kind,cause_code,http_status,restricted,created_at,payload) VALUES(?,?,?,?,?,'FAILED','HTTP_RESTRICTED',429,TRUE,?,?)",ProductStore.id(),run,p.id(),"blocked",ProcurementMall.NAVER_SMART_STORE.name(),time.now(),json.writeValueAsString(d));
         assertThat(stockQueue.claim("manual")).isNull();assertThat(stockJob(job).status()).isEqualTo("CANCELLED");
         assertThatThrownBy(()->enqueueStock(p)).hasMessageContaining("접속 제한");assertThat(jdbc.queryForObject("SELECT stock_lookup_blocked_job FROM product_settings WHERE id=1",Long.class)).isNull();
     }
     @Autowired SupplierStockLookupService stockQueue;
     SupplierResult stockListing(String id,long quantity,boolean skipped,long run){
-        var offer=new Offer("nv"+id,"가방","헤지스ACC",id,"https://shopping.naver.com/outlink/itemdetail/"+id,217720L,0L,Mall.NAVER_SMART_STORE,null,new NaverChannel(NaverChannelType.WINDOW,"DEPARTMENT"),new SearchStoreEvidence("1000008804","1000008804","헤지스ACC","현대백화점 목동점","1","백화점"));
+        var offer=new Offer("nv"+id,"가방","헤지스ACC",id,"https://shopping.naver.com/outlink/itemdetail/"+id,217720L,0L,ProcurementMall.NAVER_SMART_STORE,null,new NaverChannel(NaverChannelType.WINDOW,"DEPARTMENT"),new SearchStoreEvidence("1000008804","1000008804","헤지스ACC","현대백화점 목동점","1","백화점"));
         var evidence=new StoreEvidence("BRANCH","현대백화점","목동점","NAVER_DEPARTMENT","10001/10001004",Map.of("channelId","1000008804"));
         return new SupplierResult(offer,new CodeMatch("SEARCH_RESULT",null,null,null,null,null),skipped?"SKIPPED_SAME_STORE":"CONFIRMED",skipped?List.of():List.of(new SourceOption("FREE","FREE",quantity,"AVAILABLE")),null,null,null,null,new BranchInfo("목동점","CONFIRMED",skipped?"SAME_CHANNEL":"API",null,evidence),new StockEvidence(run,skipped?"NAVER_SMART_STORE:13656623827:nv13656623827":null,"1000008804",skipped?null:time.now(),!skipped));
     }
@@ -431,7 +431,7 @@ class ProductFlowIT {
     CatalogProduct current(CatalogProduct p){return products.product(Long.parseLong(p.id()));}
     VersionedId version(CatalogProduct p){p=current(p);return new VersionedId(p.id(),p.revision());}
     String start(CatalogProduct p){return refresh.start(actor,new RefreshInput("SELECTED",List.of(p.id())));}
-    RefreshResult result(){return new RefreshResult("SUCCESS",10000L,"헤지스",0L,List.of(new SupplierResult(new Offer("nv","헤지스 ABCD6E123BK","헤지스","ABCD6E123BK","https://www.hazzys.com/product.do?PROD_CD=ABCD6E123BK",10000L,0L,Mall.HAZZYS,null),new CodeMatch("MATCHED","ABCD6E123BK","ABCD123","6E","BK","시즌 차이"),"CONFIRMED",List.of(new SourceOption("FREE","블랙 / FREE",2L,"AVAILABLE")),null)),time.now(),null);}
+    RefreshResult result(){return new RefreshResult("SUCCESS",10000L,"헤지스",0L,List.of(new SupplierResult(new Offer("nv","헤지스 ABCD6E123BK","헤지스","ABCD6E123BK","https://www.hazzys.com/product.do?PROD_CD=ABCD6E123BK",10000L,0L,ProcurementMall.HAZZYS,null),new CodeMatch("MATCHED","ABCD6E123BK","ABCD123","6E","BK","시즌 차이"),"CONFIRMED",List.of(new SourceOption("FREE","블랙 / FREE",2L,"AVAILABLE")),null)),time.now(),null);}
     void finish(CatalogProduct p){start(p);var w=refresh.claim("worker");assertThat(w).isNotNull();refresh.finish("worker",w,result());assertThat(refresh.claim("worker")).isNull();}
     RefreshRunPage history(String from,String to,String status,boolean failed,int page,Long run){return refresh.runs(actor,new RefreshRunQuery(from,to,status,failed,page,20,run));}
     Map<String,Object> latestRun(){return history("","","",false,0,null).items().getFirst();}
@@ -507,7 +507,7 @@ class ProductFlowIT {
         time.value=time.value.plusMinutes(5);assertThat(refresh.claim("new-worker").runId()).isEqualTo(next);
     }
     @Test void successfulSearchResetsRecoveryBeforeInventoryAndPreservesReviewValuesDuringWait(){
-        var p=create("RECOVERY2");deltaFinish(p,deltaListing(156450,100L));choose(p,byMall(p,Mall.LFMALL));
+        var p=create("RECOVERY2");deltaFinish(p,deltaListing(156450,100L));choose(p,byMall(p,ProcurementMall.LFMALL));
         var before=current(p).selectedSupplier();var summary=changeService.summary(Long.parseLong(p.id()));
         long count=jdbc.queryForObject("SELECT COUNT(*) FROM product_value_observation",Long.class);
         start(current(p));var w=refresh.claim("worker");long a=refresh.searchStarted("worker",w);refresh.searchFailed("worker",w,a,noResponse());
@@ -665,7 +665,7 @@ class ProductFlowIT {
         products.inferBrands(actor,new BrandInferenceInput(List.of(version(old))));assertThat(current(old).searchQuery()).isEqualTo("내 검색어");
     }
     @Test void queryEditPreservesSelectionAndPreventsOldWorkOverwritingNewCriteria(){
-        var p=create("ABCD6F123BK");finish(p);choose(p,byMall(p,Mall.HAZZYS));var selected=current(p).selectedSupplier();
+        var p=create("ABCD6F123BK");finish(p);choose(p,byMall(p,ProcurementMall.HAZZYS));var selected=current(p).selectedSupplier();
         start(current(p));var work=refresh.claim("query-worker");var before=current(p);
         products.edit(actor,Long.parseLong(p.id()),new CatalogEdit(before.revision(),null,p.productCode(),"변경된 검색어",brand,null,null));
         refresh.finish("query-worker",work,result());
@@ -674,7 +674,7 @@ class ProductFlowIT {
         assertThat(compare(p).recommendations()).isEmpty();assertThat(current(p).searchQuery()).isEqualTo("변경된 검색어");
     }
     @Test void missingOrNullLookupPolicyCannotResumeButHistoryRemainsReadable(){
-        var p=create("ABCD6F123BK");finish(p);choose(p,byMall(p,Mall.HAZZYS));
+        var p=create("ABCD6F123BK");finish(p);choose(p,byMall(p,ProcurementMall.HAZZYS));
         for(String legacy:List.of("NULL","JSON_REMOVE(selection_snapshot,'$.naverPolicy')","JSON_SET(selection_snapshot,'$.naverPolicy',CAST('null' AS JSON))","JSON_REMOVE(selection_snapshot,'$.lookupPolicy')","JSON_SET(selection_snapshot,'$.lookupPolicy',CAST('null' AS JSON))")){
             long run=Long.parseLong(start(current(p)));
             assertThat(jdbc.queryForObject("SELECT JSON_UNQUOTE(JSON_EXTRACT(selection_snapshot,'$.lookupPolicy')) FROM product_refresh_entry WHERE run_id=?",String.class,run)).isEqualTo("SEARCH_QUERY");
@@ -689,14 +689,14 @@ class ProductFlowIT {
     SupplierResult searchResult(SupplierResult raw){return new SupplierResult(raw.offer(),new CodeMatch("SEARCH_RESULT",null,null,null,null,null),raw.state(),raw.options(),raw.message(),null,null,"다른 브랜드",raw.branch());}
     @Test void searchResultsWithoutCodesCanBeSelectedRecommendedAndRefreshed(){
         var p=create("ABCD6F123BK");
-        finish(p,List.of(searchResult(listing(Mall.LFMALL,"chosen",10000,"","CONFIRMED"))));
-        var original=byMall(p,Mall.LFMALL);assertThat(original.selectable()).isTrue();choose(p,original);
-        preferred.deleteMall(actor,Mall.HI_THEHYUNDAI,preferred.get(actor).revision());
-        finish(p,List.of(searchResult(listing(Mall.LFMALL,"chosen",10000,"","CONFIRMED")),searchResult(listing(Mall.HI_THEHYUNDAI,"cheaper",9000,"목동점","CONFIRMED")),searchResult(listing(Mall.HI_THEHYUNDAI,"near",9001,"목동점","CONFIRMED"))));
+        finish(p,List.of(searchResult(listing(ProcurementMall.LFMALL,"chosen",10000,"","CONFIRMED"))));
+        var original=byMall(p,ProcurementMall.LFMALL);assertThat(original.selectable()).isTrue();choose(p,original);
+        preferred.deleteMall(actor,ProcurementMall.HI_THEHYUNDAI,preferred.get(actor).revision());
+        finish(p,List.of(searchResult(listing(ProcurementMall.LFMALL,"chosen",10000,"","CONFIRMED")),searchResult(listing(ProcurementMall.HI_THEHYUNDAI,"cheaper",9000,"목동점","CONFIRMED")),searchResult(listing(ProcurementMall.HI_THEHYUNDAI,"near",9001,"목동점","CONFIRMED"))));
         var suggestions=compare(p).recommendations().stream().flatMap(g->g.listings().stream()).toList();assertThat(suggestions).hasSize(1);assertThat(suggestions.getFirst().recommendationSaving()).isEqualTo(1000);
         assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(10000);assertThat(current(p).selectedSupplier().inventoryState()).isEqualTo("AVAILABLE");
-        choose(p,suggestions.getFirst());assertThat(compare(p).recommendations()).isEmpty();assertThat(preferred.get(actor).mallAllowed(Mall.HI_THEHYUNDAI)).isFalse();
-        finish(p,List.of(searchResult(listing(Mall.HI_THEHYUNDAI,"cheaper",8500,"목동점","CONFIRMED"))));assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(8500);
+        choose(p,suggestions.getFirst());assertThat(compare(p).recommendations()).isEmpty();assertThat(preferred.get(actor).mallAllowed(ProcurementMall.HI_THEHYUNDAI)).isFalse();
+        finish(p,List.of(searchResult(listing(ProcurementMall.HI_THEHYUNDAI,"cheaper",8500,"목동점","CONFIRMED"))));assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(8500);
     }
     @Test void preRecommendationJsonRemainsReadableWithoutRewritingHistory()throws Exception {
         var p=create("ABCD6F123BK");finish(p);
@@ -720,8 +720,8 @@ class ProductFlowIT {
         assertThat(jdbc.queryForObject("SELECT payload FROM product_lookup_history WHERE product_id=?",String.class,p.id())).isEqualTo(historyBefore);
     }
     @Test void legacySmartstoreSelectionIsPreservedButCannotBeSelectedOrManuallyBypassed()throws Exception {
-        var p=create("WINDOW42");finish(p,List.of(identified(Mall.NAVER_SMART_STORE,"42","롯데백화점","본점","NAVER_DEPARTMENT","10002/1")));
-        var old=byMall(p,Mall.NAVER_SMART_STORE);choose(p,old);
+        var p=create("WINDOW42");finish(p,List.of(identified(ProcurementMall.NAVER_SMART_STORE,"42","롯데백화점","본점","NAVER_DEPARTMENT","10002/1")));
+        var old=byMall(p,ProcurementMall.NAVER_SMART_STORE);choose(p,old);
         long history=jdbc.queryForObject("SELECT COUNT(*) FROM product_supplier_change",Long.class);
         String raw=jdbc.queryForObject("SELECT observation FROM product_supplier WHERE id=?",String.class,old.id());
         var stored=(tools.jackson.databind.node.ObjectNode)json.readTree(raw);
@@ -735,8 +735,8 @@ class ProductFlowIT {
         // A new run must ignore the selected ordinary store and defer recommendations.
         start(p);var w=refresh.claim("channel");var calls=new java.util.concurrent.atomic.AtomicInteger();
         var gateway=new cc.ataglace.molebutter.infra.product.SupplierProductGateway(){
-            public String validateUrl(Mall m,String url){return url;}
-            public List<SourceOption> options(Mall m,String id,String url){calls.incrementAndGet();throw new AssertionError();}
+            public String validateUrl(ProcurementMall m,String url){return url;}
+            public List<SourceOption> options(ProcurementMall m,String id,String url){calls.incrementAndGet();throw new AssertionError();}
         };
         var result=new SupplierLookupService(gateway,time).lookup(w,new SearchResult(List.of(json.treeToValue(offer,Offer.class)),true,null),()->true);
         refresh.finish("channel",w,result);refresh.claim("channel");
@@ -746,16 +746,16 @@ class ProductFlowIT {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_supplier_change",Long.class)).isEqualTo(history);
         assertThat(json.readTree(jdbc.queryForObject("SELECT observation FROM product_supplier WHERE id=?",String.class,old.id()))).isEqualTo(stored);
         assertThatThrownBy(()->officialStores.preview(actor,"https://smartstore.naver.com/lotte/products/42")).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(()->preferred.saveStore(actor,null,new StoreInput(null,Mall.NAVER_SMART_STORE,"SELLER","임의 판매자","smartstore.naver.com/lotte"))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->preferred.saveStore(actor,null,new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"SELLER","임의 판매자","smartstore.naver.com/lotte"))).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test void naverInventoryRefreshPersistsOptionsAndPreservesSelectionOnStockFailure()throws Exception {
         String id="12610379894",url="https://shopping.naver.com/window-products/brandfashion/"+id;
         try(var in=getClass().getResourceAsStream("/product/naver-inventory-"+id+".json")){brandGateway.payload=new String(in.readAllBytes());}
         var preview=officialStores.preview(actor,url);
-        var official=officialStores.register(actor,new StoreInput(null,Mall.NAVER_SMART_STORE,"BRAND_STORE","헤지스",null,null,url,preview.channelUid(),preview.preferenceRevision()));
-        preferred.saveMall(actor,Mall.NAVER_SMART_STORE,new MallPreferenceInput(preferred.get(actor).revision(),"STORES",List.of(official.id()),List.of(),true));
-        var p=create("HIWA6E450BK");var offer=new Offer("NV","HIWA6E450BK","헤지스",id,url,94000L,0L,Mall.NAVER_SMART_STORE,null,new NaverChannel(NaverChannelType.WINDOW,"BRAND_FASHION"));
+        var official=officialStores.register(actor,new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","헤지스",null,null,url,preview.channelUid(),preview.preferenceRevision()));
+        preferred.saveMall(actor,ProcurementMall.NAVER_SMART_STORE,new MallPreferenceInput(preferred.get(actor).revision(),"STORES",List.of(official.id()),List.of(),true));
+        var p=create("HIWA6E450BK");var offer=new Offer("NV","HIWA6E450BK","헤지스",id,url,94000L,0L,ProcurementMall.NAVER_SMART_STORE,null,new NaverChannel(NaverChannelType.WINDOW,"BRAND_FASHION"));
         var search=new SearchResult(List.of(offer),true,null);var lookup=new SupplierLookupService(brandGateway,time);
         start(p);var w=refresh.claim("naver-test");var result=lookup.lookup(w,search,()->true);
         refresh.finish("naver-test",w,result);refresh.claim("naver-test");
@@ -772,25 +772,25 @@ class ProductFlowIT {
         try(var in=getClass().getResourceAsStream("/product/naver-brand-store.json")){brandGateway.payload=new String(in.readAllBytes());}
         var preview=officialStores.preview(actor,url);
         assertThat(preferred.get(actor).stores()).isEmpty(); // 확인/취소는 저장하지 않는다.
-        var p=create("WCBA5F052BK");var d=brandGateway.inspect(Mall.NAVER_SMART_STORE,preview.productId(),url);
-        var offer=new Offer("NV1","WCBA5E052BK","닥스 DAKS",preview.productId(),url,94000L,0L,Mall.NAVER_SMART_STORE,null,new NaverChannel(NaverChannelType.WINDOW,"BRAND_FASHION"));
+        var p=create("WCBA5F052BK");var d=brandGateway.inspect(ProcurementMall.NAVER_SMART_STORE,preview.productId(),url);
+        var offer=new Offer("NV1","WCBA5E052BK","닥스 DAKS",preview.productId(),url,94000L,0L,ProcurementMall.NAVER_SMART_STORE,null,new NaverChannel(NaverChannelType.WINDOW,"BRAND_FASHION"));
         var observation=new SupplierResult(offer,new CodeMatch("MATCHED","WCBA5E052BK","WCBA052","5E","BK","시즌 차이"),"DEFERRED",List.of(),null,d.title(),d.modelCode(),d.brand(),SupplierBranch.resolve(offer,d));
         finish(p,List.of(observation));var old=compare(p).groups().getFirst().listings().getFirst();choose(p,old);
         String originalStore=old.store().id(),originalListing=old.id();
         var before=preferred.get(actor);
-        var input=new StoreInput(null,Mall.NAVER_SMART_STORE,"BRAND_STORE","닥스 공식몰",null,null,url,preview.channelUid(),before.revision());
+        var input=new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","닥스 공식몰",null,null,url,preview.channelUid(),before.revision());
         var official=officialStores.register(actor,input);
         assertThat(official.id()).isEqualTo(originalStore);assertThat(official.kind()).isEqualTo("BRAND_STORE");
         assertThat(current(p).selectedSupplier().id()).isEqualTo(originalListing);
         assertThat(preferred.get(actor).rules()).isEqualTo(before.rules());
         assertThat(compare(p).groups().getFirst().listings().getFirst().selectable()).isTrue();
         assertThatThrownBy(()->officialStores.register(actor,input)).isInstanceOf(IllegalStateException.class);
-        var again=officialStores.register(actor,new StoreInput(null,Mall.NAVER_SMART_STORE,"BRAND_STORE","다른 표시명",null,null,url,preview.channelUid(),preferred.get(actor).revision()));
+        var again=officialStores.register(actor,new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","다른 표시명",null,null,url,preview.channelUid(),preferred.get(actor).revision()));
         assertThat(again.id()).isEqualTo(originalStore);assertThat(again.name()).isEqualTo("닥스 공식몰");
-        var branch=preferred.saveStore(actor,null,new StoreInput(null,Mall.NAVER_SMART_STORE,"BRANCH","천호점",null,"현대백화점"));
-        preferred.saveMall(actor,Mall.NAVER_SMART_STORE,new MallPreferenceInput(preferred.get(actor).revision(),"STORES",List.of(official.id(),branch.id()),List.of(),true));
-        assertThat(preferred.get(actor).groups().stream().filter(g->g.mall()==Mall.NAVER_SMART_STORE).findFirst().orElseThrow().storeIds()).containsExactlyInAnyOrder(official.id(),branch.id());
-        preferred.saveStore(actor,Long.valueOf(official.id()),new StoreInput(official.revision(),Mall.NAVER_SMART_STORE,"BRAND_STORE","닥스 이름 변경",null));
+        var branch=preferred.saveStore(actor,null,new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"BRANCH","천호점",null,"현대백화점"));
+        preferred.saveMall(actor,ProcurementMall.NAVER_SMART_STORE,new MallPreferenceInput(preferred.get(actor).revision(),"STORES",List.of(official.id(),branch.id()),List.of(),true));
+        assertThat(preferred.get(actor).groups().stream().filter(g->g.mall()==ProcurementMall.NAVER_SMART_STORE).findFirst().orElseThrow().storeIds()).containsExactlyInAnyOrder(official.id(),branch.id());
+        preferred.saveStore(actor,Long.valueOf(official.id()),new StoreInput(official.revision(),ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","닥스 이름 변경",null));
         finish(p,List.of(observation));assertThat(current(p).selectedSupplier().store().id()).isEqualTo(originalStore);
         var staffUser=account(UserRole.PRODUCT);var forAssignment=compare(p).selected();supplierService.assign(staffUser.getId(),Long.valueOf(p.id()),Long.valueOf(originalListing),new AssignmentInput(forAssignment.revision(),official.id()));
         assertThat(compare(p).selected().manual()).isTrue();
@@ -800,17 +800,17 @@ class ProductFlowIT {
         finish(p,List.of(other));var changed=compare(p).selected();
         assertThat(changed.selectable()).isFalse();assertThat(changed.id()).isEqualTo(originalListing);
         assertThatThrownBy(()->supplierService.assign(actor,Long.valueOf(p.id()),Long.valueOf(originalListing),new AssignmentInput(changed.revision(),official.id()))).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(()->preferred.saveStore(actor,null,new StoreInput(null,Mall.NAVER_SMART_STORE,"BRAND_STORE","우회 등록",null))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->preferred.saveStore(actor,null,new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","우회 등록",null))).isInstanceOf(IllegalArgumentException.class);
         long rev=preferred.get(actor).revision();int size=preferred.get(actor).stores().size();
         brandGateway.payload=brandGateway.payload.replace("2sWE1WHVrXUFoJpa77gZb","new-channel");
-        assertThatThrownBy(()->officialStores.register(actor,new StoreInput(null,Mall.NAVER_SMART_STORE,"BRAND_STORE","위조",null,null,url,preview.channelUid(),rev))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->officialStores.register(actor,new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","위조",null,null,url,preview.channelUid(),rev))).isInstanceOf(IllegalArgumentException.class);
         assertThat(preferred.get(actor).revision()).isEqualTo(rev);assertThat(preferred.get(actor).stores()).hasSize(size);
     }
     @Test void officialRegistrationRollsBackAndConcurrentRegistrationCreatesOnlyOneStore()throws Exception {
         String url="https://brand.naver.com/daks/products/13197489089";
         try(var in=getClass().getResourceAsStream("/product/naver-brand-store.json")){brandGateway.payload=new String(in.readAllBytes());}
         var preview=officialStores.preview(actor,url);
-        var input=new StoreInput(null,Mall.NAVER_SMART_STORE,"BRAND_STORE","닥스 DAKS",null,null,url,preview.channelUid(),preview.preferenceRevision());
+        var input=new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","닥스 DAKS",null,null,url,preview.channelUid(),preview.preferenceRevision());
         var tx=new org.springframework.transaction.support.TransactionTemplate(transactions);
         assertThatThrownBy(()->tx.execute(status->{preferred.registerBrandStore(actor,input,preview);throw new IllegalStateException("rollback");})).isInstanceOf(IllegalStateException.class);
         assertThat(preferred.get(actor).stores()).isEmpty();assertThat(preferred.get(actor).revision()).isEqualTo(preview.preferenceRevision());
@@ -832,7 +832,7 @@ class ProductFlowIT {
         status(staff.send("POST","/api/settings/supplier-stores/channel-preview",new ChannelRequest(url),staff.csrf),403);
         admin.csrf();var response=admin.send("POST","/api/settings/supplier-stores/channel-preview",new ChannelRequest(url),admin.csrf);status(response,200);
         var preview=json.readTree(response.body()).path("data");assertThat(preferred.get(actor).stores()).isEmpty();
-        var input=new StoreInput(null,Mall.NAVER_SMART_STORE,"BRAND_STORE","닥스 DAKS",null,null,url,preview.path("channelUid").asText(),preview.path("preferenceRevision").asLong());
+        var input=new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","닥스 DAKS",null,null,url,preview.path("channelUid").asText(),preview.path("preferenceRevision").asLong());
         status(staff.send("POST","/api/settings/supplier-stores",input,staff.csrf),403);
         status(admin.send("POST","/api/settings/supplier-stores",input,null),403);
         admin.csrf();status(admin.send("POST","/api/settings/supplier-stores",input,admin.csrf),200);
@@ -843,17 +843,17 @@ class ProductFlowIT {
         assertThat(preferred.get(actor).stores()).hasSize(1);
     }
     @Test void lotteCompanyPreferenceIsAtomicReusedAndRestricted()throws Exception {
-        var draft=new StoreInput(null,Mall.LOTTE_ON,"COMPANY","주식회사 LF",null,null);
+        var draft=new StoreInput(null,ProcurementMall.LOTTE_ON,"COMPANY","주식회사 LF",null,null);
         long revision=preferred.get(actor).revision();
-        assertThatThrownBy(()->preferred.saveMall(actor,Mall.LOTTE_ON,new MallPreferenceInput(revision,"STORES",List.of(),List.of(draft,new StoreInput(null,Mall.LOTTE_ON,"COMPANY","다른 업체",null,null)),true))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->preferred.saveMall(actor,ProcurementMall.LOTTE_ON,new MallPreferenceInput(revision,"STORES",List.of(),List.of(draft,new StoreInput(null,ProcurementMall.LOTTE_ON,"COMPANY","다른 업체",null,null)),true))).isInstanceOf(IllegalArgumentException.class);
         assertThat(preferred.get(actor).revision()).isEqualTo(revision);assertThat(preferred.get(actor).stores()).noneMatch(st->st.kind().equals("COMPANY"));
-        var saved=preferred.saveMall(actor,Mall.LOTTE_ON,new MallPreferenceInput(revision,"STORES",List.of(),List.of(draft,draft),true));
+        var saved=preferred.saveMall(actor,ProcurementMall.LOTTE_ON,new MallPreferenceInput(revision,"STORES",List.of(),List.of(draft,draft),true));
         var lf=saved.stores().stream().filter(st->st.kind().equals("COMPANY")).findFirst().orElseThrow();
-        assertThat(lf.identityKey()).isEqualTo("company:lf");assertThat(saved.groups().stream().filter(g->g.mall()==Mall.LOTTE_ON).findFirst().orElseThrow().storeIds()).containsExactly(lf.id());
-        assertThatThrownBy(()->preferred.saveMall(actor,Mall.LOTTE_ON,new MallPreferenceInput(revision,"ALL",List.of(),List.of(),true))).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(()->preferred.saveStore(actor,Long.valueOf(lf.id()),new StoreInput(lf.revision(),Mall.LOTTE_ON,"COMPANY","주식회사 LF",null,null))).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(()->preferred.saveStore(actor,null,new StoreInput(null,Mall.NAVER_SMART_STORE,"COMPANY","주식회사 LF",null,null))).isInstanceOf(IllegalArgumentException.class);
-        var next=preferred.saveMall(actor,Mall.LOTTE_ON,new MallPreferenceInput(saved.revision(),"STORES",List.of(),List.of(draft),true));assertThat(next.stores()).filteredOn(st->st.kind().equals("COMPANY")).hasSize(1);
+        assertThat(lf.identityKey()).isEqualTo("company:lf");assertThat(saved.groups().stream().filter(g->g.mall()==ProcurementMall.LOTTE_ON).findFirst().orElseThrow().storeIds()).containsExactly(lf.id());
+        assertThatThrownBy(()->preferred.saveMall(actor,ProcurementMall.LOTTE_ON,new MallPreferenceInput(revision,"ALL",List.of(),List.of(),true))).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(()->preferred.saveStore(actor,Long.valueOf(lf.id()),new StoreInput(lf.revision(),ProcurementMall.LOTTE_ON,"COMPANY","주식회사 LF",null,null))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->preferred.saveStore(actor,null,new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"COMPANY","주식회사 LF",null,null))).isInstanceOf(IllegalArgumentException.class);
+        var next=preferred.saveMall(actor,ProcurementMall.LOTTE_ON,new MallPreferenceInput(saved.revision(),"STORES",List.of(),List.of(draft),true));assertThat(next.stores()).filteredOn(st->st.kind().equals("COMPANY")).hasSize(1);
         var adminUser=users.findByEmail("admin@example.com").orElseThrow();
         var admin=login(adminUser);var staff=login(account(UserRole.PRODUCT));{
             var input=new MallPreferenceInput(next.revision(),"STORES",List.of(lf.id()),List.of(),true);
@@ -863,20 +863,20 @@ class ProductFlowIT {
         }
     }
     @Test void lotteCompanyGroupingSelectionAndContradictoryManualAssignment()throws Exception {
-        var draft=new StoreInput(null,Mall.LOTTE_ON,"COMPANY","주식회사 LF",null,null);
-        preferred.saveMall(actor,Mall.LOTTE_ON,new MallPreferenceInput(preferred.get(actor).revision(),"STORES",List.of(),List.of(draft),true));
+        var draft=new StoreInput(null,ProcurementMall.LOTTE_ON,"COMPANY","주식회사 LF",null,null);
+        preferred.saveMall(actor,ProcurementMall.LOTTE_ON,new MallPreferenceInput(preferred.get(actor).revision(),"STORES",List.of(),List.of(draft),true));
         var p=create("WCBA5F052BK");String raw;try(var in=getClass().getResourceAsStream("/product/lotte-lf.json")){raw=new String(in.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);}
-        var parser=new cc.ataglace.molebutter.infra.product.MallOptionParser(json);var d=parser.details(Mall.LOTTE_ON,raw,"LO2630710241_2630710242");
+        var parser=new cc.ataglace.molebutter.infra.product.MallOptionParser(json);var d=parser.details(ProcurementMall.LOTTE_ON,raw,"LO2630710241_2630710242");
         var observations=new ArrayList<SupplierResult>();
         for(int i=0;i<2;i++){
-            var offer=new Offer("NV"+i,"WCBA5E052BK",i==0?"롯데ON":"롯데백화점","LO2630710241_2630710242","https://www.lotteon.com/p/product/LO2630710241?sitmNo=LO2630710241_2630710242",134000L+i*6000,0L,Mall.LOTTE_ON,null);
+            var offer=new Offer("NV"+i,"WCBA5E052BK",i==0?"롯데ON":"롯데백화점","LO2630710241_2630710242","https://www.lotteon.com/p/product/LO2630710241?sitmNo=LO2630710241_2630710242",134000L+i*6000,0L,ProcurementMall.LOTTE_ON,null);
             observations.add(new SupplierResult(offer,new CodeMatch("MATCHED","WCBA5E052BK","WCBA052","5E","BK","시즌 차이"),"CONFIRMED",d.options(),null,d.title(),d.modelCode(),d.brand(),SupplierBranch.resolve(offer,d)));
         }
         finish(p,observations);var c=compare(p);assertThat(c.pending()).isEmpty();assertThat(c.groups()).hasSize(1);assertThat(c.groups().getFirst().listings()).hasSize(2);
         var chosen=c.groups().getFirst().listings().getLast();assertThat(chosen.selectable()).isTrue();
         supplierService.select(actor,Long.parseLong(p.id()),new SelectionInput(current(p).revision(),chosen.id()));
         finish(p,observations);assertThat(compare(p).selected().id()).isEqualTo(chosen.id());assertThat(compare(p).selected().referencePrice()).isEqualTo(140000L);
-        var changed=parser.details(Mall.LOTTE_ON,raw.replace("주식회사 LF","다른 회사").replace("LO10004813","OTHER"),"LO2630710241_2630710242");var o=observations.getFirst().offer();
+        var changed=parser.details(ProcurementMall.LOTTE_ON,raw.replace("주식회사 LF","다른 회사").replace("LO10004813","OTHER"),"LO2630710241_2630710242");var o=observations.getFirst().offer();
         finish(p,List.of(new SupplierResult(o,observations.getFirst().match(),"CONFIRMED",changed.options(),null,changed.title(),changed.modelCode(),changed.brand(),SupplierBranch.resolve(o,changed))));
         var other=storedListings(p).stream().filter(l->!l.preferred()).findFirst().orElseThrow();var company=preferred.get(actor).stores().stream().filter(st->st.kind().equals("COMPANY")).findFirst().orElseThrow();
         assertThatThrownBy(()->supplierService.assign(actor,Long.parseLong(p.id()),Long.parseLong(other.id()),new AssignmentInput(other.revision(),company.id()))).hasMessageContaining("LF로 지정");
@@ -937,26 +937,26 @@ class ProductFlowIT {
         jdbc.update("UPDATE `user` SET user_status='SUSPENDED',auth_version=auth_version+1 WHERE id=?",user.getId());status(staff.get("/api/products"),401);
     }
 
-    SupplierResult listing(Mall mall,String id,long price,String branch,String state){return new SupplierResult(new Offer("NV"+id,"헤지스 ABCD6E123BK",mall.getDisplayName(),id,"https://www.lfmall.co.kr/app/product/"+id,price,0L,mall,null,mall==Mall.NAVER_SMART_STORE?new NaverChannel(NaverChannelType.WINDOW,"DEPARTMENT"):null),new CodeMatch("MATCHED","ABCD6E123BK","ABCD123","6E","BK","시즌 차이"),state,state.equals("FAILED")?List.of():List.of(new SourceOption("ONE","FREE",state.equals("SOLD_OUT")?0L:2L,state.equals("SOLD_OUT")?"SOLD_OUT":"AVAILABLE")),null,null,null,null,new BranchInfo(branch,branch.isBlank()?"UNKNOWN":"CONFIRMED","SEARCH_TITLE",branch));}
+    SupplierResult listing(ProcurementMall mall,String id,long price,String branch,String state){return new SupplierResult(new Offer("NV"+id,"헤지스 ABCD6E123BK",mall.getDisplayName(),id,"https://www.lfmall.co.kr/app/product/"+id,price,0L,mall,null,mall==ProcurementMall.NAVER_SMART_STORE?new NaverChannel(NaverChannelType.WINDOW,"DEPARTMENT"):null),new CodeMatch("MATCHED","ABCD6E123BK","ABCD123","6E","BK","시즌 차이"),state,state.equals("FAILED")?List.of():List.of(new SourceOption("ONE","FREE",state.equals("SOLD_OUT")?0L:2L,state.equals("SOLD_OUT")?"SOLD_OUT":"AVAILABLE")),null,null,null,null,new BranchInfo(branch,branch.isBlank()?"UNKNOWN":"CONFIRMED","SEARCH_TITLE",branch));}
     void finish(CatalogProduct p,List<SupplierResult> results){start(p);var w=refresh.claim("w");refresh.finish("w",w,SupplierLookupService.summarize(results,true,time.now()));refresh.claim("w");}
     Comparison compare(CatalogProduct p){var c=supplierService.comparison(actor,Long.parseLong(p.id()));assertThat(c.pending()).isEmpty();assertThat(c.excluded()).isEmpty();return c;}
     // Hidden historical records remain inspectable in storage, not in the comparison API.
     List<Listing> storedListings(CatalogProduct p){return jdbc.queryForList("SELECT id FROM product_supplier WHERE product_id=? AND merged_into IS NULL ORDER BY id",Long.class,p.id()).stream().map(id->(Listing)org.springframework.test.util.ReflectionTestUtils.invokeMethod((Object)org.springframework.test.util.AopTestUtils.getUltimateTargetObject(supplierService),"listing",Long.parseLong(p.id()),id)).toList();}
     List<Listing> hiddenReview(CatalogProduct p){return storedListings(p).stream().filter(Listing::requiresReview).toList();}
-    Listing byMall(CatalogProduct p,Mall mall){var c=compare(p);return java.util.stream.Stream.concat(c.groups().stream().flatMap(g->g.listings().stream()),c.pending().stream()).filter(l->l.mall()==mall).findFirst().orElseThrow();}
+    Listing byMall(CatalogProduct p,ProcurementMall mall){var c=compare(p);return java.util.stream.Stream.concat(c.groups().stream().flatMap(g->g.listings().stream()),c.pending().stream()).filter(l->l.mall()==mall).findFirst().orElseThrow();}
     void choose(CatalogProduct p,Listing l){supplierService.select(actor,Long.parseLong(p.id()),new SelectionInput(current(p).revision(),l.id()));}
     @Test void recommendationsAreNonPreferredExactThresholdAndOneOffSelection()throws Exception {
-        preferred.deleteMall(actor,Mall.HI_THEHYUNDAI,preferred.get(actor).revision());
-        var p=create("ABCD6F123BK");var base=listing(Mall.LFMALL,"base",94000,"","CONFIRMED");
-        var cheap=listing(Mall.HI_THEHYUNDAI,"cheap",93000,"대구점","CONFIRMED");
-        var tooClose=listing(Mall.HI_THEHYUNDAI,"close",93001,"대구점","CONFIRMED");
-        var preferredCheap=listing(Mall.HAZZYS,"preferred",80000,"","CONFIRMED");
-        var unknown=listing(Mall.HI_THEHYUNDAI,"unknown",50000,"","CONFIRMED");
-        var sold=listing(Mall.HI_THEHYUNDAI,"sold",50000,"대구점","CONFIRMED");sold=new SupplierResult(sold.offer(),sold.match(),"CONFIRMED",List.of(new SourceOption("FREE","FREE",0L,"SOLD_OUT")),null,null,null,null,sold.branch());
-        var partial=new SupplierResult(listing(Mall.HI_THEHYUNDAI,"partial",92000,"대구점","CONFIRMED").offer(),sold.match(),"OPTIONS_PARTIAL",sold.options(),null,null,null,null,sold.branch());
+        preferred.deleteMall(actor,ProcurementMall.HI_THEHYUNDAI,preferred.get(actor).revision());
+        var p=create("ABCD6F123BK");var base=listing(ProcurementMall.LFMALL,"base",94000,"","CONFIRMED");
+        var cheap=listing(ProcurementMall.HI_THEHYUNDAI,"cheap",93000,"대구점","CONFIRMED");
+        var tooClose=listing(ProcurementMall.HI_THEHYUNDAI,"close",93001,"대구점","CONFIRMED");
+        var preferredCheap=listing(ProcurementMall.HAZZYS,"preferred",80000,"","CONFIRMED");
+        var unknown=listing(ProcurementMall.HI_THEHYUNDAI,"unknown",50000,"","CONFIRMED");
+        var sold=listing(ProcurementMall.HI_THEHYUNDAI,"sold",50000,"대구점","CONFIRMED");sold=new SupplierResult(sold.offer(),sold.match(),"CONFIRMED",List.of(new SourceOption("FREE","FREE",0L,"SOLD_OUT")),null,null,null,null,sold.branch());
+        var partial=new SupplierResult(listing(ProcurementMall.HI_THEHYUNDAI,"partial",92000,"대구점","CONFIRMED").offer(),sold.match(),"OPTIONS_PARTIAL",sold.options(),null,null,null,null,sold.branch());
         var rows=List.of(base,cheap,tooClose,preferredCheap,unknown,sold,partial);
         finish(p,rows);assertThat(compare(p).recommendationStatus().state()).isEqualTo("NO_SELECTION");assertThat(compare(p).recommendations()).isEmpty();
-        choose(p,byMall(p,Mall.LFMALL));finish(p,rows);
+        choose(p,byMall(p,ProcurementMall.LFMALL));finish(p,rows);
         var c=compare(p);var recs=c.recommendations().stream().flatMap(g->g.listings().stream()).toList();
         assertThat(recs).extracting(l->l.result().offer().mallProductId()).containsExactly("partial","cheap");assertThat(recs).allMatch(Listing::selectable);assertThat(recs.getLast().recommendationSaving()).isEqualTo(1000);
         assertThat(c.groups()).flatExtracting(Group::listings).noneMatch(l->!l.preferred());
@@ -968,26 +968,26 @@ class ProductFlowIT {
         finish(p,List.of(base,preferredCheap));assertThat(compare(p).recommendationStatus().state()).isEqualTo("PRICE_UNCONFIRMED");assertThat(compare(p).selected().referencePrice()).isEqualTo(93000);assertThat(compare(p).recommendations()).isEmpty();
     }
     @Test void snapshotPreservesChoiceAndPreferencesAcrossPauseAndConcurrentChanges(){
-        preferred.deleteMall(actor,Mall.HI_THEHYUNDAI,preferred.get(actor).revision());var p=create("ABCD6F123BK");
-        var base=listing(Mall.LFMALL,"base",94000,"","CONFIRMED");var other=listing(Mall.LFMALL,"other",95000,"","CONFIRMED");var cheap=listing(Mall.HI_THEHYUNDAI,"cheap",92000,"대구점","FAILED");
+        preferred.deleteMall(actor,ProcurementMall.HI_THEHYUNDAI,preferred.get(actor).revision());var p=create("ABCD6F123BK");
+        var base=listing(ProcurementMall.LFMALL,"base",94000,"","CONFIRMED");var other=listing(ProcurementMall.LFMALL,"other",95000,"","CONFIRMED");var cheap=listing(ProcurementMall.HI_THEHYUNDAI,"cheap",92000,"대구점","FAILED");
         finish(p,List.of(base,other));var choices=compare(p).groups().getFirst().listings();choose(p,choices.getFirst());
         long run=Long.parseLong(start(p));refresh.control(actor,run,"pause");refresh.control(actor,run,"resume");var work=refresh.claim("snapshot");
-        assertThat(work.selectionBasis().supplierId()).isEqualTo(choices.getFirst().id());assertThat(work.preferences().mallAllowed(Mall.HI_THEHYUNDAI)).isFalse();
+        assertThat(work.selectionBasis().supplierId()).isEqualTo(choices.getFirst().id());assertThat(work.preferences().mallAllowed(ProcurementMall.HI_THEHYUNDAI)).isFalse();
         choose(p,choices.getLast());refresh.finish("snapshot",work,SupplierLookupService.summarize(List.of(base,other,cheap),true,time.now()));refresh.claim("snapshot");
         assertThat(compare(p).selected().id()).isEqualTo(choices.getLast().id());assertThat(compare(p).recommendationStatus().state()).isEqualTo("SELECTION_CHANGED");assertThat(compare(p).recommendations()).isEmpty();
         finish(p,List.of(base,other,cheap));assertThat(compare(p).recommendations()).hasSize(1);var candidate=compare(p).recommendations().getFirst().listings().getFirst();assertThat(candidate.inventoryState()).isEqualTo("FAILED");
-        preferred.saveMall(actor,Mall.HI_THEHYUNDAI,new MallPreferenceInput(preferred.get(actor).revision(),"ALL",List.of(),List.of(),true));
+        preferred.saveMall(actor,ProcurementMall.HI_THEHYUNDAI,new MallPreferenceInput(preferred.get(actor).revision(),"ALL",List.of(),List.of(),true));
         assertThat(compare(p).recommendations()).isEmpty();assertThat(compare(p).groups()).flatExtracting(Group::listings).extracting(Listing::id).contains(candidate.id());
         jdbc.update("UPDATE product_refresh_entry SET selection_snapshot=NULL WHERE product_id=?",p.id());assertThat(compare(p).recommendationStatus().state()).isEqualTo("REFRESH_REQUIRED");assertThat(compare(p).recommendations()).isEmpty();
     }
     @Test void noPreferencesBlocksManualAndScheduledWork(){jdbc.update("DELETE FROM supplier_preference");var p=create("ABCD6F123BK");assertThatThrownBy(()->start(p)).hasMessageContaining("선호 매입처");refresh.schedule();assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_refresh_run",Long.class)).isZero();}
-    @Test void selectionUsesSpecificListingNotLowestAndPreservesSoldOutChoice(){var p=create("ABCD6F123BK");var lf=listing(Mall.LFMALL,"lf",94000,"온라인점","CONFIRMED");var hi=listing(Mall.HI_THEHYUNDAI,"hi",93450,"목동점","CONFIRMED");finish(p,List.of(lf,hi));assertThat(current(p).selectedSupplier()).isNull();choose(p,byMall(p,Mall.LFMALL));assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(94000);assertThat(compare(p).groups().getFirst().mall()).isEqualTo(Mall.HI_THEHYUNDAI);String selected=current(p).selectedSupplier().id();
-        finish(p,List.of(listing(Mall.LFMALL,"lf",95000,"온라인점","SOLD_OUT"),listing(Mall.HI_THEHYUNDAI,"hi",100,"목동점","CONFIRMED")));assertThat(current(p).selectedSupplier().id()).isEqualTo(selected);assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(95000);assertThat(current(p).selectedSupplier().inventoryState()).isEqualTo("SOLD_OUT");assertThat(current(p).selectedSupplier().url()).endsWith("lf");}
+    @Test void selectionUsesSpecificListingNotLowestAndPreservesSoldOutChoice(){var p=create("ABCD6F123BK");var lf=listing(ProcurementMall.LFMALL,"lf",94000,"온라인점","CONFIRMED");var hi=listing(ProcurementMall.HI_THEHYUNDAI,"hi",93450,"목동점","CONFIRMED");finish(p,List.of(lf,hi));assertThat(current(p).selectedSupplier()).isNull();choose(p,byMall(p,ProcurementMall.LFMALL));assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(94000);assertThat(compare(p).groups().getFirst().mall()).isEqualTo(ProcurementMall.HI_THEHYUNDAI);String selected=current(p).selectedSupplier().id();
+        finish(p,List.of(listing(ProcurementMall.LFMALL,"lf",95000,"온라인점","SOLD_OUT"),listing(ProcurementMall.HI_THEHYUNDAI,"hi",100,"목동점","CONFIRMED")));assertThat(current(p).selectedSupplier().id()).isEqualTo(selected);assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(95000);assertThat(current(p).selectedSupplier().inventoryState()).isEqualTo("SOLD_OUT");assertThat(current(p).selectedSupplier().url()).endsWith("lf");}
     List<Long> shownPrices(Comparison c){return c.groups().stream().flatMap(g->g.listings().stream()).map(l->l.result().offer().price()).toList();}
     @Test void groupsAndListingsFollowPriceRegardlessOfSelectionOrPendingRefresh(){
         var p=create("ABCD6F123BK");
-        finish(p,List.of(listing(Mall.LFMALL,"lf",300,"온라인점","CONFIRMED"),listing(Mall.HAZZYS,"hz",100,"온라인점","CONFIRMED"),listing(Mall.HI_THEHYUNDAI,"hi-b",250,"목동점","CONFIRMED"),listing(Mall.HI_THEHYUNDAI,"hi-a",200,"목동점","CONFIRMED")));
-        choose(p,byMall(p,Mall.LFMALL));
+        finish(p,List.of(listing(ProcurementMall.LFMALL,"lf",300,"온라인점","CONFIRMED"),listing(ProcurementMall.HAZZYS,"hz",100,"온라인점","CONFIRMED"),listing(ProcurementMall.HI_THEHYUNDAI,"hi-b",250,"목동점","CONFIRMED"),listing(ProcurementMall.HI_THEHYUNDAI,"hi-a",200,"목동점","CONFIRMED")));
+        choose(p,byMall(p,ProcurementMall.LFMALL));
         assertThat(shownPrices(compare(p))).containsExactly(100L,200L,250L,300L);
         // 새 최신화가 대기 중이면 이번 조회 가격(minPrice)이 비어도 마지막 확인 가격으로 정렬한다.
         start(p);var pending=compare(p);
@@ -998,7 +998,7 @@ class ProductFlowIT {
     String listedImage(CatalogProduct p){return products.list(actor,"","ALL","",0).items().stream().filter(v->v.id().equals(p.id())).findFirst().orElseThrow().imageUrl();}
     @Test void representativeImageFollowsSelectedListingOtherwiseFirstSearchResult(){
         var p=create("ABCD6F123BK");String a="https://img.test/a.jpg",b="https://img.test/b.jpg";
-        var results=List.of(pictured(listing(Mall.LFMALL,"a",100,"온라인점","CONFIRMED"),a),pictured(listing(Mall.LFMALL,"b",200,"온라인점","CONFIRMED"),b));
+        var results=List.of(pictured(listing(ProcurementMall.LFMALL,"a",100,"온라인점","CONFIRMED"),a),pictured(listing(ProcurementMall.LFMALL,"b",200,"온라인점","CONFIRMED"),b));
         // 최신화는 마지막이 아니라 첫 판매글(검색 1순위) 사진을 대표로 저장한다.
         finish(p,results);assertThat(current(p).imageUrl()).isEqualTo(a);assertThat(listedImage(p)).isEqualTo(a);
         var second=compare(p).groups().getFirst().listings().stream().filter(l->b.equals(l.imageUrl())).findFirst().orElseThrow();
@@ -1008,66 +1008,66 @@ class ProductFlowIT {
         supplierService.select(actor,Long.parseLong(p.id()),new SelectionInput(current(p).revision(),null));
         assertThat(current(p).imageUrl()).isEqualTo(a);assertThat(listedImage(p)).isEqualTo(a);
     }
-    @Test void groupsRetainEveryListingAndNeverSumInventory(){var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.HI_THEHYUNDAI,"one",100,"목동점","CONFIRMED"),listing(Mall.HI_THEHYUNDAI,"two",100,"목동점","CONFIRMED"),listing(Mall.HI_THEHYUNDAI,"three",200,"목동점","CONFIRMED")));var group=compare(p).groups().getFirst();assertThat(group.listings()).hasSize(3);assertThat(group.minPrice()).isEqualTo(100);assertThat(group.maxPrice()).isEqualTo(200);assertThat(group.listings()).allSatisfy(l->assertThat(l.result().options().getFirst().stock()).isEqualTo(2));}
-    @Test void unknownStoresStaySeparateAndManualAssignmentSurvivesConflictingRefresh(){var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.HI_THEHYUNDAI,"one",100,"","CONFIRMED"),listing(Mall.HI_THEHYUNDAI,"two",200,"","CONFIRMED")));assertThat(hiddenReview(p)).hasSize(2);assertThat(compare(p).groups()).isEmpty();var first=hiddenReview(p).getFirst();assertThatThrownBy(()->choose(p,first)).hasMessageContaining("선호 매입처 또는 현재 유효한 추천");var branch=preferred.saveStore(actor,null,new StoreInput(null,Mall.HI_THEHYUNDAI,"BRANCH","목동점",null));supplierService.assign(actor,Long.parseLong(p.id()),Long.parseLong(first.id()),new AssignmentInput(first.revision(),branch.id()));choose(p,compare(p).groups().getFirst().listings().getFirst());
-        finish(p,List.of(listing(Mall.HI_THEHYUNDAI,"one",300,"천호점","CONFIRMED")));var pinned=current(p).selectedSupplier();assertThat(pinned.store().id()).isEqualTo(branch.id());assertThat(pinned.manual()).isTrue();assertThat(pinned.conflict()).isTrue();assertThat(hiddenReview(p)).hasSize(1);assertThatThrownBy(()->supplierService.assign(actor,Long.parseLong(p.id()),Long.parseLong(first.id()),new AssignmentInput(first.revision(),null))).isInstanceOf(IllegalStateException.class);}
-    @Test void stockFailureDoesNotInvalidateFreshPriceAndMissingSearchRetainsReferenceOnly(){var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.LFMALL,"one",94000,"온라인점","CONFIRMED")));choose(p,byMall(p,Mall.LFMALL));time.value=time.value.plusHours(1);finish(p,List.of(listing(Mall.LFMALL,"one",95000,"온라인점","FAILED")));var chosen=current(p).selectedSupplier();assertThat(chosen.referencePrice()).isEqualTo(95000);assertThat(chosen.priceStatus()).isEqualTo("CONFIRMED");assertThat(chosen.inventoryState()).isEqualTo("FAILED");var checked=chosen.priceCheckedAt();time.value=time.value.plusHours(1);finish(p,List.of());chosen=current(p).selectedSupplier();assertThat(chosen.priceStatus()).isEqualTo("MISSING");assertThat(chosen.referencePrice()).isEqualTo(95000);assertThat(chosen.priceCheckedAt()).isEqualTo(checked);assertThat(chosen.current()).isFalse();}
-    @Test void preferenceSnapshotIsStableAndExcludedSelectionDoesNotDisappear(){var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.LFMALL,"one",94000,"온라인점","CONFIRMED")));choose(p,byMall(p,Mall.LFMALL));start(p);var w=refresh.claim("w");var rule=preferred.get(actor).rules().stream().filter(r->r.mall()==Mall.LFMALL).findFirst().orElseThrow();preferred.deleteRule(actor,Long.parseLong(rule.id()),rule.revision());assertThat(w.preferences().mallAllowed(Mall.LFMALL)).isTrue();assertThat(current(p).selectedSupplier().preferred()).isFalse();refresh.finish("w",w,SupplierLookupService.summarize(List.of(listing(Mall.LFMALL,"one",96000,"온라인점","CONFIRMED")),true,time.now()));refresh.claim("w");assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(96000);assertThat(current(p).selectedSupplier().preferred()).isFalse();assertThat(compare(p).groups()).isEmpty();assertThat(compare(p).selected()).isNotNull();}
-    @Test void selectionMadeDuringRefreshAndStaleDoubleClickAreSafe()throws Exception {var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.LFMALL,"a",100,"온라인점","CONFIRMED"),listing(Mall.LFMALL,"b",200,"온라인점","CONFIRMED")));var listings=compare(p).groups().getFirst().listings();choose(p,listings.getFirst());start(p);var w=refresh.claim("w");long rev=current(p).revision();choose(p,listings.getLast());assertThatThrownBy(()->supplierService.select(actor,Long.parseLong(p.id()),new SelectionInput(rev,listings.getFirst().id()))).isInstanceOf(IllegalStateException.class);refresh.finish("w",w,SupplierLookupService.summarize(List.of(listing(Mall.LFMALL,"a",50,"온라인점","CONFIRMED"),listing(Mall.LFMALL,"b",300,"온라인점","CONFIRMED")),true,time.now()));assertThat(current(p).selectedSupplier().id()).isEqualTo(listings.getLast().id());assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(300);}
-    @Test void branchRenameKeepsIdentityAndPreferencesAndLookupRevision(){var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.HI_THEHYUNDAI,"one",100,"목동점","CONFIRMED")));var source=byMall(p,Mall.HI_THEHYUNDAI);choose(p,source);var branch=source.store();preferred.saveStore(actor,Long.parseLong(branch.id()),new StoreInput(branch.revision(),branch.mall(),branch.kind(),"현대 목동",null));finish(p,List.of(listing(Mall.HI_THEHYUNDAI,"one",100,"목동점","CONFIRMED")));assertThat(current(p).selectedSupplier().store().id()).isEqualTo(branch.id());assertThat(current(p).selectedSupplier().store().name()).isEqualTo("현대 목동");assertThat(current(p).lookupRevision()).isZero();assertThatThrownBy(()->preferred.deleteStore(actor,Long.parseLong(branch.id()),1L)).hasMessageContaining("사용 중");}
-    @Test void selectionAndStoreApisEnforcePermissionsCsrfAndOwnership()throws Exception {var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.LFMALL,"a",100,"온라인점","CONFIRMED")));String route="/api/products/"+p.id()+"/selection";var staff=login(account(UserRole.PRODUCT));var adminUser=account(UserRole.ADMIN);var admin=login(adminUser);var body=Map.of("revision",current(p).revision(),"supplierId",byMall(p,Mall.LFMALL).id());status(new Browser().get("/api/settings/preferred-suppliers"),401);status(login(account(UserRole.VIEWER)).get("/api/settings/preferred-suppliers"),403);status(staff.get("/api/settings/preferred-suppliers"),200);status(staff.post("/api/settings/preferred-suppliers",Map.of("mall","LFMALL")),403);status(staff.send("POST",route,body,null),403);status(staff.post(route,body),200);status(admin.post(route,body),409);var other=create("ABCD6F124BK");status(staff.post("/api/products/"+other.id()+"/selection",Map.of("revision",other.revision(),"supplierId",byMall(p,Mall.LFMALL).id())),404);jdbc.update("UPDATE `user` SET user_status='SUSPENDED',auth_version=auth_version+1 WHERE id=?",adminUser.getId());status(admin.get("/api/settings/preferred-suppliers"),401);assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_supplier_change WHERE change_type='SELECT'",Long.class)).isEqualTo(1);jdbc.update("UPDATE `user` SET user_role='PRODUCT' WHERE id=?",adminUser.getId());}
+    @Test void groupsRetainEveryListingAndNeverSumInventory(){var p=create("ABCD6F123BK");finish(p,List.of(listing(ProcurementMall.HI_THEHYUNDAI,"one",100,"목동점","CONFIRMED"),listing(ProcurementMall.HI_THEHYUNDAI,"two",100,"목동점","CONFIRMED"),listing(ProcurementMall.HI_THEHYUNDAI,"three",200,"목동점","CONFIRMED")));var group=compare(p).groups().getFirst();assertThat(group.listings()).hasSize(3);assertThat(group.minPrice()).isEqualTo(100);assertThat(group.maxPrice()).isEqualTo(200);assertThat(group.listings()).allSatisfy(l->assertThat(l.result().options().getFirst().stock()).isEqualTo(2));}
+    @Test void unknownStoresStaySeparateAndManualAssignmentSurvivesConflictingRefresh(){var p=create("ABCD6F123BK");finish(p,List.of(listing(ProcurementMall.HI_THEHYUNDAI,"one",100,"","CONFIRMED"),listing(ProcurementMall.HI_THEHYUNDAI,"two",200,"","CONFIRMED")));assertThat(hiddenReview(p)).hasSize(2);assertThat(compare(p).groups()).isEmpty();var first=hiddenReview(p).getFirst();assertThatThrownBy(()->choose(p,first)).hasMessageContaining("선호 매입처 또는 현재 유효한 추천");var branch=preferred.saveStore(actor,null,new StoreInput(null,ProcurementMall.HI_THEHYUNDAI,"BRANCH","목동점",null));supplierService.assign(actor,Long.parseLong(p.id()),Long.parseLong(first.id()),new AssignmentInput(first.revision(),branch.id()));choose(p,compare(p).groups().getFirst().listings().getFirst());
+        finish(p,List.of(listing(ProcurementMall.HI_THEHYUNDAI,"one",300,"천호점","CONFIRMED")));var pinned=current(p).selectedSupplier();assertThat(pinned.store().id()).isEqualTo(branch.id());assertThat(pinned.manual()).isTrue();assertThat(pinned.conflict()).isTrue();assertThat(hiddenReview(p)).hasSize(1);assertThatThrownBy(()->supplierService.assign(actor,Long.parseLong(p.id()),Long.parseLong(first.id()),new AssignmentInput(first.revision(),null))).isInstanceOf(IllegalStateException.class);}
+    @Test void stockFailureDoesNotInvalidateFreshPriceAndMissingSearchRetainsReferenceOnly(){var p=create("ABCD6F123BK");finish(p,List.of(listing(ProcurementMall.LFMALL,"one",94000,"온라인점","CONFIRMED")));choose(p,byMall(p,ProcurementMall.LFMALL));time.value=time.value.plusHours(1);finish(p,List.of(listing(ProcurementMall.LFMALL,"one",95000,"온라인점","FAILED")));var chosen=current(p).selectedSupplier();assertThat(chosen.referencePrice()).isEqualTo(95000);assertThat(chosen.priceStatus()).isEqualTo("CONFIRMED");assertThat(chosen.inventoryState()).isEqualTo("FAILED");var checked=chosen.priceCheckedAt();time.value=time.value.plusHours(1);finish(p,List.of());chosen=current(p).selectedSupplier();assertThat(chosen.priceStatus()).isEqualTo("MISSING");assertThat(chosen.referencePrice()).isEqualTo(95000);assertThat(chosen.priceCheckedAt()).isEqualTo(checked);assertThat(chosen.current()).isFalse();}
+    @Test void preferenceSnapshotIsStableAndExcludedSelectionDoesNotDisappear(){var p=create("ABCD6F123BK");finish(p,List.of(listing(ProcurementMall.LFMALL,"one",94000,"온라인점","CONFIRMED")));choose(p,byMall(p,ProcurementMall.LFMALL));start(p);var w=refresh.claim("w");var rule=preferred.get(actor).rules().stream().filter(r->r.mall()==ProcurementMall.LFMALL).findFirst().orElseThrow();preferred.deleteRule(actor,Long.parseLong(rule.id()),rule.revision());assertThat(w.preferences().mallAllowed(ProcurementMall.LFMALL)).isTrue();assertThat(current(p).selectedSupplier().preferred()).isFalse();refresh.finish("w",w,SupplierLookupService.summarize(List.of(listing(ProcurementMall.LFMALL,"one",96000,"온라인점","CONFIRMED")),true,time.now()));refresh.claim("w");assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(96000);assertThat(current(p).selectedSupplier().preferred()).isFalse();assertThat(compare(p).groups()).isEmpty();assertThat(compare(p).selected()).isNotNull();}
+    @Test void selectionMadeDuringRefreshAndStaleDoubleClickAreSafe()throws Exception {var p=create("ABCD6F123BK");finish(p,List.of(listing(ProcurementMall.LFMALL,"a",100,"온라인점","CONFIRMED"),listing(ProcurementMall.LFMALL,"b",200,"온라인점","CONFIRMED")));var listings=compare(p).groups().getFirst().listings();choose(p,listings.getFirst());start(p);var w=refresh.claim("w");long rev=current(p).revision();choose(p,listings.getLast());assertThatThrownBy(()->supplierService.select(actor,Long.parseLong(p.id()),new SelectionInput(rev,listings.getFirst().id()))).isInstanceOf(IllegalStateException.class);refresh.finish("w",w,SupplierLookupService.summarize(List.of(listing(ProcurementMall.LFMALL,"a",50,"온라인점","CONFIRMED"),listing(ProcurementMall.LFMALL,"b",300,"온라인점","CONFIRMED")),true,time.now()));assertThat(current(p).selectedSupplier().id()).isEqualTo(listings.getLast().id());assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(300);}
+    @Test void branchRenameKeepsIdentityAndPreferencesAndLookupRevision(){var p=create("ABCD6F123BK");finish(p,List.of(listing(ProcurementMall.HI_THEHYUNDAI,"one",100,"목동점","CONFIRMED")));var source=byMall(p,ProcurementMall.HI_THEHYUNDAI);choose(p,source);var branch=source.store();preferred.saveStore(actor,Long.parseLong(branch.id()),new StoreInput(branch.revision(),branch.mall(),branch.kind(),"현대 목동",null));finish(p,List.of(listing(ProcurementMall.HI_THEHYUNDAI,"one",100,"목동점","CONFIRMED")));assertThat(current(p).selectedSupplier().store().id()).isEqualTo(branch.id());assertThat(current(p).selectedSupplier().store().name()).isEqualTo("현대 목동");assertThat(current(p).lookupRevision()).isZero();assertThatThrownBy(()->preferred.deleteStore(actor,Long.parseLong(branch.id()),1L)).hasMessageContaining("사용 중");}
+    @Test void selectionAndStoreApisEnforcePermissionsCsrfAndOwnership()throws Exception {var p=create("ABCD6F123BK");finish(p,List.of(listing(ProcurementMall.LFMALL,"a",100,"온라인점","CONFIRMED")));String route="/api/products/"+p.id()+"/selection";var staff=login(account(UserRole.PRODUCT));var adminUser=account(UserRole.ADMIN);var admin=login(adminUser);var body=Map.of("revision",current(p).revision(),"supplierId",byMall(p,ProcurementMall.LFMALL).id());status(new Browser().get("/api/settings/preferred-suppliers"),401);status(login(account(UserRole.VIEWER)).get("/api/settings/preferred-suppliers"),403);status(staff.get("/api/settings/preferred-suppliers"),200);status(staff.post("/api/settings/preferred-suppliers",Map.of("mall","LFMALL")),403);status(staff.send("POST",route,body,null),403);status(staff.post(route,body),200);status(admin.post(route,body),409);var other=create("ABCD6F124BK");status(staff.post("/api/products/"+other.id()+"/selection",Map.of("revision",other.revision(),"supplierId",byMall(p,ProcurementMall.LFMALL).id())),404);jdbc.update("UPDATE `user` SET user_status='SUSPENDED',auth_version=auth_version+1 WHERE id=?",adminUser.getId());status(admin.get("/api/settings/preferred-suppliers"),401);assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_supplier_change WHERE change_type='SELECT'",Long.class)).isEqualTo(1);jdbc.update("UPDATE `user` SET user_role='PRODUCT' WHERE id=?",adminUser.getId());}
 
-    @Test void concurrentSelectionsOnlyAcceptOneVersionAndClearIsAudited()throws Exception {var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.LFMALL,"one",100,"온라인점","CONFIRMED"),listing(Mall.LFMALL,"two",200,"온라인점","CONFIRMED")));var listings=compare(p).groups().getFirst().listings();long revision=current(p).revision();try(var pool=Executors.newFixedThreadPool(2)){var gate=new CountDownLatch(1);var tasks=listings.stream().map(l->pool.submit(()->{gate.await();try{supplierService.select(actor,Long.parseLong(p.id()),new SelectionInput(revision,l.id()));return true;}catch(IllegalStateException e){return false;}})).toList();gate.countDown();assertThat(tasks.get(0).get()^tasks.get(1).get()).isTrue();}supplierService.select(actor,Long.parseLong(p.id()),new SelectionInput(current(p).revision(),null));assertThat(current(p).selectedSupplier()).isNull();assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_supplier_change WHERE change_type='SELECT'",Long.class)).isEqualTo(2);}
-    @Test void mergeRequiresExplicitSelectionAndPreservesBothListings(){var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.LFMALL,"one",100,"온라인점","CONFIRMED")));choose(p,byMall(p,Mall.LFMALL));long copy=Long.parseLong(p.id())+100; jdbc.update("INSERT INTO catalog_product(id,brand_id,product_code,search_query,code_type,created_at,updated_at) VALUES(?,?,?,?,'LF_ACCESSORY',NOW(6),NOW(6))",copy,brand,p.productCode(),p.searchQuery());var other=products.product(copy);finish(other,List.of(listing(Mall.HI_THEHYUNDAI,"two",200,"목동점","CONFIRMED")));choose(other,byMall(other,Mall.HI_THEHYUNDAI));var historyCount=changeService.history(actor,Long.parseLong(p.id()),"","ALL",0).totalElements()+changeService.history(actor,Long.parseLong(other.id()),"","ALL",0).totalElements();var versions=List.of(version(p),version(other));var noChoice=new MergeInput(versions,null,p.productCode(),p.searchQuery(),true,brand,"AUTO","LF_ACCESSORY");assertThatThrownBy(()->products.merge(actor,Long.parseLong(p.id()),noChoice)).hasMessageContaining("유지할 판매글");String choice=current(other).selectedSupplier().id();products.merge(actor,Long.parseLong(p.id()),new MergeInput(versions,null,p.productCode(),p.searchQuery(),true,brand,"AUTO","LF_ACCESSORY",choice));assertThat(current(p).selectedSupplier().id()).isEqualTo(choice);assertThat(changeService.history(actor,Long.parseLong(p.id()),"","ALL",0).totalElements()).isEqualTo(historyCount);assertThat(changeService.history(actor,Long.parseLong(p.id()),"","ALL",0).items()).anyMatch(h->h.originProductId().equals(other.id()));assertThat(changeService.summary(Long.parseLong(p.id())).version()).isZero();assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_supplier WHERE product_id=?",Long.class,p.id())).isEqualTo(2);assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_supplier_selection",Long.class)).isEqualTo(1);assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_supplier_change",Long.class)).isEqualTo(3);}
+    @Test void concurrentSelectionsOnlyAcceptOneVersionAndClearIsAudited()throws Exception {var p=create("ABCD6F123BK");finish(p,List.of(listing(ProcurementMall.LFMALL,"one",100,"온라인점","CONFIRMED"),listing(ProcurementMall.LFMALL,"two",200,"온라인점","CONFIRMED")));var listings=compare(p).groups().getFirst().listings();long revision=current(p).revision();try(var pool=Executors.newFixedThreadPool(2)){var gate=new CountDownLatch(1);var tasks=listings.stream().map(l->pool.submit(()->{gate.await();try{supplierService.select(actor,Long.parseLong(p.id()),new SelectionInput(revision,l.id()));return true;}catch(IllegalStateException e){return false;}})).toList();gate.countDown();assertThat(tasks.get(0).get()^tasks.get(1).get()).isTrue();}supplierService.select(actor,Long.parseLong(p.id()),new SelectionInput(current(p).revision(),null));assertThat(current(p).selectedSupplier()).isNull();assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_supplier_change WHERE change_type='SELECT'",Long.class)).isEqualTo(2);}
+    @Test void mergeRequiresExplicitSelectionAndPreservesBothListings(){var p=create("ABCD6F123BK");finish(p,List.of(listing(ProcurementMall.LFMALL,"one",100,"온라인점","CONFIRMED")));choose(p,byMall(p,ProcurementMall.LFMALL));long copy=Long.parseLong(p.id())+100; jdbc.update("INSERT INTO catalog_product(id,brand_id,product_code,search_query,code_type,created_at,updated_at) VALUES(?,?,?,?,'LF_ACCESSORY',NOW(6),NOW(6))",copy,brand,p.productCode(),p.searchQuery());var other=products.product(copy);finish(other,List.of(listing(ProcurementMall.HI_THEHYUNDAI,"two",200,"목동점","CONFIRMED")));choose(other,byMall(other,ProcurementMall.HI_THEHYUNDAI));var historyCount=changeService.history(actor,Long.parseLong(p.id()),"","ALL",0).totalElements()+changeService.history(actor,Long.parseLong(other.id()),"","ALL",0).totalElements();var versions=List.of(version(p),version(other));var noChoice=new MergeInput(versions,null,p.productCode(),p.searchQuery(),true,brand,"AUTO","LF_ACCESSORY");assertThatThrownBy(()->products.merge(actor,Long.parseLong(p.id()),noChoice)).hasMessageContaining("유지할 판매글");String choice=current(other).selectedSupplier().id();products.merge(actor,Long.parseLong(p.id()),new MergeInput(versions,null,p.productCode(),p.searchQuery(),true,brand,"AUTO","LF_ACCESSORY",choice));assertThat(current(p).selectedSupplier().id()).isEqualTo(choice);assertThat(changeService.history(actor,Long.parseLong(p.id()),"","ALL",0).totalElements()).isEqualTo(historyCount);assertThat(changeService.history(actor,Long.parseLong(p.id()),"","ALL",0).items()).anyMatch(h->h.originProductId().equals(other.id()));assertThat(changeService.summary(Long.parseLong(p.id())).version()).isZero();assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_supplier WHERE product_id=?",Long.class,p.id())).isEqualTo(2);assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_supplier_selection",Long.class)).isEqualTo(1);assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_supplier_change",Long.class)).isEqualTo(3);}
 
-    @Test void transientMissingBranchKeepsKnownStoreButConflictingEvidenceNeedsReview(){var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.HI_THEHYUNDAI,"one",100,"목동점","CONFIRMED")));choose(p,byMall(p,Mall.HI_THEHYUNDAI));String branch=current(p).selectedSupplier().store().id();finish(p,List.of(listing(Mall.HI_THEHYUNDAI,"one",120,"","FAILED")));assertThat(current(p).selectedSupplier().store().id()).isEqualTo(branch);assertThat(current(p).selectedSupplier().priceStatus()).isEqualTo("CONFIRMED");var conflict=listing(Mall.HI_THEHYUNDAI,"one",130,"","CONFIRMED");conflict=new SupplierResult(conflict.offer(),conflict.match(),conflict.state(),conflict.options(),null,null,null,null,new BranchInfo("","CONFLICT","TITLE","목동점 / 천호점"));finish(p,List.of(conflict));assertThat(compare(p).groups()).isEmpty();assertThat(hiddenReview(p)).hasSize(1);assertThat(current(p).selectedSupplier().id()).isNotNull();assertThatThrownBy(()->choose(p,hiddenReview(p).getFirst())).hasMessageContaining("선호 매입처 또는 현재 유효한 추천");}
-    @Test void manualStoreDoesNotResolveUncertainProductCode(){preferred.saveMall(actor,Mall.LFMALL,new MallPreferenceInput(preferred.get(actor).revision(),"ALL",List.of(),List.of(),true));var p=create("ABCD6F123BK");var raw=listing(Mall.LFMALL,"one",100,"","CONFIRMED");var review=new SupplierResult(raw.offer(),new CodeMatch("REVIEW","","","","","상품코드 확인 필요"),raw.state(),raw.options(),null);finish(p,List.of(review));var store=preferred.saveStore(actor,null,new StoreInput(null,Mall.LFMALL,"ONLINE","LF몰 온라인",null));var l=hiddenReview(p).getFirst();supplierService.assign(actor,Long.parseLong(p.id()),Long.parseLong(l.id()),new AssignmentInput(l.revision(),store.id()));assertThatThrownBy(()->choose(p,hiddenReview(p).getFirst())).hasMessageContaining("선호 매입처 또는 현재 유효한 추천");assertThat(compare(p).groups()).isEmpty();}
-    SupplierResult identified(Mall mall,String id,String retailer,String branch,String namespace,String external){
+    @Test void transientMissingBranchKeepsKnownStoreButConflictingEvidenceNeedsReview(){var p=create("ABCD6F123BK");finish(p,List.of(listing(ProcurementMall.HI_THEHYUNDAI,"one",100,"목동점","CONFIRMED")));choose(p,byMall(p,ProcurementMall.HI_THEHYUNDAI));String branch=current(p).selectedSupplier().store().id();finish(p,List.of(listing(ProcurementMall.HI_THEHYUNDAI,"one",120,"","FAILED")));assertThat(current(p).selectedSupplier().store().id()).isEqualTo(branch);assertThat(current(p).selectedSupplier().priceStatus()).isEqualTo("CONFIRMED");var conflict=listing(ProcurementMall.HI_THEHYUNDAI,"one",130,"","CONFIRMED");conflict=new SupplierResult(conflict.offer(),conflict.match(),conflict.state(),conflict.options(),null,null,null,null,new BranchInfo("","CONFLICT","TITLE","목동점 / 천호점"));finish(p,List.of(conflict));assertThat(compare(p).groups()).isEmpty();assertThat(hiddenReview(p)).hasSize(1);assertThat(current(p).selectedSupplier().id()).isNotNull();assertThatThrownBy(()->choose(p,hiddenReview(p).getFirst())).hasMessageContaining("선호 매입처 또는 현재 유효한 추천");}
+    @Test void manualStoreDoesNotResolveUncertainProductCode(){preferred.saveMall(actor,ProcurementMall.LFMALL,new MallPreferenceInput(preferred.get(actor).revision(),"ALL",List.of(),List.of(),true));var p=create("ABCD6F123BK");var raw=listing(ProcurementMall.LFMALL,"one",100,"","CONFIRMED");var review=new SupplierResult(raw.offer(),new CodeMatch("REVIEW","","","","","상품코드 확인 필요"),raw.state(),raw.options(),null);finish(p,List.of(review));var store=preferred.saveStore(actor,null,new StoreInput(null,ProcurementMall.LFMALL,"ONLINE","LF몰 온라인",null));var l=hiddenReview(p).getFirst();supplierService.assign(actor,Long.parseLong(p.id()),Long.parseLong(l.id()),new AssignmentInput(l.revision(),store.id()));assertThatThrownBy(()->choose(p,hiddenReview(p).getFirst())).hasMessageContaining("선호 매입처 또는 현재 유효한 추천");assertThat(compare(p).groups()).isEmpty();}
+    SupplierResult identified(ProcurementMall mall,String id,String retailer,String branch,String namespace,String external){
         var old=listing(mall,id,94000,branch,"CONFIRMED");
-        return new SupplierResult(old.offer(),old.match(),mall==Mall.NAVER_SMART_STORE?"DEFERRED":old.state(),mall==Mall.NAVER_SMART_STORE?List.of():old.options(),null,null,null,null,new BranchInfo(branch,"CONFIRMED","META",retailer+" "+branch,new StoreEvidence("BRANCH",retailer,branch,namespace,external)));
+        return new SupplierResult(old.offer(),old.match(),mall==ProcurementMall.NAVER_SMART_STORE?"DEFERRED":old.state(),mall==ProcurementMall.NAVER_SMART_STORE?List.of():old.options(),null,null,null,null,new BranchInfo(branch,"CONFIRMED","META",retailer+" "+branch,new StoreEvidence("BRANCH",retailer,branch,namespace,external)));
     }
     @Test void externalStoreIdentityPreservesSelectionAndDisplayRename(){
-        var p=create("ABCD6F123BK");finish(p,List.of(identified(Mall.HI_THEHYUNDAI,"hi","현대백화점","신촌점","HI_STORE","270")));
-        var listing=byMall(p,Mall.HI_THEHYUNDAI);choose(p,listing);var original=listing.store();assertThat(original.identities()).hasSize(1);
+        var p=create("ABCD6F123BK");finish(p,List.of(identified(ProcurementMall.HI_THEHYUNDAI,"hi","현대백화점","신촌점","HI_STORE","270")));
+        var listing=byMall(p,ProcurementMall.HI_THEHYUNDAI);choose(p,listing);var original=listing.store();assertThat(original.identities()).hasSize(1);
         preferred.saveStore(actor,Long.parseLong(original.id()),new StoreInput(original.revision(),original.mall(),original.kind(),"자주 사는 매장",null,"현대백화점"));
-        finish(p,List.of(identified(Mall.HI_THEHYUNDAI,"hi","현대백화점","신촌점 이름 변경","HI_STORE","270")));
+        finish(p,List.of(identified(ProcurementMall.HI_THEHYUNDAI,"hi","현대백화점","신촌점 이름 변경","HI_STORE","270")));
         var selected=current(p).selectedSupplier();assertThat(selected.store().id()).isEqualTo(original.id());assertThat(selected.store().name()).isEqualTo("자주 사는 매장");assertThat(selected.storeStatus()).isEqualTo("CONFIRMED");assertThat(selected.id()).isEqualTo(listing.id());
     }
     @Test void naverRetailersWithIdenticalBranchNamesAreDifferentStores(){
-        var p=create("ABCD6F123BK");finish(p,List.of(identified(Mall.NAVER_SMART_STORE,"a","현대백화점","본점","NAVER_DEPARTMENT","10001/1"),identified(Mall.NAVER_SMART_STORE,"b","롯데백화점","본점","NAVER_DEPARTMENT","10002/1")));
+        var p=create("ABCD6F123BK");finish(p,List.of(identified(ProcurementMall.NAVER_SMART_STORE,"a","현대백화점","본점","NAVER_DEPARTMENT","10001/1"),identified(ProcurementMall.NAVER_SMART_STORE,"b","롯데백화점","본점","NAVER_DEPARTMENT","10002/1")));
         assertThat(compare(p).groups()).hasSize(2);assertThat(compare(p).groups()).extracting(g->g.store().retailer()).containsExactlyInAnyOrder("현대백화점","롯데백화점");assertThat(compare(p).groups()).allSatisfy(g->assertThat(g.listings().getFirst().inventoryState()).isEqualTo("UNCONFIRMED"));
     }
     @Test void legacyStoreBindingRequiresAdminAndPreservesIdWithVersionCheck()throws Exception {
         jdbc.update("INSERT INTO supplier_store(id,mall,kind,name,identity_key,aliases,created_at,updated_at) VALUES(77,'NAVER_SMART_STORE','BRANCH','천호점','branch:천호점',JSON_ARRAY('천호점'),NOW(6),NOW(6))");
-        var p=create("ABCD6F123BK");finish(p,List.of(identified(Mall.NAVER_SMART_STORE,"a","현대백화점","천호점","NAVER_DEPARTMENT","10001/10001006")));
+        var p=create("ABCD6F123BK");finish(p,List.of(identified(ProcurementMall.NAVER_SMART_STORE,"a","현대백화점","천호점","NAVER_DEPARTMENT","10001/10001006")));
         assertThat(compare(p).groups()).isEmpty();var c=preferred.identityCandidates(actor).getFirst();
         var body=Map.of("revision",0,"supplierId",c.supplierId(),"observedRunId",c.observedRunId());var staff=login(account(UserRole.PRODUCT));var adminAccount=account(UserRole.ADMIN);var admin=login(adminAccount);String url="/api/settings/supplier-stores/77/identity";
         status(staff.post(url,body),403);status(admin.send("POST",url,body,null),403);status(admin.post(url,body),200);status(admin.post(url,body),409);jdbc.update("UPDATE `user` SET user_role='PRODUCT' WHERE id=?",adminAccount.getId());
-        finish(p,List.of(identified(Mall.NAVER_SMART_STORE,"a","현대백화점","천호점","NAVER_DEPARTMENT","10001/10001006")));
+        finish(p,List.of(identified(ProcurementMall.NAVER_SMART_STORE,"a","현대백화점","천호점","NAVER_DEPARTMENT","10001/10001006")));
         assertThat(compare(p).groups().getFirst().store().id()).isEqualTo("77");assertThat(preferred.identityCandidates(actor)).isEmpty();
     }
     @Test void contradictoryExternalIdentityDoesNotOverwriteSelectedStore(){
-        var p=create("ABCD6F123BK");finish(p,List.of(identified(Mall.NAVER_SMART_STORE,"a","현대백화점","본점","NAVER_DEPARTMENT","10001/1")));var original=byMall(p,Mall.NAVER_SMART_STORE);choose(p,original);
-        finish(p,List.of(identified(Mall.NAVER_SMART_STORE,"a","롯데백화점","본점","NAVER_DEPARTMENT","10001/1")));
+        var p=create("ABCD6F123BK");finish(p,List.of(identified(ProcurementMall.NAVER_SMART_STORE,"a","현대백화점","본점","NAVER_DEPARTMENT","10001/1")));var original=byMall(p,ProcurementMall.NAVER_SMART_STORE);choose(p,original);
+        finish(p,List.of(identified(ProcurementMall.NAVER_SMART_STORE,"a","롯데백화점","본점","NAVER_DEPARTMENT","10001/1")));
         var selected=current(p).selectedSupplier();assertThat(selected.id()).isEqualTo(original.id());assertThat(selected.store().id()).isEqualTo(original.store().id());assertThat(selected.conflict()).isTrue();assertThat(hiddenReview(p)).hasSize(1);assertThat(preferred.get(actor).stores()).hasSize(1);
     }
     @Test void missingBranchIsHistoricalAndCannotBeSelectedUntilConfirmed(){
-        var p=create("ABCD6F123BK");finish(p,List.of(identified(Mall.HI_THEHYUNDAI,"a","현대백화점","신촌점","HI_STORE","270")));choose(p,byMall(p,Mall.HI_THEHYUNDAI));String chosen=current(p).selectedSupplier().id();
-        finish(p,List.of(listing(Mall.HI_THEHYUNDAI,"a",95000,"","FAILED")));var l=current(p).selectedSupplier();assertThat(l.storeStatus()).isEqualTo("HISTORICAL");assertThat(l.id()).isEqualTo(chosen);assertThat(l.referencePrice()).isEqualTo(95000);assertThat(hiddenReview(p)).hasSize(1);assertThatThrownBy(()->choose(p,l)).hasMessageContaining("선호 매입처 또는 현재 유효한 추천");
+        var p=create("ABCD6F123BK");finish(p,List.of(identified(ProcurementMall.HI_THEHYUNDAI,"a","현대백화점","신촌점","HI_STORE","270")));choose(p,byMall(p,ProcurementMall.HI_THEHYUNDAI));String chosen=current(p).selectedSupplier().id();
+        finish(p,List.of(listing(ProcurementMall.HI_THEHYUNDAI,"a",95000,"","FAILED")));var l=current(p).selectedSupplier();assertThat(l.storeStatus()).isEqualTo("HISTORICAL");assertThat(l.id()).isEqualTo(chosen);assertThat(l.referencePrice()).isEqualTo(95000);assertThat(hiddenReview(p)).hasSize(1);assertThatThrownBy(()->choose(p,l)).hasMessageContaining("선호 매입처 또는 현재 유효한 추천");
     }
     @Test void configuredPreferredMallsFlowThroughLookupPersistenceAndComparison(){
         jdbc.update("DELETE FROM supplier_preference");
-        for(var mall:List.of(Mall.LFMALL,Mall.HAZZYS,Mall.LOTTE_IMALL))preferred.saveRule(actor,null,new RuleInput(null,mall,null));
-        for(var mall:List.of(Mall.HI_THEHYUNDAI,Mall.NAVER_SMART_STORE))for(String name:List.of("목동점","천호점","신촌점")){
+        for(var mall:List.of(ProcurementMall.LFMALL,ProcurementMall.HAZZYS,ProcurementMall.LOTTE_IMALL))preferred.saveRule(actor,null,new RuleInput(null,mall,null));
+        for(var mall:List.of(ProcurementMall.HI_THEHYUNDAI,ProcurementMall.NAVER_SMART_STORE))for(String name:List.of("목동점","천호점","신촌점")){
             var st=preferred.saveStore(actor,null,new StoreInput(null,mall,"BRANCH",name,null,"현대백화점"));
             preferred.saveRule(actor,null,new RuleInput(null,mall,st.id()));
         }
-        for(var mall:List.of(Mall.LOTTE_ON,Mall.NAVER_SMART_STORE)){
+        for(var mall:List.of(ProcurementMall.LOTTE_ON,ProcurementMall.NAVER_SMART_STORE)){
             var st=preferred.saveStore(actor,null,new StoreInput(null,mall,"BRANCH","본점",null,"롯데백화점"));
             preferred.saveRule(actor,null,new RuleInput(null,mall,st.id()));
         }
         var offers=new ArrayList<Offer>();var details=new HashMap<String,SourceDetails>();
-        for(var mall:Mall.values()){
+        for(var mall:ProcurementMall.values()){
             String url=switch(mall){
                 case LFMALL->"https://www.lfmall.co.kr/app/product/";
                 case HAZZYS->"https://www.hazzys.com/product.do?PROD_CD=";
@@ -1077,142 +1077,142 @@ class ProductFlowIT {
                 case HMALL->"https://www.hmall.com/p/pda/itemPtc.do?slitmCd=";
                 case NAVER_SMART_STORE->"https://shopping.naver.com/window-products/department/";
             };
-            int count=Set.of(Mall.LOTTE_ON,Mall.HI_THEHYUNDAI,Mall.NAVER_SMART_STORE).contains(mall)?3:1;
+            int count=Set.of(ProcurementMall.LOTTE_ON,ProcurementMall.HI_THEHYUNDAI,ProcurementMall.NAVER_SMART_STORE).contains(mall)?3:1;
             for(int n=0;n<count;n++){
-                String id=mall==Mall.NAVER_SMART_STORE?Integer.toString(420+n):mall.name()+n;String retailer=mall==Mall.LOTTE_ON?"롯데백화점":"현대백화점";
-                String branch=mall==Mall.LOTTE_ON?"본점":"천호점";
+                String id=mall==ProcurementMall.NAVER_SMART_STORE?Integer.toString(420+n):mall.name()+n;String retailer=mall==ProcurementMall.LOTTE_ON?"롯데백화점":"현대백화점";
+                String branch=mall==ProcurementMall.LOTTE_ON?"본점":"천호점";
                 StoreEvidence evidence=n==2?null:new StoreEvidence("BRANCH",retailer,n==1?"부산점":branch,"TEST_STORE",id);
                 offers.add(new Offer(id,"ABCD123",mall.getDisplayName(),id,url+id,94000L+n,0L,mall,"https://example.com/"+id+".jpg"));
-                details.put(id,new SourceDetails("ABCD123","","",List.of(new SourceOption("FREE","FREE",2L,"AVAILABLE")),null,evidence,true,mall==Mall.NAVER_SMART_STORE?new NaverChannel(NaverChannelType.WINDOW,"DEPARTMENT"):null));
+                details.put(id,new SourceDetails("ABCD123","","",List.of(new SourceOption("FREE","FREE",2L,"AVAILABLE")),null,evidence,true,mall==ProcurementMall.NAVER_SMART_STORE?new NaverChannel(NaverChannelType.WINDOW,"DEPARTMENT"):null));
             }
         }
-        var calls=new ArrayList<Mall>();
+        var calls=new ArrayList<ProcurementMall>();
         var gateway=new cc.ataglace.molebutter.infra.product.SupplierProductGateway(){
-            public String validateUrl(Mall mall,String url){return url;}
-            public List<SourceOption> options(Mall mall,String id,String url){throw new AssertionError();}
-            public SourceDetails inspect(Mall mall,String id,String url){calls.add(mall);return details.get(id);}
+            public String validateUrl(ProcurementMall mall,String url){return url;}
+            public List<SourceOption> options(ProcurementMall mall,String id,String url){throw new AssertionError();}
+            public SourceDetails inspect(ProcurementMall mall,String id,String url){calls.add(mall);return details.get(id);}
         };
         var p=create("ABCD6F123BK");start(p);var work=refresh.claim("w");
         var result=new SupplierLookupService(gateway,time).lookup(work,new SearchResult(offers,true,null),()->refresh.heartbeat("w",work));
         refresh.finish("w",work,result);refresh.claim("w");
-        assertThat(calls).doesNotContain(Mall.HMALL);
+        assertThat(calls).doesNotContain(ProcurementMall.HMALL);
         assertThat(result.suppliers()).hasSize(9).noneMatch(r->"부산점".equals(r.branch().name()));
         assertThat(compare(p).groups()).hasSize(6);assertThat(hiddenReview(p)).hasSize(3);assertThat(compare(p).excluded()).isEmpty();
-        var unknown=hiddenReview(p).stream().filter(l->l.mall()==Mall.NAVER_SMART_STORE).findFirst().orElseThrow();
+        var unknown=hiddenReview(p).stream().filter(l->l.mall()==ProcurementMall.NAVER_SMART_STORE).findFirst().orElseThrow();
         assertThat(unknown.store()).isNull();assertThat(unknown.inventoryState()).isEqualTo("AVAILABLE");assertThat(unknown.selectable()).isFalse();
         assertThat(preferred.get(actor).stores()).noneMatch(st->st.kind().equals("SELLER"));
-        choose(p,byMall(p,Mall.HI_THEHYUNDAI));assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(94000);
+        choose(p,byMall(p,ProcurementMall.HI_THEHYUNDAI));assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(94000);
     }
 
 
     @Test void branchlessListingsAreGroupedSelectableAndDoNotChangePriceOrSelection()throws Exception {
-        var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.LFMALL,"a",176210,"","CONFIRMED"),listing(Mall.LFMALL,"b",225070,"","SOLD_OUT"),listing(Mall.HAZZYS,"c",200000,"","CONFIRMED")));
+        var p=create("ABCD6F123BK");finish(p,List.of(listing(ProcurementMall.LFMALL,"a",176210,"","CONFIRMED"),listing(ProcurementMall.LFMALL,"b",225070,"","SOLD_OUT"),listing(ProcurementMall.HAZZYS,"c",200000,"","CONFIRMED")));
         var c=compare(p);assertThat(c.pending()).isEmpty();assertThat(c.groups()).hasSize(2);
-        var lf=c.groups().stream().filter(g->g.mall()==Mall.LFMALL).findFirst().orElseThrow();
+        var lf=c.groups().stream().filter(g->g.mall()==ProcurementMall.LFMALL).findFirst().orElseThrow();
         assertThat(lf.store()).isNull();assertThat(lf.id()).isEqualTo("mall:LFMALL");assertThat(lf.listings()).hasSize(2).allMatch(Listing::selectable);
         assertThat(lf.listings()).allMatch(l->!l.branchRequired()&&l.storeStatus().equals("NOT_REQUIRED"));
         choose(p,lf.listings().getLast());String selected=current(p).selectedSupplier().id();var checked=current(p).selectedSupplier().priceCheckedAt();long lookupRev=current(p).lookupRevision();
         var response=login(account(UserRole.PRODUCT)).get("/api/products/"+p.id());status(response,200);
         var selectedJson=json.readTree(response.body()).path("data").path("comparison").path("selected");
         assertThat(selectedJson.path("selectable").asBoolean()).isTrue();assertThat(selectedJson.path("branchRequired").asBoolean()).isFalse();assertThat(selectedJson.path("selectionUnavailableReason").isNull()).isTrue();
-        preferred.saveMall(actor,Mall.LFMALL,new MallPreferenceInput(preferred.get(actor).revision(),"ALL",List.of(),List.of(),true));
+        preferred.saveMall(actor,ProcurementMall.LFMALL,new MallPreferenceInput(preferred.get(actor).revision(),"ALL",List.of(),List.of(),true));
         assertThat(hiddenReview(p)).hasSize(2);assertThat(current(p).selectedSupplier().id()).isEqualTo(selected);
         assertThat(current(p).selectedSupplier().selectable()).isFalse();
         assertThatThrownBy(()->choose(p,current(p).selectedSupplier())).hasMessageContaining("선호 매입처 또는 현재 유효한 추천");
-        preferred.saveMall(actor,Mall.LFMALL,new MallPreferenceInput(preferred.get(actor).revision(),"ALL",List.of(),List.of(),false));
+        preferred.saveMall(actor,ProcurementMall.LFMALL,new MallPreferenceInput(preferred.get(actor).revision(),"ALL",List.of(),List.of(),false));
         assertThat(hiddenReview(p)).isEmpty();assertThat(current(p).selectedSupplier().id()).isEqualTo(selected);
         assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(225070);assertThat(current(p).selectedSupplier().priceCheckedAt()).isEqualTo(checked);assertThat(current(p).lookupRevision()).isEqualTo(lookupRev);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM supplier_store",Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_lookup_history",Long.class)).isEqualTo(1);
     }
     @Test void branchPolicyPreservesManualAssignmentsSnapshotsAndRulesUntilSaved(){
-        var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.HI_THEHYUNDAI,"a",100,"목동점","CONFIRMED"),listing(Mall.HI_THEHYUNDAI,"b",200,"","CONFIRMED")));
+        var p=create("ABCD6F123BK");finish(p,List.of(listing(ProcurementMall.HI_THEHYUNDAI,"a",100,"목동점","CONFIRMED"),listing(ProcurementMall.HI_THEHYUNDAI,"b",200,"","CONFIRMED")));
         var store=compare(p).groups().getFirst().store();var pending=hiddenReview(p).getFirst();
         supplierService.assign(actor,Long.parseLong(p.id()),Long.parseLong(pending.id()),new AssignmentInput(pending.revision(),store.id()));
-        preferred.saveMall(actor,Mall.HI_THEHYUNDAI,new MallPreferenceInput(preferred.get(actor).revision(),"STORES",List.of(store.id()),List.of(),true));
+        preferred.saveMall(actor,ProcurementMall.HI_THEHYUNDAI,new MallPreferenceInput(preferred.get(actor).revision(),"STORES",List.of(store.id()),List.of(),true));
         start(p);var w=refresh.claim("w");long revision=preferred.get(actor).revision();
-        preferred.saveMall(actor,Mall.HI_THEHYUNDAI,new MallPreferenceInput(revision,"ALL",List.of(),List.of(),false));
-        assertThat(w.preferences().branchRequired(Mall.HI_THEHYUNDAI)).isTrue();
-        assertThat(store().branchRequired(Mall.HI_THEHYUNDAI)).isFalse();
-        assertThat(store().groups().stream().filter(g->g.mall()==Mall.HI_THEHYUNDAI).findFirst().orElseThrow().scope()).isEqualTo("ALL");
-        assertThatThrownBy(()->preferred.saveMall(actor,Mall.HI_THEHYUNDAI,new MallPreferenceInput(revision,"ALL",List.of(),List.of(),true))).isInstanceOf(IllegalStateException.class);
+        preferred.saveMall(actor,ProcurementMall.HI_THEHYUNDAI,new MallPreferenceInput(revision,"ALL",List.of(),List.of(),false));
+        assertThat(w.preferences().branchRequired(ProcurementMall.HI_THEHYUNDAI)).isTrue();
+        assertThat(store().branchRequired(ProcurementMall.HI_THEHYUNDAI)).isFalse();
+        assertThat(store().groups().stream().filter(g->g.mall()==ProcurementMall.HI_THEHYUNDAI).findFirst().orElseThrow().scope()).isEqualTo("ALL");
+        assertThatThrownBy(()->preferred.saveMall(actor,ProcurementMall.HI_THEHYUNDAI,new MallPreferenceInput(revision,"ALL",List.of(),List.of(),true))).isInstanceOf(IllegalStateException.class);
         assertThat(compare(p).groups().getFirst().listings()).anyMatch(l->l.manual()&&l.store().id().equals(store.id()));
-        assertThatThrownBy(()->preferred.saveRule(actor,null,new RuleInput(null,Mall.HI_THEHYUNDAI,store.id()))).hasMessageContaining("지점 구분");
-        preferred.deleteMall(actor,Mall.HI_THEHYUNDAI,preferred.get(actor).revision());assertThat(store().branchRequired(Mall.HI_THEHYUNDAI)).isFalse();
-        preferred.saveMall(actor,Mall.HI_THEHYUNDAI,new MallPreferenceInput(preferred.get(actor).revision(),"ALL",List.of(),List.of()));assertThat(store().branchRequired(Mall.HI_THEHYUNDAI)).isFalse();
-        refresh.finish("w",w,result());refresh.claim("w");start(p);assertThat(refresh.claim("next").preferences().branchRequired(Mall.HI_THEHYUNDAI)).isFalse();
+        assertThatThrownBy(()->preferred.saveRule(actor,null,new RuleInput(null,ProcurementMall.HI_THEHYUNDAI,store.id()))).hasMessageContaining("지점 구분");
+        preferred.deleteMall(actor,ProcurementMall.HI_THEHYUNDAI,preferred.get(actor).revision());assertThat(store().branchRequired(ProcurementMall.HI_THEHYUNDAI)).isFalse();
+        preferred.saveMall(actor,ProcurementMall.HI_THEHYUNDAI,new MallPreferenceInput(preferred.get(actor).revision(),"ALL",List.of(),List.of()));assertThat(store().branchRequired(ProcurementMall.HI_THEHYUNDAI)).isFalse();
+        refresh.finish("w",w,result());refresh.claim("w");start(p);assertThat(refresh.claim("next").preferences().branchRequired(ProcurementMall.HI_THEHYUNDAI)).isFalse();
     }
     Preferences store(){return preferred.get(actor);}
     @Test void branchPolicyMutationRequiresAdminCsrfAndRollsBackOnInvalidStores()throws Exception {
         var adminUser=account(UserRole.ADMIN);try {
         var admin=login(adminUser);var staff=login(account(UserRole.PRODUCT));String url="/api/settings/preferred-suppliers/LFMALL";
         var input=new MallPreferenceInput(preferred.get(actor).revision(),"ALL",List.of(),List.of(),true);
-        staff.csrf();status(staff.send("PUT",url,input,staff.csrf),403);status(admin.send("PUT",url,input,null),403);assertThat(store().branchRequired(Mall.LFMALL)).isFalse();
-        admin.csrf();status(admin.send("PUT",url,input,admin.csrf),200);assertThat(store().branchRequired(Mall.LFMALL)).isTrue();
+        staff.csrf();status(staff.send("PUT",url,input,staff.csrf),403);status(admin.send("PUT",url,input,null),403);assertThat(store().branchRequired(ProcurementMall.LFMALL)).isFalse();
+        admin.csrf();status(admin.send("PUT",url,input,admin.csrf),200);assertThat(store().branchRequired(ProcurementMall.LFMALL)).isTrue();
         var invalid=new MallPreferenceInput(store().revision(),"STORES",List.of("999999"),List.of(),false);
-        assertThatThrownBy(()->preferred.saveMall(actor,Mall.LFMALL,invalid)).isInstanceOf(IllegalArgumentException.class);assertThat(store().branchRequired(Mall.LFMALL)).isTrue();
+        assertThatThrownBy(()->preferred.saveMall(actor,ProcurementMall.LFMALL,invalid)).isInstanceOf(IllegalArgumentException.class);assertThat(store().branchRequired(ProcurementMall.LFMALL)).isTrue();
         }finally{jdbc.update("UPDATE `user` SET user_role='PRODUCT' WHERE id=?",adminUser.getId());}
     }
     User account(UserRole role){return users.saveAndFlush(User.builder().email(UUID.randomUUID()+"@example.com").name("상품 테스트").passwordHash(encoder.encode("Product123!")).role(role).status(UserStatus.ACTIVE).build());}
     @Test void mallPreferencesSaveAtomicallyAndPreserveStoreIdentities(){
-        var initial=preferred.get(actor);var draft=new StoreInput(null,Mall.HI_THEHYUNDAI,"BRANCH","목동점",null,null);
-        var saved=preferred.saveMall(actor,Mall.HI_THEHYUNDAI,new MallPreferenceInput(initial.revision(),"STORES",List.of(),List.of(draft,draft)));
-        var group=saved.groups().stream().filter(g->g.mall()==Mall.HI_THEHYUNDAI).findFirst().orElseThrow();
+        var initial=preferred.get(actor);var draft=new StoreInput(null,ProcurementMall.HI_THEHYUNDAI,"BRANCH","목동점",null,null);
+        var saved=preferred.saveMall(actor,ProcurementMall.HI_THEHYUNDAI,new MallPreferenceInput(initial.revision(),"STORES",List.of(),List.of(draft,draft)));
+        var group=saved.groups().stream().filter(g->g.mall()==ProcurementMall.HI_THEHYUNDAI).findFirst().orElseThrow();
         assertThat(group.scope()).isEqualTo("STORES");assertThat(group.storeIds()).hasSize(1);
         var id=group.storeIds().getFirst();assertThat(saved.stores()).filteredOn(st->st.id().equals(id)).first().extracting(Store::retailer).isEqualTo("현대백화점");
-        assertThatThrownBy(()->preferred.saveMall(actor,Mall.HI_THEHYUNDAI,new MallPreferenceInput(initial.revision(),"ALL",List.of(),List.of()))).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(()->preferred.saveMall(actor,ProcurementMall.HI_THEHYUNDAI,new MallPreferenceInput(initial.revision(),"ALL",List.of(),List.of()))).isInstanceOf(IllegalStateException.class);
         long before=jdbc.queryForObject("SELECT COUNT(*) FROM supplier_store",Long.class);
-        assertThatThrownBy(()->preferred.saveMall(actor,Mall.HI_THEHYUNDAI,new MallPreferenceInput(saved.revision(),"STORES",List.of(id),List.of(new StoreInput(null,Mall.HI_THEHYUNDAI,"BRANCH","천호점",null),new StoreInput(null,Mall.HI_THEHYUNDAI,"SELLER","잘못된 판매자","x"))))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->preferred.saveMall(actor,ProcurementMall.HI_THEHYUNDAI,new MallPreferenceInput(saved.revision(),"STORES",List.of(id),List.of(new StoreInput(null,ProcurementMall.HI_THEHYUNDAI,"BRANCH","천호점",null),new StoreInput(null,ProcurementMall.HI_THEHYUNDAI,"SELLER","잘못된 판매자","x"))))).isInstanceOf(IllegalArgumentException.class);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM supplier_store",Long.class)).isEqualTo(before);
         assertThat(preferred.get(actor).revision()).isEqualTo(saved.revision());
-        assertThatThrownBy(()->preferred.saveRule(actor,null,new RuleInput(null,Mall.HI_THEHYUNDAI,null))).hasMessageContaining("함께 저장");
-        var all=preferred.saveMall(actor,Mall.HI_THEHYUNDAI,new MallPreferenceInput(saved.revision(),"ALL",List.of(),List.of()));
-        assertThat(all.rules().stream().filter(r->r.mall()==Mall.HI_THEHYUNDAI).toList()).hasSize(1);
+        assertThatThrownBy(()->preferred.saveRule(actor,null,new RuleInput(null,ProcurementMall.HI_THEHYUNDAI,null))).hasMessageContaining("함께 저장");
+        var all=preferred.saveMall(actor,ProcurementMall.HI_THEHYUNDAI,new MallPreferenceInput(saved.revision(),"ALL",List.of(),List.of()));
+        assertThat(all.rules().stream().filter(r->r.mall()==ProcurementMall.HI_THEHYUNDAI).toList()).hasSize(1);
         assertThat(all.stores()).anyMatch(st->st.id().equals(id));
-        var removed=preferred.deleteMall(actor,Mall.HI_THEHYUNDAI,all.revision());assertThat(removed.mallAllowed(Mall.HI_THEHYUNDAI)).isFalse();assertThat(removed.stores()).anyMatch(st->st.id().equals(id));
+        var removed=preferred.deleteMall(actor,ProcurementMall.HI_THEHYUNDAI,all.revision());assertThat(removed.mallAllowed(ProcurementMall.HI_THEHYUNDAI)).isFalse();assertThat(removed.stores()).anyMatch(st->st.id().equals(id));
     }
     @Test void concurrentMallChangesAcceptOneRevision()throws Exception {
         long revision=preferred.get(actor).revision();
         try(var pool=Executors.newFixedThreadPool(2)){
             var gate=new CountDownLatch(1);var tasks=new ArrayList<Future<Boolean>>();
             for(String branch:List.of("목동점","천호점"))tasks.add(pool.submit(()->{gate.await();try{
-                preferred.saveMall(actor,Mall.HI_THEHYUNDAI,new MallPreferenceInput(revision,"STORES",List.of(),List.of(new StoreInput(null,Mall.HI_THEHYUNDAI,"BRANCH",branch,null))));return true;
+                preferred.saveMall(actor,ProcurementMall.HI_THEHYUNDAI,new MallPreferenceInput(revision,"STORES",List.of(),List.of(new StoreInput(null,ProcurementMall.HI_THEHYUNDAI,"BRANCH",branch,null))));return true;
             }catch(IllegalStateException ex){return false;}}));
             gate.countDown();assertThat(tasks.get(0).get()^tasks.get(1).get()).isTrue();
         }
         assertThat(preferred.get(actor).stores()).hasSize(1);
-        assertThat(preferred.get(actor).groups().stream().filter(g->g.mall()==Mall.HI_THEHYUNDAI).findFirst().orElseThrow().storeIds()).hasSize(1);
+        assertThat(preferred.get(actor).groups().stream().filter(g->g.mall()==ProcurementMall.HI_THEHYUNDAI).findFirst().orElseThrow().storeIds()).hasSize(1);
     }
     @Test void groupedPreferencesShowLegacyAllAndSnapshotStillRoundTrips(){
-        var branch=preferred.saveStore(actor,null,new StoreInput(null,Mall.HI_THEHYUNDAI,"BRANCH","목동점",null));
-        jdbc.update("INSERT INTO supplier_preference(id,mall,store_id,scope_key) VALUES(?,?,?,?)",ProductStore.id(),Mall.HI_THEHYUNDAI.name(),branch.id(),branch.id());
-        var p=preferred.get(actor);assertThat(p.groups().stream().filter(g->g.mall()==Mall.HI_THEHYUNDAI).findFirst().orElseThrow().scope()).isEqualTo("ALL");
+        var branch=preferred.saveStore(actor,null,new StoreInput(null,ProcurementMall.HI_THEHYUNDAI,"BRANCH","목동점",null));
+        jdbc.update("INSERT INTO supplier_preference(id,mall,store_id,scope_key) VALUES(?,?,?,?)",ProductStore.id(),ProcurementMall.HI_THEHYUNDAI.name(),branch.id(),branch.id());
+        var p=preferred.get(actor);assertThat(p.groups().stream().filter(g->g.mall()==ProcurementMall.HI_THEHYUNDAI).findFirst().orElseThrow().scope()).isEqualTo("ALL");
         var decoded=json.readValue(json.writeValueAsString(p),Preferences.class);assertThat(decoded).isEqualTo(p);
-        var clean=preferred.saveMall(actor,Mall.HI_THEHYUNDAI,new MallPreferenceInput(p.revision(),"STORES",List.of(branch.id()),List.of()));
-        assertThat(clean.rules().stream().filter(r->r.mall()==Mall.HI_THEHYUNDAI).toList()).hasSize(1);
+        var clean=preferred.saveMall(actor,ProcurementMall.HI_THEHYUNDAI,new MallPreferenceInput(p.revision(),"STORES",List.of(branch.id()),List.of()));
+        assertThat(clean.rules().stream().filter(r->r.mall()==ProcurementMall.HI_THEHYUNDAI).toList()).hasSize(1);
     }
     @Test void inlineStoreAssignmentIsAtomicAndPreferenceAdditionIsOptional(){
-        var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.HI_THEHYUNDAI,"one",100,"","CONFIRMED")));
-        var l=hiddenReview(p).getFirst();var prefs=preferred.get(actor);preferred.deleteMall(actor,Mall.HI_THEHYUNDAI,prefs.revision());
-        var draft=new StoreInput(null,Mall.HI_THEHYUNDAI,"BRANCH","목동점",null);
+        var p=create("ABCD6F123BK");finish(p,List.of(listing(ProcurementMall.HI_THEHYUNDAI,"one",100,"","CONFIRMED")));
+        var l=hiddenReview(p).getFirst();var prefs=preferred.get(actor);preferred.deleteMall(actor,ProcurementMall.HI_THEHYUNDAI,prefs.revision());
+        var draft=new StoreInput(null,ProcurementMall.HI_THEHYUNDAI,"BRANCH","목동점",null);
         var assigned=supplierService.assign(actor,Long.parseLong(p.id()),Long.parseLong(l.id()),new AssignmentInput(l.revision(),null,draft,false,preferred.get(actor).revision()));
-        assertThat(preferred.get(actor).mallAllowed(Mall.HI_THEHYUNDAI)).isFalse();assertThat(assigned.selected()).isNull();
+        assertThat(preferred.get(actor).mallAllowed(ProcurementMall.HI_THEHYUNDAI)).isFalse();assertThat(assigned.selected()).isNull();
         var current=storedListings(p).getFirst();long count=jdbc.queryForObject("SELECT COUNT(*) FROM supplier_store",Long.class);
-        assertThatThrownBy(()->supplierService.assign(actor,Long.parseLong(p.id()),Long.parseLong(l.id()),new AssignmentInput(l.revision(),null,new StoreInput(null,Mall.HI_THEHYUNDAI,"BRANCH","천호점",null),true,preferred.get(actor).revision()))).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(()->supplierService.assign(actor,Long.parseLong(p.id()),Long.parseLong(l.id()),new AssignmentInput(l.revision(),null,new StoreInput(null,ProcurementMall.HI_THEHYUNDAI,"BRANCH","천호점",null),true,preferred.get(actor).revision()))).isInstanceOf(IllegalStateException.class);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM supplier_store",Long.class)).isEqualTo(count);
         var result=supplierService.assign(actor,Long.parseLong(p.id()),Long.parseLong(l.id()),new AssignmentInput(current.revision(),current.store().id(),null,true,preferred.get(actor).revision()));
         assertThat(result.groups()).hasSize(1);assertThat(result.groups().getFirst().listings().getFirst().manual()).isTrue();assertThat(result.selected()).isNull();
     }
     @Test void groupedApiAndInlineRegistrationEnforceCsrfAndAdmin()throws Exception{
-        var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.HI_THEHYUNDAI,"one",100,"","CONFIRMED")));var l=hiddenReview(p).getFirst();
+        var p=create("ABCD6F123BK");finish(p,List.of(listing(ProcurementMall.HI_THEHYUNDAI,"one",100,"","CONFIRMED")));var l=hiddenReview(p).getFirst();
         var adminUser=account(UserRole.ADMIN);try{
             var admin=login(adminUser);var staff=login(account(UserRole.PRODUCT));
-            var input=new MallPreferenceInput(preferred.get(actor).revision(),"STORES",List.of(),List.of(new StoreInput(null,Mall.HI_THEHYUNDAI,"BRANCH","목동점",null)));
+            var input=new MallPreferenceInput(preferred.get(actor).revision(),"STORES",List.of(),List.of(new StoreInput(null,ProcurementMall.HI_THEHYUNDAI,"BRANCH","목동점",null)));
             var route="/api/settings/preferred-suppliers/HI_THEHYUNDAI";
             status(admin.send("PUT",route,input,null),403);admin.csrf();status(admin.send("PUT",route,input,admin.csrf),200);
             staff.csrf();status(staff.send("PUT",route,input,staff.csrf),403);status(staff.send("DELETE",route,Map.of("revision",preferred.get(actor).revision()),staff.csrf),403);
             String assign="/api/products/"+p.id()+"/suppliers/"+l.id()+"/store";
-            status(staff.post(assign,new AssignmentInput(l.revision(),null,new StoreInput(null,Mall.HI_THEHYUNDAI,"BRANCH","천호점",null),false,preferred.get(actor).revision())),403);
+            status(staff.post(assign,new AssignmentInput(l.revision(),null,new StoreInput(null,ProcurementMall.HI_THEHYUNDAI,"BRANCH","천호점",null),false,preferred.get(actor).revision())),403);
             var branch=preferred.get(actor).stores().getFirst();
             status(staff.post(assign,new AssignmentInput(l.revision(),branch.id(),null,true,preferred.get(actor).revision())),403);
             status(staff.post(assign,new AssignmentInput(l.revision(),branch.id())),200);

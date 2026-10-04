@@ -4,26 +4,26 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import cc.ataglace.molebutter.dto.product.ProductDtos.Mall;
+import cc.ataglace.molebutter.dto.product.ProductDtos.ProcurementMall;
 
 /** 자동 옵션 조회는 실제 상품 URL의 호스트와 확인된 경로 규칙을 사용한다. */
 public final class ProductSourceMetadata {
     private ProductSourceMetadata() {}
-    static final Map<Mall,List<String>> HOSTS=Map.of(
-        Mall.LFMALL,List.of("lfmall.co.kr"),Mall.HAZZYS,List.of("hazzys.com"),
-        Mall.NAVER_SMART_STORE,List.of("smartstore.naver.com","brand.naver.com","shopping.naver.com"),
-        Mall.LOTTE_ON,List.of("lotteon.com"),Mall.LOTTE_IMALL,List.of("lotteimall.com"),
-        Mall.HI_THEHYUNDAI,List.of("hi.thehyundai.com","www.thehyundai.com"),Mall.HMALL,List.of("hmall.com"));
+    static final Map<ProcurementMall,List<String>> HOSTS=Map.of(
+        ProcurementMall.LFMALL,List.of("lfmall.co.kr"),ProcurementMall.HAZZYS,List.of("hazzys.com"),
+        ProcurementMall.NAVER_SMART_STORE,List.of("smartstore.naver.com","brand.naver.com","shopping.naver.com"),
+        ProcurementMall.LOTTE_ON,List.of("lotteon.com"),ProcurementMall.LOTTE_IMALL,List.of("lotteimall.com"),
+        ProcurementMall.HI_THEHYUNDAI,List.of("hi.thehyundai.com","www.thehyundai.com"),ProcurementMall.HMALL,List.of("hmall.com"));
 
-    public static Mall mall(String url) {
+    public static ProcurementMall mall(String url) {
         try {
             URI uri=URI.create(url);
             if(!isWebUrl(uri)||uri.getPort()!=-1)return null;
             String host=uri.getHost().toLowerCase(Locale.ROOT);
             // cr/search.shopping.naver.com 같은 공통 중계 주소는 스마트스토어 상품 주소가 아니다.
             if(host.equals("shopping.naver.com")||host.endsWith(".shopping.naver.com")) {
-                return host.equals("shopping.naver.com")&&!productId(Mall.NAVER_SMART_STORE,url,"").isBlank()
-                    ? Mall.NAVER_SMART_STORE : null;
+                return host.equals("shopping.naver.com")&&!productId(ProcurementMall.NAVER_SMART_STORE,url,"").isBlank()
+                    ? ProcurementMall.NAVER_SMART_STORE : null;
             }
             return HOSTS.entrySet().stream().filter(e->e.getValue().stream().anyMatch(h->host.equals(h)||host.endsWith("."+h)))
                 .map(Map.Entry::getKey).findFirst().orElse(null);
@@ -35,8 +35,8 @@ public final class ProductSourceMetadata {
             && uri.getHost()!=null && uri.getRawUserInfo()==null;
     }
 
-    public static List<Mall> supportedMalls() {
-        return Arrays.stream(Mall.values()).filter(HOSTS::containsKey).toList();
+    public static List<ProcurementMall> supportedMalls() {
+        return Arrays.stream(ProcurementMall.values()).filter(HOSTS::containsKey).toList();
     }
 
     /** 이름은 확인 필요 후보를 보존하는 용도일 뿐, URL 검증이나 자동 연결의 근거로 쓰지 않는다. */
@@ -47,9 +47,9 @@ public final class ProductSourceMetadata {
         return Set.of("lfmall","hazzys","스마트스토어","네이버스마트스토어","롯데on","lotteon","lotteimall","더현대닷컴","현대h몰","hmall").contains(normalized);
     }
 
-    public static String productId(Mall mall,String url,String supplied) {
+    public static String productId(ProcurementMall mall,String url,String supplied) {
         // 롯데온의 판매 옵션 API는 pdNo가 아닌 링크에 명시된 sitmNo를 사용한다.
-        if(mall==Mall.LOTTE_ON)try {String sku=query(URI.create(url),"sitmNo");if(sku.matches("[A-Za-z0-9_-]{1,100}"))return sku;}catch(Exception ignored){}
+        if(mall==ProcurementMall.LOTTE_ON)try {String sku=query(URI.create(url),"sitmNo");if(sku.matches("[A-Za-z0-9_-]{1,100}"))return sku;}catch(Exception ignored){}
         String provided=supplied!=null&&supplied.matches("[A-Za-z0-9_-]{1,100}")?supplied:"";
         if(mall==null)return provided;
         String linked="";

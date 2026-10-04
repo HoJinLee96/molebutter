@@ -103,7 +103,7 @@ final class NaverSearchPayload {
                     || mall.isBlank())
                 continue;
             String url = productUrl(p);
-            Mall source = ProductSourceMetadata.mall(url);
+            ProcurementMall source = ProductSourceMetadata.mall(url);
             String supplied = text(p, "mallProductId", "channelProductId", "chnlProdNo");
             String productId = ProductSourceMetadata.productId(source, url, supplied);
             // 충돌한 후보를 빈 번호로 남기면 후속 호출이 URL에서 번호를 다시 확정할 수 있다.
@@ -115,8 +115,8 @@ final class NaverSearchPayload {
                     url, number(p, "price", "discountedSalePrice", "salePrice", "lowPrice"),
                     number(p, "deliveryFee", "dlvryFee", "krwDlvryFee"), source,
                     ProductSourceMetadata.imageUrl(text(p, "imageUrl", "image", "image_url")),
-                    source == Mall.NAVER_SMART_STORE ? channelHints(p) : null,
-                    source == Mall.NAVER_SMART_STORE
+                    source == ProcurementMall.NAVER_SMART_STORE ? channelHints(p) : null,
+                    source == ProcurementMall.NAVER_SMART_STORE
                             ? new SearchStoreEvidence(text(p, "chnlSeq"), text(p.path("channelInfoCache"), "chnlSeq"),
                                     text(p.path("channelInfoCache"), "chnlName"), text(p, "comNm"), text(p, "wdTp"),
                                     text(p, "wdNm"))
@@ -130,10 +130,10 @@ final class NaverSearchPayload {
         Set<String> ids = new HashSet<>();
         for (String key : List.of("purchaseUrl", "mallProductUrl", "link", "crUrl")) {
             String url = text(product, key);
-            if (ProductSourceMetadata.mall(url) != Mall.NAVER_SMART_STORE)
+            if (ProductSourceMetadata.mall(url) != ProcurementMall.NAVER_SMART_STORE)
                 continue;
             result = NaverChannelPolicy.merge(result, NaverChannelPolicy.fromUrl(url));
-            String id = ProductSourceMetadata.productId(Mall.NAVER_SMART_STORE, url, "");
+            String id = ProductSourceMetadata.productId(ProcurementMall.NAVER_SMART_STORE, url, "");
             if (!id.isBlank())
                 ids.add(id);
         }

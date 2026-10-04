@@ -7,7 +7,7 @@ import cc.ataglace.molebutter.dto.product.ProductDtos.*;
 
 class NaverSearchRangeTest {
     NaverSearchPayload.Captured page(int n,boolean end) {
-        var offer=new Offer("nv"+n,"bag","LF몰","p"+n,"https://www.lfmall.co.kr/product/"+n,100L,0L,Mall.LFMALL,null);
+        var offer=new Offer("nv"+n,"bag","LF몰","p"+n,"https://www.lfmall.co.kr/product/"+n,100L,0L,ProcurementMall.LFMALL,null);
         return new NaverSearchPayload.Captured(new SearchResult(List.of(offer),end,null),80,1000L,false);
     }
     @Test void firstPageEndAndDefaultRangeHaveIdenticalSuccessMetadata() {

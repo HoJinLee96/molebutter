@@ -13,13 +13,13 @@ import cc.ataglace.molebutter.service.product.*;
 class NaverInventoryTest {
     MallOptionParser parser=new MallOptionParser(new ObjectMapper());
     String fixture(String id)throws Exception{try(var in=getClass().getResourceAsStream("/product/naver-inventory-"+id+".json")){return new String(in.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);}}
-    SourceDetails parse(String body){return parser.details(Mall.NAVER_SMART_STORE,"{\"_id\":\"42\",\"contents\":{\"id\":42,"+body+"}}","42");}
+    SourceDetails parse(String body){return parser.details(ProcurementMall.NAVER_SMART_STORE,"{\"_id\":\"42\",\"contents\":{\"id\":42,"+body+"}}","42");}
     @Test void simpleGiftChoicesShareOneProductStockAndPreserveStore()throws Exception{
-        var data=parser.details(Mall.NAVER_SMART_STORE,fixture("10481417934"),"10481417934");
+        var data=parser.details(ProcurementMall.NAVER_SMART_STORE,fixture("10481417934"),"10481417934");
         assertThat(data.storeEvidence().retailer()).isEqualTo("롯데백화점");assertThat(data.storeEvidence().name()).isEqualTo("잠실점");
         assertThat(data.options()).containsExactly(new SourceOption("10481417934","상품 전체",50L,"AVAILABLE","PRODUCT"));
         assertThat(data.optionsComplete()).isTrue();
-        var supplier=new SupplierResult(new Offer("nv","","", "10481417934","https://shopping.naver.com/window-products/department/10481417934",1000L,0L,Mall.NAVER_SMART_STORE,null),new CodeMatch("SEARCH_RESULT",null,null,null,null,null),"CONFIRMED",data.options(),null);
+        var supplier=new SupplierResult(new Offer("nv","","", "10481417934","https://shopping.naver.com/window-products/department/10481417934",1000L,0L,ProcurementMall.NAVER_SMART_STORE,null),new CodeMatch("SEARCH_RESULT",null,null,null,null,null),"CONFIRMED",data.options(),null);
         assertThat(SupplierRecommendationPolicy.soldOut(supplier)).isFalse();
         assertThat(SupplierLookupService.summarize(List.of(supplier),true,java.time.LocalDateTime.now()).status()).isEqualTo("SUCCESS");
     }
@@ -27,7 +27,7 @@ class NaverInventoryTest {
         var json=new ObjectMapper();
         for(String stock:List.of("0","null","-1","1.5","true","\"숨김\"")){
             var root=json.readTree(fixture("10481417934"));((tools.jackson.databind.node.ObjectNode)root.path("contents")).set("stockQuantity",json.readTree(stock));
-            var d=parser.details(Mall.NAVER_SMART_STORE,json.writeValueAsString(root),"10481417934");
+            var d=parser.details(ProcurementMall.NAVER_SMART_STORE,json.writeValueAsString(root),"10481417934");
             assertThat(d.options()).hasSize(1);assertThat(d.options().getFirst().stockScope()).isEqualTo("PRODUCT");
             assertThat(d.options().getFirst().stock()).isEqualTo(stock.equals("0")?0L:null);
             assertThat(d.options().getFirst().state()).isEqualTo(stock.equals("0")?"SOLD_OUT":"STOCK_UNKNOWN");
@@ -35,14 +35,14 @@ class NaverInventoryTest {
             assertThat(SupplierRecommendationPolicy.soldOut(s)).isEqualTo(stock.equals("0"));
         }
         String sample=fixture("10481417934");
-        assertThat(parser.details(Mall.NAVER_SMART_STORE,sample.replace("\"stockQuantity\": 50","\"stockQuantity\": 50, \"useExternalStock\": true"),"10481417934").options().getFirst().stock()).isNull();
-        assertThat(parser.details(Mall.NAVER_SMART_STORE,sample.replace("\"SALE\"","\"SUSPENSION\""),"10481417934").options().getFirst().state()).isEqualTo("UNAVAILABLE");
-        assertThat(parser.details(Mall.NAVER_SMART_STORE,sample,"wrong").options()).isEmpty();
+        assertThat(parser.details(ProcurementMall.NAVER_SMART_STORE,sample.replace("\"stockQuantity\": 50","\"stockQuantity\": 50, \"useExternalStock\": true"),"10481417934").options().getFirst().stock()).isNull();
+        assertThat(parser.details(ProcurementMall.NAVER_SMART_STORE,sample.replace("\"SALE\"","\"SUSPENSION\""),"10481417934").options().getFirst().state()).isEqualTo("UNAVAILABLE");
+        assertThat(parser.details(ProcurementMall.NAVER_SMART_STORE,sample,"wrong").options()).isEmpty();
     }
     @Test void ambiguousSimpleDefinitionsNeverFallBackToTotal()throws Exception{
         String sample=fixture("10481417934");
         for(String changed:List.of(sample.replace("\"SIMPLE\"","\"COMBINATION\""),sample.replace("\"optionStandards\": []","\"optionStandards\": [{}]"),sample.replace("\"optionCombinations\": []","\"optionCombinations\": {}"),sample.replace("\"optionUsable\": true","\"optionUsable\": false"),sample.replace("\"optionUsable\": true","\"optionUsable\": true, \"optionInfo\": {\"options\":[]}"),sample.replace("10862805347","10862805346"))){
-            var d=parser.details(Mall.NAVER_SMART_STORE,changed,"10481417934");assertThat(d.options()).isEmpty();assertThat(d.optionsComplete()).isFalse();
+            var d=parser.details(ProcurementMall.NAVER_SMART_STORE,changed,"10481417934");assertThat(d.options()).isEmpty();assertThat(d.optionsComplete()).isFalse();
         }
     }
     @Test void stockScopeIsOptionalForHistoricalJson(){
@@ -55,11 +55,11 @@ class NaverInventoryTest {
         assertThat(json.readValue(json.writeValueAsString(product),SourceOption.class)).isEqualTo(product);
     }
     @Test void researchSamplesExposeOnlyTheirOwnOptionQuantities()throws Exception{
-        var single=parser.details(Mall.NAVER_SMART_STORE,fixture("10513327648"),"10513327648");assertThat(single.options()).containsExactly(new SourceOption("10513327648","단일상품",41L,"AVAILABLE"));
-        var hazzys=parser.details(Mall.NAVER_SMART_STORE,fixture("12610379894"),"12610379894");assertThat(hazzys.options()).containsExactly(new SourceOption("53129032179","FREE",3L,"AVAILABLE"));assertThat(hazzys.modelCode()).isEqualTo("HIWA6E450BK");
-        var daks=parser.details(Mall.NAVER_SMART_STORE,fixture("13197489089"),"13197489089");assertThat(daks.options()).containsExactly(new SourceOption("56549039311","FREE",2L,"AVAILABLE"));assertThat(daks.storeEvidence().name()).isEqualTo("닥스 DAKS");assertThat(daks.optionsComplete()).isTrue();
-        assertThat(parser.details(Mall.NAVER_SMART_STORE,fixture("13197489089"),"other").options()).isEmpty();
-        assertThat(parser.details(Mall.NAVER_SMART_STORE,fixture("13197489089").replace("\"id\": 13197489089","\"id\": 999"),"13197489089").options()).isEmpty();
+        var single=parser.details(ProcurementMall.NAVER_SMART_STORE,fixture("10513327648"),"10513327648");assertThat(single.options()).containsExactly(new SourceOption("10513327648","단일상품",41L,"AVAILABLE"));
+        var hazzys=parser.details(ProcurementMall.NAVER_SMART_STORE,fixture("12610379894"),"12610379894");assertThat(hazzys.options()).containsExactly(new SourceOption("53129032179","FREE",3L,"AVAILABLE"));assertThat(hazzys.modelCode()).isEqualTo("HIWA6E450BK");
+        var daks=parser.details(ProcurementMall.NAVER_SMART_STORE,fixture("13197489089"),"13197489089");assertThat(daks.options()).containsExactly(new SourceOption("56549039311","FREE",2L,"AVAILABLE"));assertThat(daks.storeEvidence().name()).isEqualTo("닥스 DAKS");assertThat(daks.optionsComplete()).isTrue();
+        assertThat(parser.details(ProcurementMall.NAVER_SMART_STORE,fixture("13197489089"),"other").options()).isEmpty();
+        assertThat(parser.details(ProcurementMall.NAVER_SMART_STORE,fixture("13197489089").replace("\"id\": 13197489089","\"id\": 999"),"13197489089").options()).isEmpty();
     }
     @Test void absentInvalidOrExternalStockIsUnknownAndUnavailableDoesNotInventZero(){
         for(String quantity:List.of("null","-1","1.5","true","\"숨김\"","9223372036854775808")){
@@ -88,12 +88,12 @@ class NaverInventoryTest {
     }
     @Test void preferredOfficialLookupUsesInventoryAndSharedResponse()throws Exception{
         var calls=new ArrayList<String>();String payload=fixture("12610379894");
-        SupplierProductGateway gateway=new SupplierProductGateway(){public String validateUrl(Mall m,String u){return u;}public List<SourceOption> options(Mall m,String id,String u){throw new AssertionError();}public SourceDetails inspect(Mall m,String id,String u){calls.add(id);return parser.details(m,payload,id);}};
-        var info=parser.details(Mall.NAVER_SMART_STORE,payload,"12610379894").storeEvidence();
-        var store=new Store("1",Mall.NAVER_SMART_STORE,"BRAND_STORE","헤지스 공식몰","channel",List.of("헤지스 공식몰"),0,null,List.of(new ExternalIdentity(info.namespace(),info.externalId())));
-        var prefs=new Preferences(1,List.of(store),List.of(new Rule("1",Mall.NAVER_SMART_STORE,"1",0)));
+        SupplierProductGateway gateway=new SupplierProductGateway(){public String validateUrl(ProcurementMall m,String u){return u;}public List<SourceOption> options(ProcurementMall m,String id,String u){throw new AssertionError();}public SourceDetails inspect(ProcurementMall m,String id,String u){calls.add(id);return parser.details(m,payload,id);}};
+        var info=parser.details(ProcurementMall.NAVER_SMART_STORE,payload,"12610379894").storeEvidence();
+        var store=new Store("1",ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","헤지스 공식몰","channel",List.of("헤지스 공식몰"),0,null,List.of(new ExternalIdentity(info.namespace(),info.externalId())));
+        var prefs=new Preferences(1,List.of(store),List.of(new Rule("1",ProcurementMall.NAVER_SMART_STORE,"1",0)));
         var work=new SupplierRefreshService.Work(1,2,0,"HIWA450","HIWA6E450BK","LF_ACCESSORY","HAZZYS",prefs,Map.of());
-        var offer=new Offer("nv","HIWA6E450BK","헤지스","12610379894","https://shopping.naver.com/window-products/brandfashion/12610379894",94000L,0L,Mall.NAVER_SMART_STORE,null);
+        var offer=new Offer("nv","HIWA6E450BK","헤지스","12610379894","https://shopping.naver.com/window-products/brandfashion/12610379894",94000L,0L,ProcurementMall.NAVER_SMART_STORE,null);
         var service=new SupplierLookupService(gateway,new BusinessTime());var search=new SearchResult(List.of(offer),true,null);
         var result=service.lookup(work,search,()->true);service.lookup(work,search,()->true);
         assertThat(calls).containsExactly("12610379894");assertThat(result.status()).isEqualTo("SUCCESS");assertThat(result.suppliers().getFirst().state()).isEqualTo("CONFIRMED");assertThat(result.suppliers().getFirst().options().getFirst().stock()).isEqualTo(3);

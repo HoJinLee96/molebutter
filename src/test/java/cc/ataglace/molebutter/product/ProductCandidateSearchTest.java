@@ -24,7 +24,7 @@ class ProductCandidateSearchTest {
         when(search.search("HIBA311",Set.of(),3)).thenReturn(raw);
         var result=new ProductCandidateSearch(search).search("HIBA311");
         assertThat(result.offers()).extracting(Offer::naverProductId).containsExactly("1");
-        assertThat(result.offers().getFirst().mall()).isEqualTo(Mall.LFMALL);
+        assertThat(result.offers().getFirst().mall()).isEqualTo(ProcurementMall.LFMALL);
         assertThat(result.offers().getFirst().mallProductId()).isEqualTo("P123");
         assertThat(result.needsReview()).extracting(Offer::naverProductId).containsExactly("2","3","4");
         assertThat(result.needsReview().get(1).mall()).isNull(); // 이름만으로 자동 옵션 조회를 허용하지 않는다.

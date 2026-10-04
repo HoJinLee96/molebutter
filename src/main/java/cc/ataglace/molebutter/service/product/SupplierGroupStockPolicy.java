@@ -10,7 +10,7 @@ public final class SupplierGroupStockPolicy {
     private static String clean(String v){return v==null?"":v.replaceAll("\\s+","");}
     public static String key(Offer o){
         var e=o.searchStore();
-        if(o.mall()!=Mall.NAVER_SMART_STORE||!NaverChannelPolicy.probeAllowed(o)||e==null||e.channelId()==null||!e.channelId().matches("[0-9]+")||!e.channelId().equals(e.cachedChannelId()))return null;
+        if(o.mall()!=ProcurementMall.NAVER_SMART_STORE||!NaverChannelPolicy.probeAllowed(o)||e==null||e.channelId()==null||!e.channelId().matches("[0-9]+")||!e.channelId().equals(e.cachedChannelId()))return null;
         var titleBranch=SupplierBranch.resolve(o,null);if("CONFLICT".equals(titleBranch.state()))return null;
         if(titleBranch.name()!=null&&!clean(e.storeName()).contains(clean(titleBranch.name())))return null;
         if("1".equals(e.windowType())&&"백화점".equals(e.windowName())&&!clean(e.storeName()).isEmpty())return e.channelId()+":DEPARTMENT:"+clean(e.storeName());

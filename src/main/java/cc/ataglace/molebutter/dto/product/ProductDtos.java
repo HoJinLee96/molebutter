@@ -7,13 +7,13 @@ public final class ProductDtos {
     private ProductDtos() {
     }
 
-    public enum Mall {
+    public enum ProcurementMall {
         LFMALL("LF몰"), HAZZYS("헤지스"), NAVER_SMART_STORE("네이버 쇼핑윈도"), LOTTE_ON("롯데온"),
         LOTTE_IMALL("롯데홈쇼핑"), HI_THEHYUNDAI("더현대Hi"), HMALL("현대Hmall");
 
         private final String displayName;
 
-        Mall(String displayName) {
+        ProcurementMall(String displayName) {
             this.displayName = displayName;
         }
 
@@ -102,15 +102,15 @@ public final class ProductDtos {
     }
 
     public record Offer(String naverProductId, String title, String mallName, String mallProductId, String url,
-            Long price, Long deliveryFee, Mall mall, String imageUrl, NaverChannel naverChannel,
+            Long price, Long deliveryFee, ProcurementMall mall, String imageUrl, NaverChannel naverChannel,
             SearchStoreEvidence searchStore) {
         public Offer(String nv, String title, String mallName, String id, String url, Long price, Long delivery,
-                Mall mall, String image, NaverChannel channel) {
+                ProcurementMall mall, String image, NaverChannel channel) {
             this(nv, title, mallName, id, url, price, delivery, mall, image, channel, null);
         }
 
         public Offer(String nv, String title, String mallName, String id, String url, Long price, Long delivery,
-                Mall mall, String image) {
+                ProcurementMall mall, String image) {
             this(nv, title, mallName, id, url, price, delivery, mall, image, null);
         }
 
@@ -272,7 +272,7 @@ public final class ProductDtos {
     }
 
     @com.fasterxml.jackson.annotation.JsonIgnoreProperties(value = "message", allowGetters = true)
-    public record RecommendationDiagnostic(String runId, String productId, String listingKey, Mall mall,
+    public record RecommendationDiagnostic(String runId, String productId, String listingKey, ProcurementMall mall,
             String supplierProductId,
             Long searchPrice, String url, String kind, String causeCode, Integer httpStatus, LocalDateTime createdAt) {
         public String message() {

@@ -3,7 +3,7 @@ package cc.ataglace.molebutter.service.product;
 import java.net.URI;
 import java.util.Objects;
 import org.springframework.stereotype.Service;
-import cc.ataglace.molebutter.dto.product.ProductDtos.Mall;
+import cc.ataglace.molebutter.dto.product.ProductDtos.ProcurementMall;
 import cc.ataglace.molebutter.dto.product.SupplierDtos.*;
 import cc.ataglace.molebutter.infra.product.SupplierProductGateway;
 import cc.ataglace.molebutter.infra.product.NaverChannelPolicy;
@@ -33,8 +33,8 @@ public class OfficialBrandStoreService {
     }
     public ChannelPreview preview(Long actor,String url){
         db.authorize(actor,true);long revision=preferences.get(actor).revision();String id=productId(url);
-        var detail=gateway.inspect(Mall.NAVER_SMART_STORE,id,url.trim());
-        var offer=new Offer(null,null,null,id,url,null,null,Mall.NAVER_SMART_STORE,null);
+        var detail=gateway.inspect(ProcurementMall.NAVER_SMART_STORE,id,url.trim());
+        var offer=new Offer(null,null,null,id,url,null,null,ProcurementMall.NAVER_SMART_STORE,null);
         if(NaverChannelPolicy.inspected(offer,detail).type()!=NaverChannelType.WINDOW)throw new IllegalArgumentException("쇼핑윈도 판매채널을 확인하지 못했습니다.");
         var evidence=detail.storeEvidence();
         // Gateway의 본상품 ID 검사에 통과한 판매채널 근거만 사용한다.
@@ -44,7 +44,7 @@ public class OfficialBrandStoreService {
     }
     public Store register(Long actor,StoreInput input){
         db.authorize(actor,true);
-        if(input.mall()!=Mall.NAVER_SMART_STORE||!"BRAND_STORE".equals(input.kind())||input.retailer()!=null&&!input.retailer().isBlank()||input.sellerKey()!=null&&!input.sellerKey().isBlank())throw new IllegalArgumentException("네이버 쇼핑윈도 공식몰 정보를 입력해 주세요.");
+        if(input.mall()!=ProcurementMall.NAVER_SMART_STORE||!"BRAND_STORE".equals(input.kind())||input.retailer()!=null&&!input.retailer().isBlank()||input.sellerKey()!=null&&!input.sellerKey().isBlank())throw new IllegalArgumentException("네이버 쇼핑윈도 공식몰 정보를 입력해 주세요.");
         var verified=preview(actor,input.productUrl());
         if(!verified.channelUid().equals(input.expectedChannelUid()))throw new IllegalArgumentException("판매채널이 변경되었습니다. 다시 확인해 주세요.");
         return preferences.registerBrandStore(actor,input,verified);

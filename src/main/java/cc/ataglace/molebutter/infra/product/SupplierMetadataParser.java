@@ -7,14 +7,14 @@ import static cc.ataglace.molebutter.infra.product.NaverSearchPayload.text;
 
 /** 상품 ID로 한정한 매장 메타데이터. 재고 유무나 추천 상품 데이터에 의존하지 않는다. */
 final class SupplierMetadataParser {
-    static StoreEvidence parse(Mall mall,List<JsonNode> roots,String id){
+    static StoreEvidence parse(ProcurementMall mall,List<JsonNode> roots,String id){
         var found=new LinkedHashSet<StoreEvidence>();
         for(var root:roots){
-            if(mall==Mall.HI_THEHYUNDAI)hi(root,id,0,found);
-            if(mall==Mall.LOTTE_ON&&LotteProductPayload.matches(root,id)){
+            if(mall==ProcurementMall.HI_THEHYUNDAI)hi(root,id,0,found);
+            if(mall==ProcurementMall.LOTTE_ON&&LotteProductPayload.matches(root,id)){
                 var evidence=lotte(root.path("data"));if(evidence!=null)found.add(evidence);
             }
-            if(mall==Mall.NAVER_SMART_STORE){
+            if(mall==ProcurementMall.NAVER_SMART_STORE){
                 if(!naverMatches(root,id))continue;
                 var channel=root.path("channel");var nestedChannel=root.path("contents").path("channel");
                 String outerUid=text(channel,"channelUid"),innerUid=text(nestedChannel,"channelUid");

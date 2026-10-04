@@ -41,7 +41,7 @@ public class ProductSupplierService {
             boolean priced=current&&result!=null&&result.offer().price()!=null&&result.offer().price()>0&&result.accepted();
             String status=!channelSupported?"UNSUPPORTED_CHANNEL":priced?"CONFIRMED":!criteria?"STALE":List.of("PENDING","CHECKING").contains(r.getString("latest_status"))?"CHECKING":List.of("FAILED","BLOCKED","CANCELLED").contains(r.getString("latest_status"))?"FAILED":current?"UNCONFIRMED":"MISSING";
             String inventory=current&&result!=null&&"OPTIONS_PARTIAL".equals(result.state())?"OPTIONS_PARTIAL":!current?"UNCONFIRMED":result==null?"UNCONFIRMED":!result.accepted()?"CODE_REVIEW":result.state().equals("FAILED")?"FAILED":result.options().size()>1?"MULTIPLE":result.options().isEmpty()?"UNCONFIRMED":result.options().getFirst().state();
-            Mall mall=Mall.valueOf(r.getString("mall"));
+            ProcurementMall mall=ProcurementMall.valueOf(r.getString("mall"));
             var observed=result==null?null:SupplierStorePolicy.resolve(settings.stores(),mall,SupplierStorePolicy.identity(result.offer(),result.branch()));
             String storeStatus=manual!=null?"MANUAL":conflict?"CONFLICT":(current||"CHECKING".equals(status))&&observed!=null&&auto!=null&&observed.id().equals(auto.id())?"CONFIRMED":store!=null?"HISTORICAL":"UNCONFIRMED";
             return new Listing(r.getString("id"),r.getLong("assignment_revision"),mall,store,manual!=null,conflict,settings.allowed(mall,store==null?null:store.id()),current,r.getBoolean("selected"),status,(Long)r.getObject("last_price"),(Long)r.getObject("last_delivery_fee"),ProductStore.date(r,"price_checked_at"),inventory,r.getString("url"),r.getString("image_url"),result,settings.branchRequired(mall)?storeStatus:"NOT_REQUIRED",settings.branchRequired(mall));
@@ -161,7 +161,7 @@ public class ProductSupplierService {
         String image=null;
         var searchTimes=db.jdbc.queryForList("SELECT c.checked_at FROM product_refresh_search c JOIN product_refresh_entry e ON e.run_id=c.run_id AND c.query_hash=SHA2(e.query,256) WHERE e.run_id=? AND e.product_id=?",java.sql.Timestamp.class,work.runId(),work.productId());
         var priceAt=searchTimes.size()==1?searchTimes.getFirst().toLocalDateTime():result.checkedAt();
-        var observed=new HashMap<Map.Entry<Mall,SupplierStorePolicy.Identity>,Store>();
+        var observed=new HashMap<Map.Entry<ProcurementMall,SupplierStorePolicy.Identity>,Store>();
         for(var s:result.suppliers()){
         var o=s.offer();if(o.mall()==null||o.mallProductId()==null||o.mallProductId().isBlank())continue;
         var identity=SupplierStorePolicy.identity(o,s.branch());

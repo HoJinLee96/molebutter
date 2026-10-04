@@ -15,10 +15,10 @@ class LotteSupplierTest {
     final ObjectMapper json=new ObjectMapper();final MallOptionParser parser=new MallOptionParser(json);
     final String sku="LO2630710241_2630710242";
     ObjectNode fixture()throws Exception {try(var in=getClass().getResourceAsStream("/product/lotte-lf.json")){return (ObjectNode)json.readTree(in);}}
-    SourceDetails details(JsonNode root){return parser.details(Mall.LOTTE_ON,json.writeValueAsString(root),sku);}
+    SourceDetails details(JsonNode root){return parser.details(ProcurementMall.LOTTE_ON,json.writeValueAsString(root),sku);}
     ObjectNode node(JsonNode r,String pointer){return (ObjectNode)r.at(pointer);}
-    Offer offer(String nv,String label,long price){return new Offer(nv,"WCBA5E052BK",label,sku,"https://www.lotteon.com/p/product/LO2630710241?sitmNo="+sku,price,0L,Mall.LOTTE_ON,null);}
-    Store lf(List<ExternalIdentity> ids){return new Store("LF",Mall.LOTTE_ON,"COMPANY","주식회사 LF","company:lf",List.of("주식회사 LF"),0,null,ids);}
+    Offer offer(String nv,String label,long price){return new Offer(nv,"WCBA5E052BK",label,sku,"https://www.lotteon.com/p/product/LO2630710241?sitmNo="+sku,price,0L,ProcurementMall.LOTTE_ON,null);}
+    Store lf(List<ExternalIdentity> ids){return new Store("LF",ProcurementMall.LOTTE_ON,"COMPANY","주식회사 LF","company:lf",List.of("주식회사 LF"),0,null,ids);}
     @Test void researchSampleIdentifiesCompanyModelAndMappedFreeStock()throws Exception {
         var d=details(fixture());assertThat(d.modelCode()).isEqualTo("WCBA5E052BK");assertThat(d.optionsComplete()).isTrue();
         assertThat(d.options()).containsExactly(new SourceOption(sku,"FREE",2L,"AVAILABLE"));
@@ -38,16 +38,16 @@ class LotteSupplierTest {
     }
     @Test void specificPreferencesExcludeOtherCompaniesButKeepIdentityConflictsForReview()throws Exception {
         var d=details(fixture());var o=offer("1","롯데ON",1);var branch=SupplierBranch.resolve(o,d);var store=lf(List.of());
-        var allowed=new Preferences(1,List.of(store),List.of(new Rule("R",Mall.LOTTE_ON,"LF",0)));
+        var allowed=new Preferences(1,List.of(store),List.of(new Rule("R",ProcurementMall.LOTTE_ON,"LF",0)));
         assertThat(SupplierStorePolicy.include(allowed,Map.of(),o,branch)).isTrue();
-        var branchOnly=new Preferences(1,List.of(store),List.of(new Rule("R",Mall.LOTTE_ON,"BRANCH",0)));
+        var branchOnly=new Preferences(1,List.of(store),List.of(new Rule("R",ProcurementMall.LOTTE_ON,"BRANCH",0)));
         assertThat(SupplierStorePolicy.include(branchOnly,Map.of(),o,branch)).isFalse();
         var other=fixture();node(other,"/data/basicInfo").put("trNm","다른 회사");node(other,"/data/slrInfo/trBase").put("trNm","다른 회사");
         var unknown=SupplierBranch.resolve(o,details(other));assertThat(SupplierStorePolicy.include(allowed,Map.of(),o,unknown)).isFalse();
-        assertThat(SupplierStorePolicy.include(new Preferences(1,List.of(),List.of(new Rule("R",Mall.LOTTE_ON,null,0))),Map.of(),o,unknown)).isTrue();
-        assertThat(SupplierStorePolicy.include(new Preferences(1,List.of(),List.of(new Rule("R",Mall.LOTTE_ON,null,0)),Map.of(Mall.LOTTE_ON,false)),Map.of(),o,new BranchInfo(null,"UNKNOWN",null,null))).isTrue();
+        assertThat(SupplierStorePolicy.include(new Preferences(1,List.of(),List.of(new Rule("R",ProcurementMall.LOTTE_ON,null,0))),Map.of(),o,unknown)).isTrue();
+        assertThat(SupplierStorePolicy.include(new Preferences(1,List.of(),List.of(new Rule("R",ProcurementMall.LOTTE_ON,null,0)),Map.of(ProcurementMall.LOTTE_ON,false)),Map.of(),o,new BranchInfo(null,"UNKNOWN",null,null))).isTrue();
         var conflicting=lf(List.of(new ExternalIdentity("LOTTE_COMPANY","OLD")));
-        var identity=SupplierStorePolicy.identity(o,branch);assertThat(SupplierStorePolicy.conflicts(List.of(conflicting),Mall.LOTTE_ON,identity)).isTrue();assertThat(SupplierStorePolicy.resolve(List.of(conflicting),Mall.LOTTE_ON,identity)).isNull();
+        var identity=SupplierStorePolicy.identity(o,branch);assertThat(SupplierStorePolicy.conflicts(List.of(conflicting),ProcurementMall.LOTTE_ON,identity)).isTrue();assertThat(SupplierStorePolicy.resolve(List.of(conflicting),ProcurementMall.LOTTE_ON,identity)).isNull();
     }
     @Test void hiddenMissingNegativeAndConflictingStockNeverBecomeZero()throws Exception {
         for(String field:List.of("hide","missing","negative","string")){
@@ -75,19 +75,19 @@ class LotteSupplierTest {
     }
     @Test void departmentLabelsResolveToSameBranchAndOtherBranchesAreExcluded()throws Exception {
         String raw;try(var in=getClass().getResourceAsStream("/product/lotte-store.json")){raw=new String(in.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);}
-        var d=parser.details(Mall.LOTTE_ON,raw,"LE1204272674_1222907552");
-        var store=new Store("J",Mall.LOTTE_ON,"BRANCH","잠실점","branch:롯데백화점:잠실점",List.of("잠실점"),0,"롯데백화점",List.of());
-        var p=new Preferences(1,List.of(store),List.of(new Rule("R",Mall.LOTTE_ON,"J",0)));
+        var d=parser.details(ProcurementMall.LOTTE_ON,raw,"LE1204272674_1222907552");
+        var store=new Store("J",ProcurementMall.LOTTE_ON,"BRANCH","잠실점","branch:롯데백화점:잠실점",List.of("잠실점"),0,"롯데백화점",List.of());
+        var p=new Preferences(1,List.of(store),List.of(new Rule("R",ProcurementMall.LOTTE_ON,"J",0)));
         for(String name:List.of("롯데ON","롯데백화점")){
-            var o=new Offer(name,"DCWA2E417BK",name,"LE1204272674_1222907552","https://www.lotteon.com/p/product/LE1204272674",134000L,0L,Mall.LOTTE_ON,null);
-            var b=SupplierBranch.resolve(o,d);assertThat(SupplierStorePolicy.resolve(p.stores(),Mall.LOTTE_ON,SupplierStorePolicy.identity(o,b))).isEqualTo(store);assertThat(SupplierStorePolicy.include(p,Map.of(),o,b)).isTrue();
-            var other=parser.details(Mall.LOTTE_ON,raw.replace("잠실점","본점"),"LE1204272674_1222907552");assertThat(SupplierStorePolicy.include(p,Map.of(),o,SupplierBranch.resolve(o,other))).isFalse();
+            var o=new Offer(name,"DCWA2E417BK",name,"LE1204272674_1222907552","https://www.lotteon.com/p/product/LE1204272674",134000L,0L,ProcurementMall.LOTTE_ON,null);
+            var b=SupplierBranch.resolve(o,d);assertThat(SupplierStorePolicy.resolve(p.stores(),ProcurementMall.LOTTE_ON,SupplierStorePolicy.identity(o,b))).isEqualTo(store);assertThat(SupplierStorePolicy.include(p,Map.of(),o,b)).isTrue();
+            var other=parser.details(ProcurementMall.LOTTE_ON,raw.replace("잠실점","본점"),"LE1204272674_1222907552");assertThat(SupplierStorePolicy.include(p,Map.of(),o,SupplierBranch.resolve(o,other))).isFalse();
         }
     }
     @Test void duplicateNaverExposuresShareDetailsButRetainSeparatePricesAndIds()throws Exception {
         var d=details(fixture());var calls=new ArrayList<String>();
-        SupplierProductGateway gateway=new SupplierProductGateway(){public String validateUrl(Mall m,String u){return u;}public List<SourceOption> options(Mall m,String id,String u){return List.of();}public SourceDetails inspect(Mall m,String id,String u){calls.add(id);return d;}};
-        var service=new SupplierLookupService(gateway,new BusinessTime());var p=new Preferences(1,List.of(lf(List.of())),List.of(new Rule("R",Mall.LOTTE_ON,"LF",0)));
+        SupplierProductGateway gateway=new SupplierProductGateway(){public String validateUrl(ProcurementMall m,String u){return u;}public List<SourceOption> options(ProcurementMall m,String id,String u){return List.of();}public SourceDetails inspect(ProcurementMall m,String id,String u){calls.add(id);return d;}};
+        var service=new SupplierLookupService(gateway,new BusinessTime());var p=new Preferences(1,List.of(lf(List.of())),List.of(new Rule("R",ProcurementMall.LOTTE_ON,"LF",0)));
         var w=new SupplierRefreshService.Work(1,2,0,"WCBA052","WCBA5F052BK","LF_ACCESSORY","DAKS",p,Map.of());
         var result=service.lookup(w,new SearchResult(List.of(offer("NV1","롯데ON",134000),offer("NV2","롯데백화점",140000)),true,null),()->true);
         assertThat(calls).containsExactly(sku);assertThat(result.suppliers()).hasSize(2);assertThat(result.suppliers()).extracting(s->s.offer().price()).containsExactly(134000L,140000L);

@@ -10,13 +10,13 @@ import lombok.RequiredArgsConstructor;
 @Service @RequiredArgsConstructor @Transactional(readOnly=true)
 public class RecommendationLookupService {
     private final ProductStore db;
-    public Map<Mall,RecommendationDiagnostic> restrictions(long run){
-        var result=new EnumMap<Mall,RecommendationDiagnostic>(Mall.class);
+    public Map<ProcurementMall,RecommendationDiagnostic> restrictions(long run){
+        var result=new EnumMap<ProcurementMall,RecommendationDiagnostic>(ProcurementMall.class);
         db.jdbc.queryForList("SELECT payload FROM recommendation_lookup_diagnostic WHERE run_id=? AND restricted=TRUE ORDER BY id",String.class,run)
             .forEach(v->{var d=db.decode(v,RecommendationDiagnostic.class);result.putIfAbsent(d.mall(),d);});
         return result;
     }
-    public boolean restricted(long run,Mall mall){return db.jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_lookup_diagnostic WHERE run_id=? AND mall=? AND restricted=TRUE",Long.class,run,mall.name())>0;}
+    public boolean restricted(long run,ProcurementMall mall){return db.jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_lookup_diagnostic WHERE run_id=? AND mall=? AND restricted=TRUE",Long.class,run,mall.name())>0;}
     public List<RecommendationDiagnostic> list(long run,long product){return db.jdbc.queryForList("SELECT payload FROM recommendation_lookup_diagnostic WHERE run_id=? AND product_id=? ORDER BY id",String.class,run,product).stream().map(v->db.decode(v,RecommendationDiagnostic.class)).toList();}
     @Transactional(isolation=Isolation.READ_COMMITTED)
     public void record(String owner,SupplierRefreshService.Work work,RecommendationDiagnostic diagnostic,boolean restricted){

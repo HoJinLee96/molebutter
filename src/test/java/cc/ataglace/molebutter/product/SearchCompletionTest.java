@@ -11,7 +11,7 @@ import cc.ataglace.molebutter.service.product.*;
 class SearchCompletionTest {
     final LocalDateTime at=LocalDateTime.parse("2026-09-28T03:52:14");
     SupplierResult listing(String state,Long stock,String optionState,Long fee){
-        return new SupplierResult(new Offer("nv","bag","LF몰","1","https://www.lfmall.co.kr/product/1",100L,fee,Mall.LFMALL,null),
+        return new SupplierResult(new Offer("nv","bag","LF몰","1","https://www.lfmall.co.kr/product/1",100L,fee,ProcurementMall.LFMALL,null),
             new CodeMatch("SEARCH_RESULT",null,null,null,null,null),state,state.equals("SKIPPED_SAME_STORE")||state.equals("FAILED")?List.of():List.of(new SourceOption("one","FREE",stock,optionState)),null);
     }
     RefreshResult summarize(List<SupplierResult> rows,String reason,boolean limited){return SearchCompletion.summarize(rows,reason,at,null,Map.of(),limited,List.of());}

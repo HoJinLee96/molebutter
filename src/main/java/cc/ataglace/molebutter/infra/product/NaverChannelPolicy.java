@@ -75,12 +75,12 @@ public final class NaverChannelPolicy {
 
     public static boolean probeAllowed(Offer offer) {
         var c = merge(fromUrl(offer.url()), offer.naverChannel());
-        if (offer.mall() == Mall.NAVER_SMART_STORE) {
+        if (offer.mall() == ProcurementMall.NAVER_SMART_STORE) {
             String linked = ProductSourceMetadata.productId(offer.mall(), offer.url(), "");
             if (!linked.isBlank() && !linked.equals(offer.mallProductId()))
                 return false;
         }
-        return offer.mall() != Mall.NAVER_SMART_STORE || c.type() != SMARTSTORE && c.type() != CONFLICT;
+        return offer.mall() != ProcurementMall.NAVER_SMART_STORE || c.type() != SMARTSTORE && c.type() != CONFLICT;
     }
 
     public static NaverChannel inspected(Offer offer, SourceDetails detail) {
@@ -95,7 +95,7 @@ public final class NaverChannelPolicy {
     public static boolean comparable(Offer offer) {
         if (offer == null)
             return false;
-        if (offer.mall() != Mall.NAVER_SMART_STORE)
+        if (offer.mall() != ProcurementMall.NAVER_SMART_STORE)
             return true;
         if (!probeAllowed(offer))
             return false;
