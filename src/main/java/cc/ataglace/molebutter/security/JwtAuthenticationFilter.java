@@ -82,7 +82,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             SecurityContextHolder.getContext().setAuthentication(authentication);
         } catch (JwtException e) {
             // 서명 불일치·만료·형식 오류: 익명으로 계속(인가 계층에서 401 처리).
-            log.debug("[AUTH] access token 검증 실패(익명 처리): {}", e.getMessage());
+            log.debug("[AUTH] access token 검증 실패(익명 처리): {}", e.getClass().getSimpleName());
         }
     }
 
