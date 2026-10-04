@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.service.product;
+import cc.ataglace.molebutter.exception.InputValidationFailure;
 
 import java.time.*;
 import java.util.*;
@@ -52,16 +53,16 @@ public class SupplierRefreshService {
     }
     @Transactional(isolation=Isolation.READ_COMMITTED) public String start(Long actor,RefreshInput input) {
         db.authorize(actor,false);db.lock();
-        if(input==null||input.scope()==null||!List.of("ALL_MANAGED","SELECTED").contains(input.scope()))throw new IllegalArgumentException("실행 범위를 지정해 주세요.");
+        if(input==null||input.scope()==null||!List.of("ALL_MANAGED","SELECTED").contains(input.scope()))throw new InputValidationFailure("실행 범위를 지정해 주세요.");
         var ids=ProductStore.ids(input.ids());
-        if(input.scope().equals("SELECTED")&&ids.isEmpty()||input.scope().equals("ALL_MANAGED")&&!ids.isEmpty())throw new IllegalArgumentException("실행 범위와 선택 항목을 확인해 주세요.");
+        if(input.scope().equals("SELECTED")&&ids.isEmpty()||input.scope().equals("ALL_MANAGED")&&!ids.isEmpty())throw new InputValidationFailure("실행 범위와 선택 항목을 확인해 주세요.");
         return create(actor,ids,"MANUAL");
     }
     private String create(Long actor,List<Long> selected,String trigger) {
         db.lock();if(db.jdbc.queryForObject("SELECT stock_lookup_blocked_job FROM product_settings WHERE id=1",Long.class)!=null)throw new cc.ataglace.molebutter.exception.OperationFailure("개별 재고 조회의 접속 제한을 먼저 해제해 주세요.");var snapshot=preferences.snapshot();if(snapshot.rules().isEmpty())throw new cc.ataglace.molebutter.exception.OperationFailure("공통 설정에서 선호 매입처를 먼저 등록해 주세요.");
         if(db.jdbc.queryForObject("SELECT COUNT(*) FROM product_refresh_run WHERE status IN ('RUNNING','PAUSED','BLOCKED','RETRY_WAIT')",Long.class)>0)throw new cc.ataglace.molebutter.exception.OperationFailure("기존 최신화 작업을 완료하거나 취소한 뒤 실행해 주세요.");
         List<Long> ids=selected.isEmpty()?db.jdbc.queryForList("SELECT id FROM catalog_product WHERE managed=TRUE AND merged_into IS NULL AND deleted_at IS NULL ORDER BY id",Long.class):selected;
-        if(ids.isEmpty()||ids.size()>5000)throw new IllegalArgumentException("최신화할 상품을 1~5,000개 선택해 주세요.");
+        if(ids.isEmpty()||ids.size()>5000)throw new InputValidationFailure("최신화할 상품을 1~5,000개 선택해 주세요.");
         var selectedProducts=ids.stream().map(products::product).toList();
         long run=ProductStore.id();db.jdbc.update("INSERT INTO product_refresh_run(id,status,trigger_type,created_by,created_at,preference_snapshot) VALUES(?,'RUNNING',?,?,?,?)",run,trigger,actor,db.time.now(),db.encode(snapshot));
         for(var p:selectedProducts) {
@@ -186,7 +187,7 @@ public class SupplierRefreshService {
     }
     @Transactional(isolation=Isolation.READ_COMMITTED) public String retry(Long actor,long run) {
         db.authorize(actor,false);db.lock();var ids=db.jdbc.queryForList("SELECT i.product_id FROM product_refresh_entry i JOIN catalog_product p ON p.id=i.product_id WHERE i.run_id=? AND "+RETRYABLE,Long.class,run);
-        if(ids.isEmpty())throw new IllegalArgumentException("재조회할 항목이 없습니다.");return create(actor,ids,"RETRY");
+        if(ids.isEmpty())throw new InputValidationFailure("재조회할 항목이 없습니다.");return create(actor,ids,"RETRY");
     }
     private static final List<String> RUN_STATUSES=List.of("RUNNING","PAUSED","RETRY_WAIT","BLOCKED","COMPLETED","CANCELLED");
     /** 실패 재조회(retry) 대상과 같은 조건. 진행 중 작업에서 아직 조회하지 않은 항목(PENDING·CHECKING)은 실패로 보지 않는다. */
@@ -197,11 +198,11 @@ public class SupplierRefreshService {
      */
     @Transactional(readOnly=true) public RefreshRunPage runs(Long actor,RefreshRunQuery q) {
         db.authorize(actor,false);
-        if(q.page()<0||!List.of(20,50,100).contains(q.size()))throw new IllegalArgumentException("페이지와 표시 개수(20·50·100)를 확인해 주세요.");
+        if(q.page()<0||!List.of(20,50,100).contains(q.size()))throw new InputValidationFailure("페이지와 표시 개수(20·50·100)를 확인해 주세요.");
         String status=ProductStore.text(q.status(),30,false);
-        if(!status.isEmpty()&&!RUN_STATUSES.contains(status))throw new IllegalArgumentException("작업 상태를 확인해 주세요.");
+        if(!status.isEmpty()&&!RUN_STATUSES.contains(status))throw new InputValidationFailure("작업 상태를 확인해 주세요.");
         LocalDate from=day(q.from()),to=day(q.to());
-        if(from!=null&&to!=null&&from.isAfter(to))throw new IllegalArgumentException("조회 시작일이 종료일보다 늦습니다.");
+        if(from!=null&&to!=null&&from.isAfter(to))throw new InputValidationFailure("조회 시작일이 종료일보다 늦습니다.");
         var where=new StringBuilder(" WHERE 1=1");var args=new ArrayList<Object>();
         // created_at은 한국 시간 DATETIME이다. 종료일은 다음 날 0시 전까지 포함한다.
         if(from!=null){where.append(" AND r.created_at>=?");args.add(from.atStartOfDay());}
@@ -219,7 +220,7 @@ public class SupplierRefreshService {
     }
     private static LocalDate day(String value){
         String s=ProductStore.text(value,10,false);if(s.isEmpty())return null;
-        try{return LocalDate.parse(s);}catch(DateTimeException e){throw new IllegalArgumentException("날짜는 YYYY-MM-DD 형식으로 입력해 주세요.");}
+        try{return LocalDate.parse(s);}catch(DateTimeException e){throw new InputValidationFailure("날짜는 YYYY-MM-DD 형식으로 입력해 주세요.");}
     }
     private List<Map<String,Object>> runRows(String where,Object... args) {
         var params=new ArrayList<Object>(List.of(db.time.now().minusHours(24),db.time.now()));params.addAll(List.of(args));
@@ -243,7 +244,7 @@ public class SupplierRefreshService {
         return rows;
     }
     @Transactional(readOnly=true) public PageResponse<Map<String,Object>> items(Long actor,long run,int page) {
-        db.authorize(actor,false);if(page<0)throw new IllegalArgumentException("페이지를 확인해 주세요.");
+        db.authorize(actor,false);if(page<0)throw new InputValidationFailure("페이지를 확인해 주세요.");
         long count=db.jdbc.queryForObject("SELECT COUNT(*) FROM product_refresh_entry WHERE run_id=?",Long.class,run);
         var rows=db.jdbc.queryForList("SELECT CAST(p.id AS CHAR) productId,COALESCE(b.name,'') brand,p.product_code productCode,p.comparison_code comparisonCode,(p.deleted_at IS NOT NULL OR p.merged_into IS NOT NULL) deleted,i.status,i.result,i.checked_at checkedAt FROM product_refresh_entry i JOIN catalog_product p ON p.id=i.product_id LEFT JOIN product_brand b ON b.id=p.brand_id WHERE i.run_id=? ORDER BY p.id LIMIT 20 OFFSET ?",run,(long)page*20);
         var selections=suppliers.selected(rows.stream().map(r->r.get("productId").toString()).toList());

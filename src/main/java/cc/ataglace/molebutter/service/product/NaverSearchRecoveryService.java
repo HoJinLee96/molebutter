@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.service.product;
+import cc.ataglace.molebutter.exception.InputValidationFailure;
 
 import java.time.*;
 import java.util.*;
@@ -98,7 +99,7 @@ public class NaverSearchRecoveryService {
         db.jdbc.update("UPDATE product_settings SET search_cooldown_until=NULL,search_manual_resume_required=FALSE,search_gate_attempt_id=NULL,search_gate_run_id=NULL,search_gate_version=search_gate_version+1 WHERE id=1");
     }
     @Transactional(readOnly=true) public PageResponse<Map<String,Object>> history(Long actor,long run,int page,String code,Long product){
-        db.authorize(actor,false);if(page<0)throw new IllegalArgumentException("페이지를 확인해 주세요.");
+        db.authorize(actor,false);if(page<0)throw new InputValidationFailure("페이지를 확인해 주세요.");
         String filter=ProductStore.text(code,40,false);var args=new ArrayList<Object>();args.add(run);String where=" WHERE run_id=?";
         if(!filter.isBlank()){where+=" AND reason_code=?";args.add(filter);}if(product!=null){where+=" AND product_id=?";args.add(product);}
         long count=db.jdbc.queryForObject("SELECT COUNT(*) FROM product_search_attempt"+where,Long.class,args.toArray());args.add((long)page*20);

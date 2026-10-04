@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.infra.product;
+import cc.ataglace.molebutter.exception.InputValidationFailure;
 
 import java.net.URI;
 import java.nio.file.Path;
@@ -61,7 +62,7 @@ public class NaverPriceSearch {
     public NaverPriceSearch(ObjectMapper json) { this.payload = new NaverSearchPayload(json); }
 
     public SearchResult search(String query,Set<String> targetIds,int maxPages) {
-        if(query==null||query.isBlank()||query.length()>255)throw new IllegalArgumentException("검색어를 입력해 주세요.");
+        if(query==null||query.isBlank()||query.length()>255)throw new InputValidationFailure("검색어를 입력해 주세요.");
         if(!browserBusy.compareAndSet(false,true))throw new NaverSearchFailure(NaverSearchFailure.Code.BROWSER_UNAVAILABLE,"BROWSER",Map.of());
         var future=new BrowserTask(()->searchBrowser(query.trim(),Set.copyOf(targetIds),Math.min(3,Math.max(1,maxPages))));
         try {executor.execute(future);}

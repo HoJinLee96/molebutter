@@ -38,6 +38,6 @@ NODE_PATH=/path/to/node_modules node scripts/test-notifications-ui.cjs
 
 ## 마켓 연동 전 기반 정리 검증
 
-`InventoryFlowIT`는 같은 요청의 동시 주문 생성·입고 재시도와 서로 다른 주문의 병렬 처리, 카탈로그 변경 대기, 재고 실패 알림의 역할 변경, 미등록 API의 기본 거절을 확인한다. `InventoryInputTest`는 역할별 응답 계약에서 알려지지 않은 열을 제외하는지 확인한다. `ExceptionPrivacyTest`는 거절 입력·예외 원인·쿼리 문자열이 로그에 노출되지 않고 기존 업무 오류 상태가 유지되는지 확인한다.
+`InventoryFlowIT`는 같은 요청의 동시 주문 생성·입고 재시도와 서로 다른 주문의 병렬 처리, 카탈로그 변경 대기, 재고 실패 알림의 역할 변경, 미등록 API의 기본 거절을 확인한다. `InventoryInputTest`는 역할별 응답 계약에서 알려지지 않은 열을 제외하는지 확인한다. `ExceptionPrivacyTest`는 거절 입력·예외 원인·쿼리 문자열이 응답과 로그에 노출되지 않고, 애플리케이션이 작성한 입력·충돌 안내의 400·409 응답은 유지되는지 확인한다.
 
 `AuthenticationFlowIT`는 HTTP 감사의 요청 식별자·실제 계정과 백그라운드 감사의 커밋/롤백을 확인한다. `ProductFlowIT`는 완료 결과의 감사 기록과 중복 완료 방지를 확인한다. `MigrationUpgradeIT`는 V26 설치에서 V27 요청 직렬화와 V28 감사 컨텍스트를 적용하고 기존 수량·단가·HTTP 감사 행이 보존되는지 검증한다. 실제 판매 마켓 계정은 이 테스트에서 호출하지 않는다.

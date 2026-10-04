@@ -1,5 +1,6 @@
 package cc.ataglace.molebutter.infra.product;
 
+import cc.ataglace.molebutter.exception.InputValidationFailure;
 import java.net.*;
 import java.net.http.*;
 import java.nio.charset.StandardCharsets;
@@ -34,9 +35,9 @@ public class MallOptionGateway implements SupplierProductGateway {
         try {URI u=URI.create(url);
             if(mall==null||ProductSourceMetadata.mall(url)!=mall||url.length()>2000)throw new IllegalArgumentException();
             return u.toASCIIString();
-        }catch(Exception e){throw new IllegalArgumentException("선택한 매입처의 HTTP 또는 HTTPS 상품 링크를 입력해 주세요.");}
+        }catch(Exception e){throw new InputValidationFailure("선택한 매입처의 HTTP 또는 HTTPS 상품 링크를 입력해 주세요.");}
     }
-    private static String id(String value){if(value==null||!value.matches("[A-Za-z0-9_-]{1,100}"))throw new IllegalArgumentException("매입처 상품 ID를 확인해 주세요.");return value;}
+    private static String id(String value){if(value==null||!value.matches("[A-Za-z0-9_-]{1,100}"))throw new InputValidationFailure("매입처 상품 ID를 확인해 주세요.");return value;}
     @Override public SourceDetails inspect(ProcurementMall mall,String productId,String url) {
         try{return inspectDetails(mall,productId,url);}
         catch(tools.jackson.core.JacksonException e){throw new SupplierLookupFailure(SupplierLookupFailure.Code.RESPONSE_FORMAT,"PARSE",null,e);}
@@ -44,7 +45,7 @@ public class MallOptionGateway implements SupplierProductGateway {
     private SourceDetails inspectDetails(ProcurementMall mall,String productId,String url) {
         validateUrl(mall,url);String p=id(productId);
         if(mall==ProcurementMall.NAVER_SMART_STORE){
-            if(NaverChannelPolicy.fromUrl(url).type()==NaverChannelType.SMARTSTORE)throw new IllegalArgumentException("일반 스마트스토어는 조회 지원 대상이 아닙니다.");
+            if(NaverChannelPolicy.fromUrl(url).type()==NaverChannelType.SMARTSTORE)throw new InputValidationFailure("일반 스마트스토어는 조회 지원 대상이 아닙니다.");
             String linked=ProductSourceMetadata.productId(mall,url,"");
             if(!linked.isBlank()&&!linked.equals(p))throw new SupplierLookupFailure(SupplierLookupFailure.Code.PRODUCT_MISMATCH,"IDENTITY",null,null);
         }

@@ -29,10 +29,10 @@ public class ProductService {
     public PageResponse<CatalogProduct> list(Long actor,String q,String mode,String status,int page){return list(actor,q,mode,status,page,20);}
     public PageResponse<CatalogProduct> list(Long actor,String q,String mode,String status,int page,int size) {return list(actor,q,mode,status,page,size,"ALL");}
     public PageResponse<CatalogProduct> list(Long actor,String q,String mode,String status,int page,int size,String change) {
-        if(!List.of("ALL","SELECTED","ANY").contains(change))throw new IllegalArgumentException("변동 필터를 확인해 주세요.");
-        db.authorize(actor,false);if(page<0||!List.of(20,50,100).contains(size))throw new IllegalArgumentException("페이지와 표시 개수(20·50·100)를 확인해 주세요.");
+        if(!List.of("ALL","SELECTED","ANY").contains(change))throw new InputValidationFailure("변동 필터를 확인해 주세요.");
+        db.authorize(actor,false);if(page<0||!List.of(20,50,100).contains(size))throw new InputValidationFailure("페이지와 표시 개수(20·50·100)를 확인해 주세요.");
         q=ProductStore.text(q,255,false);status=ProductStore.text(status,30,false);
-        if(!List.of("ALL","AUTO","MANUAL").contains(mode))throw new IllegalArgumentException("관리 구분을 확인해 주세요.");
+        if(!List.of("ALL","AUTO","MANUAL").contains(mode))throw new InputValidationFailure("관리 구분을 확인해 주세요.");
         String where=" WHERE p.merged_into IS NULL AND p.deleted_at IS NULL AND (?='' OR LOCATE(?,COALESCE(b.name,''))>0 OR LOCATE(?,p.product_code)>0 OR LOCATE(?,p.search_query)>0) AND (?='ALL' OR p.managed=(?='AUTO')) AND (?='' OR (CASE p.latest_status WHEN 'NO_MATCH' THEN 'SOLD_OUT' WHEN 'STALE' THEN 'NOT_CHECKED' WHEN 'BLOCKED' THEN 'FAILED' ELSE p.latest_status END)=?)";
         if(!change.equals("ALL"))where+=" AND EXISTS(SELECT 1 FROM product_change_summary d WHERE d.product_id=p.id AND d."+(change.equals("SELECTED")?"selected_changed":"any_changed")+"=TRUE)";
         Object[] args={q,q,q,q,mode,mode,status,status};
@@ -43,7 +43,7 @@ public class ProductService {
     }
     public cc.ataglace.molebutter.dto.product.ChangeDtos.Counts changeCounts(Long actor,String q,String mode,String status){
         db.authorize(actor,false);q=ProductStore.text(q,255,false);status=ProductStore.text(status,30,false);
-        if(!List.of("ALL","AUTO","MANUAL").contains(mode))throw new IllegalArgumentException("관리 구분을 확인해 주세요.");
+        if(!List.of("ALL","AUTO","MANUAL").contains(mode))throw new InputValidationFailure("관리 구분을 확인해 주세요.");
         var row=db.jdbc.queryForMap("SELECT COALESCE(SUM(d.selected_changed),0) selected_count,COALESCE(SUM(d.any_changed),0) all_count FROM catalog_product p LEFT JOIN product_brand b ON b.id=p.brand_id JOIN product_change_summary d ON d.product_id=p.id WHERE p.merged_into IS NULL AND p.deleted_at IS NULL AND (?='' OR LOCATE(?,COALESCE(b.name,''))>0 OR LOCATE(?,p.product_code)>0 OR LOCATE(?,p.search_query)>0) AND (?='ALL' OR p.managed=(?='AUTO')) AND (?='' OR (CASE p.latest_status WHEN 'NO_MATCH' THEN 'SOLD_OUT' WHEN 'STALE' THEN 'NOT_CHECKED' WHEN 'BLOCKED' THEN 'FAILED' ELSE p.latest_status END)=?)",q,q,q,q,mode,mode,status,status);
         return new cc.ataglace.molebutter.dto.product.ChangeDtos.Counts(((Number)row.get("selected_count")).longValue(),((Number)row.get("all_count")).longValue());
     }
@@ -61,7 +61,7 @@ public class ProductService {
         result.put("comparison",suppliers.comparison(id));result.put("changes",changes.summary(id));result.put("changeSuppliers",changes.historySuppliers(id));result.put("history",history(actor,id,0));return result;
     }
     public PageResponse<Map<String,Object>> history(Long actor,long id,int page) {
-        db.authorize(actor,false);product(id);if(page<0)throw new IllegalArgumentException("페이지를 확인해 주세요.");
+        db.authorize(actor,false);product(id);if(page<0)throw new InputValidationFailure("페이지를 확인해 주세요.");
         long count=db.jdbc.queryForObject("SELECT COUNT(*) FROM product_lookup_history WHERE product_id=?",Long.class,id);
         var rows=db.jdbc.queryForList("SELECT CAST(id AS CHAR) id,CAST(run_id AS CHAR) runId,legacy,created_at createdAt,payload FROM product_lookup_history WHERE product_id=? ORDER BY id DESC LIMIT 20 OFFSET ?",id,(long)page*20);
         rows.forEach(r->r.put("payload",db.json.readTree(r.get("payload").toString())));return new PageResponse<>(rows,page,(int)((count+19)/20),count);
@@ -72,7 +72,7 @@ public class ProductService {
     private Brand resolve(String id,String name) {
         if(id!=null&&id.isBlank()||id==null&&(name==null||name.isBlank()))return new Brand(null,"","");
         var rows=id!=null?db.jdbc.queryForList("SELECT * FROM product_brand WHERE id=?",Long.valueOf(id)):db.jdbc.queryForList("SELECT * FROM product_brand WHERE name=?",ProductStore.text(name,100,true));
-        if(rows.isEmpty())throw new IllegalArgumentException("공통 설정에 등록된 브랜드를 선택해 주세요.");
+        if(rows.isEmpty())throw new InputValidationFailure("공통 설정에 등록된 브랜드를 선택해 주세요.");
         var r=rows.getFirst();return new Brand(((Number)r.get("id")).longValue(),r.get("name").toString(),r.get("code_brand").toString());
     }
     private record Identity(String code,String type,String comparison,String query,String mode){}
@@ -86,7 +86,7 @@ public class ProductService {
     public Map<String,String> codePreview(Long actor,CatalogEdit input) {db.authorize(actor,false);var b=resolve(input.brandId(),input.brand());String code=ProductCodePolicy.normalize(ProductStore.text(input.productCode(),100,false)),type=b.key().isBlank()?"GENERAL":"LF_ACCESSORY";return Map.of("comparisonCode",ProductCodePolicy.comparison(type,code),"codeType",type,"suggestedQuery",ProductCodePolicy.suggested(type,code));}
     @Transactional(isolation=Isolation.READ_COMMITTED) public CatalogProduct create(Long actor,CatalogEdit input) {
         db.authorize(actor,false);db.lock();Brand b=resolve(input.brandId(),input.brand());Identity i=identity(input);
-        if(i.code().isBlank())throw new IllegalArgumentException("전체 상품코드를 입력해 주세요.");
+        if(i.code().isBlank())throw new InputValidationFailure("전체 상품코드를 입력해 주세요.");
         if(!matchingIds(i.code()).isEmpty())throw new cc.ataglace.molebutter.exception.OperationFailure("같은 전체 상품코드가 이미 등록되어 있습니다.");
         return insert(b,i,List.of());
     }
@@ -107,7 +107,7 @@ public class ProductService {
     private void invalidate(long id){changes.reset(id);db.jdbc.update("UPDATE catalog_product SET lookup_revision=lookup_revision+1,latest_status='NOT_CHECKED',latest_result=NULL,latest_at=NULL WHERE id=?",id);}
     @Transactional(isolation=Isolation.READ_COMMITTED) public void bulk(Long actor,BulkEdit input) {
         db.authorize(actor,false);db.lock();var ids=checkVersions(input.products());
-        if(input.brand()==null&&input.brandId()==null&&input.managed()==null)throw new IllegalArgumentException("변경할 값을 입력해 주세요.");
+        if(input.brand()==null&&input.brandId()==null&&input.managed()==null)throw new InputValidationFailure("변경할 값을 입력해 주세요.");
         Brand b=input.brand()!=null||input.brandId()!=null?resolve(input.brandId(),input.brand()):null;
         for(long id:ids) {
             if(b!=null){var p=product(id);update(p,b,existingIdentity(p));}
@@ -115,8 +115,8 @@ public class ProductService {
         }
     }
     private List<Long> checkVersions(List<VersionedId> values) {
-        if(values==null||values.isEmpty()||values.stream().anyMatch(Objects::isNull))throw new IllegalArgumentException("상품을 선택해 주세요.");
-        var ids=ProductStore.ids(values.stream().map(VersionedId::id).toList());if(ids.size()!=values.size())throw new IllegalArgumentException("선택이 중복되었습니다.");
+        if(values==null||values.isEmpty()||values.stream().anyMatch(Objects::isNull))throw new InputValidationFailure("상품을 선택해 주세요.");
+        var ids=ProductStore.ids(values.stream().map(VersionedId::id).toList());if(ids.size()!=values.size())throw new InputValidationFailure("선택이 중복되었습니다.");
         for(var v:values)ProductStore.revision(product(Long.parseLong(v.id())).revision(),v.revision());return ids;
     }
     private void ensureIdle(List<Long> ids) {
@@ -129,9 +129,9 @@ public class ProductService {
     }
     @Transactional(isolation=Isolation.READ_COMMITTED) public CatalogProduct merge(Long actor,long target,MergeInput input) {
         db.authorize(actor,false);db.lock();var ids=checkVersions(input.products());ensureIdle(ids);
-        if(ids.size()<2||!ids.contains(target)||input.managed()==null)throw new IllegalArgumentException("대표 상품을 포함한 통합 대상을 선택해 주세요.");
+        if(ids.size()<2||!ids.contains(target)||input.managed()==null)throw new InputValidationFailure("대표 상품을 포함한 통합 대상을 선택해 주세요.");
         String code=ProductCodePolicy.normalize(input.productCode());
-        if(code.isBlank()||ids.stream().anyMatch(id->!ProductCodePolicy.normalize(product(id).productCode()).equals(code)))throw new IllegalArgumentException("동일한 전체 상품코드만 통합할 수 있습니다. 시즌이 다른 상품은 별도로 유지합니다.");
+        if(code.isBlank()||ids.stream().anyMatch(id->!ProductCodePolicy.normalize(product(id).productCode()).equals(code)))throw new InputValidationFailure("동일한 전체 상품코드만 통합할 수 있습니다. 시즌이 다른 상품은 별도로 유지합니다.");
         String chosen=suppliers.mergeChoice(ids,input.selectedSupplierId());var before=ids.stream().map(id->detail(actor,id)).toList();Set<String> names=new LinkedHashSet<>();
         for(long id:ids) {
             names.addAll(registrationNames(id));if(id==target)continue;
@@ -175,7 +175,7 @@ public class ProductService {
     public ScheduleSettings schedule(Long actor){db.authorize(actor,false);return db.schedule(false);}
     @Transactional(isolation=Isolation.READ_COMMITTED) public ScheduleSettings updateSchedule(Long actor,ScheduleSettings s) {
         db.authorize(actor,true);var current=db.schedule(true);ProductStore.revision(current.revision(),s.revision());
-        try{if(s.scheduleTime()==null||!s.scheduleTime().matches("[0-2][0-9]:[0-5][0-9]"))throw new IllegalArgumentException();LocalTime.parse(s.scheduleTime());}catch(Exception e){throw new IllegalArgumentException("예약 시각을 확인해 주세요.");}
+        try{if(s.scheduleTime()==null||!s.scheduleTime().matches("[0-2][0-9]:[0-5][0-9]"))throw new IllegalArgumentException();LocalTime.parse(s.scheduleTime());}catch(Exception e){throw new InputValidationFailure("예약 시각을 확인해 주세요.");}
         db.jdbc.update("UPDATE product_settings SET schedule_enabled=?,schedule_time=?,revision=revision+1 WHERE id=1",s.scheduleEnabled(),s.scheduleTime());return db.schedule(false);
     }
 }
