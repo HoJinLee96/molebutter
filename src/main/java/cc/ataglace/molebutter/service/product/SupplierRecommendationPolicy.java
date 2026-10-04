@@ -30,10 +30,10 @@ public final class SupplierRecommendationPolicy {
     public static boolean preferred(Preferences p,Map<String,String> manual,SupplierResult s){
         if(p==null)return true;var store=store(p,manual,s);return p.allowed(s.offer().mall(),store==null?null:store.id());
     }
-    public static boolean permittedSeller(Mall mall,Store store,SupplierResult s){
+    public static boolean permittedSeller(ProcurementMall mall,Store store,SupplierResult s){
         var identity=SupplierStorePolicy.identity(s.offer(),s.branch());
-        if(mall==Mall.NAVER_SMART_STORE)return NaverChannelPolicy.comparable(s.offer())&&identity!=null&&("BRANCH".equals(identity.kind())||store!=null&&"BRAND_STORE".equals(store.kind())&&!SupplierStorePolicy.storeContradiction(store,s.branch()));
-        if(mall==Mall.LOTTE_ON)return identity!=null&&("BRANCH".equals(identity.kind())||"COMPANY".equals(identity.kind())&&"company:lf".equals(identity.key()));
+        if(mall==ProcurementMall.NAVER_SMART_STORE)return NaverChannelPolicy.comparable(s.offer())&&identity!=null&&("BRANCH".equals(identity.kind())||store!=null&&"BRAND_STORE".equals(store.kind())&&!SupplierStorePolicy.storeContradiction(store,s.branch()));
+        if(mall==ProcurementMall.LOTTE_ON)return identity!=null&&("BRANCH".equals(identity.kind())||"COMPANY".equals(identity.kind())&&"company:lf".equals(identity.key()));
         return true;
     }
     public static boolean eligible(Listing l,Long reference){

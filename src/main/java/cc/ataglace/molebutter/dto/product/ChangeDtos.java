@@ -2,7 +2,7 @@ package cc.ataglace.molebutter.dto.product;
 
 import java.time.LocalDateTime;
 import java.util.*;
-import cc.ataglace.molebutter.dto.product.ProductDtos.Mall;
+import cc.ataglace.molebutter.dto.product.ProductDtos.ProcurementMall;
 
 public final class ChangeDtos {
         private ChangeDtos() {
@@ -15,13 +15,13 @@ public final class ChangeDtos {
                 }
         }
 
-        public record Observation(String id, String key, Mall mall, String storeId, String identity, String name,
+        public record Observation(String id, String key, ProcurementMall mall, String storeId, String identity, String name,
                         String url,
                         Long price, Long fee, LocalDateTime priceAt, List<OptionValue> options, boolean partial,
                         boolean verified,
                         boolean current, boolean recommendable, LocalDateTime observedAt, LocalDateTime feeAt,
                         String lookupState) {
-                public Observation(String id, String key, Mall mall, String storeId, String identity, String name,
+                public Observation(String id, String key, ProcurementMall mall, String storeId, String identity, String name,
                                 String url, Long price, Long fee, LocalDateTime priceAt, List<OptionValue> options,
                                 boolean partial, boolean verified, boolean current, boolean recommendable,
                                 LocalDateTime observedAt, LocalDateTime feeAt) {
@@ -34,7 +34,7 @@ public final class ChangeDtos {
                                         options, partial, verified, current, recommendable, observedAt, feeAt, state);
                 }
 
-                public Observation(String id, String key, Mall mall, String storeId, String identity, String name,
+                public Observation(String id, String key, ProcurementMall mall, String storeId, String identity, String name,
                                 String url, Long price, Long fee, LocalDateTime priceAt, List<OptionValue> options,
                                 boolean partial, boolean verified, boolean current, boolean recommendable,
                                 LocalDateTime observedAt) {

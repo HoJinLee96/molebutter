@@ -17,7 +17,7 @@ public final class SupplierBranch {
         if(structured!=null&&Set.of("SELLER","COMPANY").contains(structured.kind()))return new BranchInfo(structured.name(),"CONFIRMED","판매자 정보",structured.name(),structured);
         if(names.isEmpty())return new BranchInfo(null,"UNKNOWN",null,null);
         var e=names.entrySet().iterator().next();var proof=e.getValue().split("\n",2);
-        String retailer=retailers.isEmpty()?(offer.mall()==Mall.HI_THEHYUNDAI?"현대백화점":null):retailers.iterator().next();
+        String retailer=retailers.isEmpty()?(offer.mall()==ProcurementMall.HI_THEHYUNDAI?"현대백화점":null):retailers.iterator().next();
         if(structured==null)structured=new StoreEvidence("BRANCH",retailer,e.getKey(),null,null);
         return new BranchInfo(e.getKey(),"CONFIRMED",proof[0],proof[1],structured);
     }

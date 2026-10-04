@@ -12,35 +12,35 @@ public final class SupplierDtos {
     public record ExternalIdentity(String namespace, String externalId) {
     }
 
-    public record Store(String id, Mall mall, String kind, String name, String identityKey, List<String> aliases,
+    public record Store(String id, ProcurementMall mall, String kind, String name, String identityKey, List<String> aliases,
             long revision, String retailer, List<ExternalIdentity> identities) {
         public Store {
             identities = identities == null ? List.of() : List.copyOf(identities);
         }
 
-        public Store(String id, Mall mall, String kind, String name, String identityKey, List<String> aliases,
+        public Store(String id, ProcurementMall mall, String kind, String name, String identityKey, List<String> aliases,
                 long revision) {
             this(id, mall, kind, name, identityKey, aliases, revision, null, List.of());
         }
     }
 
-    public record IdentityCandidate(String supplierId, String observedRunId, Mall mall, StoreEvidence evidence) {
+    public record IdentityCandidate(String supplierId, String observedRunId, ProcurementMall mall, StoreEvidence evidence) {
     }
 
     public record IdentityInput(Long revision, String supplierId, String observedRunId) {
     }
 
-    public record Rule(String id, Mall mall, String storeId, long revision) {
+    public record Rule(String id, ProcurementMall mall, String storeId, long revision) {
     }
 
-    public record MallPreference(Mall mall, String scope, List<String> storeIds, boolean branchRequired) {
+    public record MallPreference(ProcurementMall mall, String scope, List<String> storeIds, boolean branchRequired) {
     }
 
     public record PreferenceView(long revision, List<Store> stores, List<Rule> rules, List<MallPreference> groups,
-            Map<Mall, Boolean> branchRequirements) {
+            Map<ProcurementMall, Boolean> branchRequirements) {
         @com.fasterxml.jackson.annotation.JsonProperty
         public List<StoreInput> companyChoices() {
-            return List.of(new StoreInput(null, Mall.LOTTE_ON, "COMPANY", "주식회사 LF", null, null));
+            return List.of(new StoreInput(null, ProcurementMall.LOTTE_ON, "COMPANY", "주식회사 LF", null, null));
         }
 
         public PreferenceView(Preferences p) {
@@ -56,7 +56,7 @@ public final class SupplierDtos {
     }
 
     public record Preferences(long revision, List<Store> stores, List<Rule> rules,
-            Map<Mall, Boolean> branchRequirements) {
+            Map<ProcurementMall, Boolean> branchRequirements) {
         // 필드가 없던 과거 작업은 모든 쇼핑몰의 지점을 확인하던 기준을 유지한다.
         public Preferences {
             branchRequirements = branchRequirements == null ? Map.of() : Map.copyOf(branchRequirements);
@@ -77,28 +77,28 @@ public final class SupplierDtos {
             }).toList();
         }
 
-        public boolean branchRequired(Mall mall) {
+        public boolean branchRequired(ProcurementMall mall) {
             return mall == null || branchRequirements.getOrDefault(mall, true);
         }
 
-        public boolean mallAllowed(Mall mall) {
+        public boolean mallAllowed(ProcurementMall mall) {
             return rules.stream().anyMatch(r -> r.mall() == mall);
         }
 
-        public boolean allowed(Mall mall, String storeId) {
+        public boolean allowed(ProcurementMall mall, String storeId) {
             return !branchRequired(mall) ? mallAllowed(mall)
                     : rules.stream()
                             .anyMatch(r -> r.mall() == mall && (r.storeId() == null || r.storeId().equals(storeId)));
         }
     }
 
-    public record StoreInput(Long revision, Mall mall, String kind, String name, String sellerKey, String retailer,
+    public record StoreInput(Long revision, ProcurementMall mall, String kind, String name, String sellerKey, String retailer,
             String productUrl, String expectedChannelUid, Long preferenceRevision) {
-        public StoreInput(Long revision, Mall mall, String kind, String name, String sellerKey, String retailer) {
+        public StoreInput(Long revision, ProcurementMall mall, String kind, String name, String sellerKey, String retailer) {
             this(revision, mall, kind, name, sellerKey, retailer, null, null, null);
         }
 
-        public StoreInput(Long revision, Mall mall, String kind, String name, String sellerKey) {
+        public StoreInput(Long revision, ProcurementMall mall, String kind, String name, String sellerKey) {
             this(revision, mall, kind, name, sellerKey, null);
         }
     }
@@ -109,7 +109,7 @@ public final class SupplierDtos {
     public record ChannelPreview(String productId, String channelUid, String channelName, long preferenceRevision) {
     }
 
-    public record RuleInput(Long revision, Mall mall, String storeId) {
+    public record RuleInput(Long revision, ProcurementMall mall, String storeId) {
     }
 
     public record AssignmentInput(Long revision, String storeId, StoreInput newStore, boolean addPreferred,
@@ -122,13 +122,13 @@ public final class SupplierDtos {
     public record SelectionInput(Long revision, String supplierId) {
     }
 
-    public record Listing(String id, long revision, Mall mall, Store store, boolean manual, boolean conflict,
+    public record Listing(String id, long revision, ProcurementMall mall, Store store, boolean manual, boolean conflict,
             boolean preferred, boolean current, boolean selected, String priceStatus,
             Long referencePrice, Long deliveryFee, LocalDateTime priceCheckedAt,
             String inventoryState, String url, String imageUrl, SupplierResult result, String storeStatus,
             boolean branchRequired, Long recommendationSaving, boolean selectedMissing,
             LocalDateTime selectedSearchAt) {
-        public Listing(String id, long revision, Mall mall, Store store, boolean manual, boolean conflict,
+        public Listing(String id, long revision, ProcurementMall mall, Store store, boolean manual, boolean conflict,
                 boolean preferred, boolean current, boolean selected, String priceStatus, Long referencePrice,
                 Long deliveryFee, LocalDateTime priceCheckedAt, String inventoryState, String url, String imageUrl,
                 SupplierResult result, String storeStatus, boolean branchRequired, Long recommendationSaving) {
@@ -143,7 +143,7 @@ public final class SupplierDtos {
                     branchRequired, recommendationSaving, missing, at);
         }
 
-        public Listing(String id, long revision, Mall mall, Store store, boolean manual, boolean conflict,
+        public Listing(String id, long revision, ProcurementMall mall, Store store, boolean manual, boolean conflict,
                 boolean preferred, boolean current, boolean selected, String priceStatus, Long referencePrice,
                 Long deliveryFee, LocalDateTime priceCheckedAt, String inventoryState, String url, String imageUrl,
                 SupplierResult result, String storeStatus, boolean branchRequired) {
@@ -172,7 +172,7 @@ public final class SupplierDtos {
         public String selectionUnavailableReason() {
             if (result != null && !cc.ataglace.molebutter.infra.product.NaverChannelPolicy.comparable(result.offer()))
                 return "쇼핑윈도로 확인된 판매글만 선정할 수 있습니다.";
-            if (result != null && result.offer().mall() == Mall.NAVER_SMART_STORE
+            if (result != null && result.offer().mall() == ProcurementMall.NAVER_SMART_STORE
                     && (result.skipped() || result.stockEvidence() != null && !result.stockEvidence().directVerified()))
                 return "재고 조회로 해당 판매글을 확인한 뒤 선정해 주세요.";
             if (requiresReview())
@@ -188,7 +188,7 @@ public final class SupplierDtos {
         }
     }
 
-    public record Group(String id, Mall mall, Store store, boolean selected, Long minPrice, Long maxPrice,
+    public record Group(String id, ProcurementMall mall, Store store, boolean selected, Long minPrice, Long maxPrice,
             List<Listing> listings, boolean branchRequired) {
     }
 

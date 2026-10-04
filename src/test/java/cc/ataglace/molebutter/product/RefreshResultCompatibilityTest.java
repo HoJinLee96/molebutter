@@ -34,4 +34,26 @@ class RefreshResultCompatibilityTest {
         assertThat(json.readTree(json.writeValueAsString(result)).path("recommendationLimited").isBoolean()).isTrue();
         assertThat(json.readValue(json.writeValueAsString(result),RefreshResult.class)).isEqualTo(result);
     }
+    @ParameterizedTest
+    @ValueSource(strings={"LFMALL","HAZZYS","NAVER_SMART_STORE","LOTTE_ON","LOTTE_IMALL","HI_THEHYUNDAI","HMALL"})
+    void procurementTypeKeepsLegacySnapshotValuesAndMapKeys(String mallCode){
+        String snapshot="""
+            {"revision":3,
+             "stores":[{"id":"1","mall":"%s","kind":"SELLER","name":"기존 매장","identityKey":"legacy","aliases":[],"revision":2}],
+             "rules":[{"id":"2","mall":"%s","storeId":"1","revision":4}],
+             "branchRequirements":{"%s":false}}
+            """.formatted(mallCode,mallCode,mallCode);
+        var preferences=json.readValue(snapshot,cc.ataglace.molebutter.dto.product.SupplierDtos.Preferences.class);
+        var mall=cc.ataglace.molebutter.dto.product.ProductDtos.ProcurementMall.valueOf(mallCode);
+        assertThat(preferences.stores().getFirst().mall()).isEqualTo(mall);
+        assertThat(preferences.rules().getFirst().mall()).isEqualTo(mall);
+        assertThat(preferences.branchRequired(mall)).isFalse();
+        assertThat(preferences.allowed(mall,"1")).isTrue();
+        String encoded=json.writeValueAsString(preferences);var tree=json.readTree(encoded);
+        assertThat(tree.path("stores").get(0).path("mall").asText()).isEqualTo(mallCode);
+        assertThat(tree.path("rules").get(0).path("mall").asText()).isEqualTo(mallCode);
+        assertThat(tree.path("branchRequirements").has(mallCode)).isTrue();
+        assertThat(tree.path("branchRequirements").path(mallCode).asBoolean()).isFalse();
+        assertThat(json.readValue(encoded,cc.ataglace.molebutter.dto.product.SupplierDtos.Preferences.class)).isEqualTo(preferences);
+    }
 }

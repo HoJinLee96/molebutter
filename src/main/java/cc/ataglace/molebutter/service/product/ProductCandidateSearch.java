@@ -22,7 +22,7 @@ public class ProductCandidateSearch {
         List<Offer> offers=new ArrayList<>(), needsReview=new ArrayList<>();
         Set<String> excluded=new LinkedHashSet<>();
         for(Offer offer:result.offers()) {
-            Mall mall=ProductSourceMetadata.mall(offer.url());
+            ProcurementMall mall=ProductSourceMetadata.mall(offer.url());
             if(mall!=null) {
                 String productId=ProductSourceMetadata.productId(mall,offer.url(),offer.mallProductId());
                 Offer resolved=new Offer(offer.naverProductId(),offer.title(),offer.mallName(),productId,offer.url(),

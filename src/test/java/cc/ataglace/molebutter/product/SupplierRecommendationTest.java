@@ -10,13 +10,13 @@ import cc.ataglace.molebutter.infra.product.*;
 import cc.ataglace.molebutter.service.product.*;
 
 class SupplierRecommendationTest {
-    final Preferences prefs=new Preferences(1,List.of(),List.of(new Rule("1",Mall.LFMALL,null,0)),Map.of(Mall.LFMALL,false));
-    Offer lf(String id,long price){return new Offer("NV"+id,"ABCD6F123BK","LF몰",id,"https://www.lfmall.co.kr/app/product/"+id,price,0L,Mall.LFMALL,null);}
-    Offer hi(String id,long price){return new Offer("NV"+id,"목동점 ABCD6F123BK","더현대Hi",id,"https://hi.thehyundai.com/product/"+id,price,9000L,Mall.HI_THEHYUNDAI,null);}
+    final Preferences prefs=new Preferences(1,List.of(),List.of(new Rule("1",ProcurementMall.LFMALL,null,0)),Map.of(ProcurementMall.LFMALL,false));
+    Offer lf(String id,long price){return new Offer("NV"+id,"ABCD6F123BK","LF몰",id,"https://www.lfmall.co.kr/app/product/"+id,price,0L,ProcurementMall.LFMALL,null);}
+    Offer hi(String id,long price){return new Offer("NV"+id,"목동점 ABCD6F123BK","더현대Hi",id,"https://hi.thehyundai.com/product/"+id,price,9000L,ProcurementMall.HI_THEHYUNDAI,null);}
     SupplierRefreshService.Work work(Offer selected){return new SupplierRefreshService.Work(1,2,0,"ABCD123","ABCD6F123BK","LF_ACCESSORY","HAZZYS",prefs,Map.of(),new SelectionBasis(selected==null?null:"selected",selected==null?null:SupplierStorePolicy.listingKey(selected),null,"change"));}
     SupplierProductGateway gateway(List<String> calls){return new SupplierProductGateway(){
-        public String validateUrl(Mall m,String url){return url;}
-        public List<SourceOption> options(Mall m,String id,String url){calls.add(id);return List.of(new SourceOption("FREE","FREE",3L,"AVAILABLE"));}
+        public String validateUrl(ProcurementMall m,String url){return url;}
+        public List<SourceOption> options(ProcurementMall m,String id,String url){calls.add(id);return List.of(new SourceOption("FREE","FREE",3L,"AVAILABLE"));}
     };}
     @Test void noSelectionSkipsNonPreferredAndMissingBaselineDefersDiscovery(){
         var calls=new ArrayList<String>();var lookup=new SupplierLookupService(gateway(calls),new BusinessTime());
@@ -44,7 +44,7 @@ class SupplierRecommendationTest {
         assertThat(SupplierRecommendationPolicy.soldOut(new SupplierResult(lf("a",10),code,"CONFIRMED",List.of(new SourceOption("x","FREE",null,"STOCK_UNKNOWN")),null))).isFalse();
     }
     @Test void genericSellerCannotBecomeOfficialByDisplayNameOrManualAssignment(){
-        var offer=new Offer("NV","ABCD6F123BK","헤지스","123","https://brand.naver.com/hazzys/products/123",100L,0L,Mall.NAVER_SMART_STORE,null,new NaverChannel(NaverChannelType.WINDOW,"BRAND_FASHION"));
+        var offer=new Offer("NV","ABCD6F123BK","헤지스","123","https://brand.naver.com/hazzys/products/123",100L,0L,ProcurementMall.NAVER_SMART_STORE,null,new NaverChannel(NaverChannelType.WINDOW,"BRAND_FASHION"));
         var proof=new StoreEvidence("SELLER",null,"헤지스","NAVER_CHANNEL","unregistered");
         var s=new SupplierResult(offer,new CodeMatch("MATCHED","ABCD6F123BK","ABCD123","6F","BK",null),"FAILED",List.of(),null,null,null,null,new BranchInfo("헤지스","CONFIRMED","API",null,proof));
         assertThat(SupplierRecommendationPolicy.permittedSeller(offer.mall(),null,s)).isFalse();

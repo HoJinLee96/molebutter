@@ -12,38 +12,38 @@ public class SupplierPreferenceService {
     private final ProductStore db;
     private final ProductChangeService changes;
     public Preferences get(Long actor){db.authorize(actor,false);return snapshot();}
-    Preferences snapshot(){return new Preferences(db.jdbc.queryForObject("SELECT preference_revision FROM product_settings WHERE id=1",Long.class),stores(),db.jdbc.query("SELECT * FROM supplier_preference ORDER BY mall,id",(r,n)->new Rule(r.getString("id"),Mall.valueOf(r.getString("mall")),r.getString("store_id"),r.getLong("revision"))),branchRequirements());}
-    private Map<Mall,Boolean> branchRequirements(){
-        var policies=new EnumMap<Mall,Boolean>(Mall.class);
-        db.jdbc.query("SELECT mall,branch_required FROM supplier_mall_policy",r->{policies.put(Mall.valueOf(r.getString("mall")),r.getBoolean("branch_required"));});
+    Preferences snapshot(){return new Preferences(db.jdbc.queryForObject("SELECT preference_revision FROM product_settings WHERE id=1",Long.class),stores(),db.jdbc.query("SELECT * FROM supplier_preference ORDER BY mall,id",(r,n)->new Rule(r.getString("id"),ProcurementMall.valueOf(r.getString("mall")),r.getString("store_id"),r.getLong("revision"))),branchRequirements());}
+    private Map<ProcurementMall,Boolean> branchRequirements(){
+        var policies=new EnumMap<ProcurementMall,Boolean>(ProcurementMall.class);
+        db.jdbc.query("SELECT mall,branch_required FROM supplier_mall_policy",r->{policies.put(ProcurementMall.valueOf(r.getString("mall")),r.getBoolean("branch_required"));});
         return policies;
     }
     List<Store> stores(){
         var identities=new HashMap<String,List<ExternalIdentity>>();
         db.jdbc.query("SELECT * FROM supplier_store_identity",r->{identities.computeIfAbsent(r.getString("store_id"),k->new ArrayList<>()).add(new ExternalIdentity(r.getString("namespace"),r.getString("external_id")));});
-        return db.jdbc.query("SELECT * FROM supplier_store ORDER BY mall,name,id",(r,n)->new Store(r.getString("id"),Mall.valueOf(r.getString("mall")),r.getString("kind"),r.getString("name"),r.getString("identity_key"),List.of(db.decode(r.getString("aliases"),String[].class)),r.getLong("revision"),r.getString("retailer"),identities.getOrDefault(r.getString("id"),List.of())));
+        return db.jdbc.query("SELECT * FROM supplier_store ORDER BY mall,name,id",(r,n)->new Store(r.getString("id"),ProcurementMall.valueOf(r.getString("mall")),r.getString("kind"),r.getString("name"),r.getString("identity_key"),List.of(db.decode(r.getString("aliases"),String[].class)),r.getLong("revision"),r.getString("retailer"),identities.getOrDefault(r.getString("id"),List.of())));
     }
     Store store(String id){return stores().stream().filter(s->s.id().equals(id)).findFirst().orElseThrow(()->new IllegalArgumentException("등록된 매장을 선택해 주세요."));}
     private void changed(){db.jdbc.update("UPDATE product_settings SET preference_revision=preference_revision+1 WHERE id=1");changes.preferenceChanged();}
     @Transactional(isolation=Isolation.READ_COMMITTED) public Store saveStore(Long actor,Long id,StoreInput input) {
         return saveStoreInternal(actor,id,input,false);
     }
-    Store resolveNewStore(Long actor,Mall mall,StoreInput input){
+    Store resolveNewStore(Long actor,ProcurementMall mall,StoreInput input){
         if(input==null||input.mall()!=mall)throw new IllegalArgumentException("해당 쇼핑몰의 매장을 입력해 주세요.");
         return saveStoreInternal(actor,null,input,true);
     }
     private Store saveStoreInternal(Long actor,Long id,StoreInput input,boolean reuse){
         db.authorize(actor,true);db.lock();if(input.mall()==null||!List.of("ONLINE","BRANCH","SELLER","COMPANY","BRAND_STORE").contains(Objects.toString(input.kind(),"")))throw new IllegalArgumentException("쇼핑몰과 매장 구분을 선택해 주세요.");
         if(id==null&&"SELLER".equals(input.kind()))throw new IllegalArgumentException("쇼핑윈도 백화점 지점 또는 공식몰을 등록해 주세요.");
-        if(input.mall()==Mall.NAVER_SMART_STORE&&!List.of("SELLER","BRANCH","BRAND_STORE").contains(input.kind()))throw new IllegalArgumentException("네이버 쇼핑윈도는 실제 판매자별 매장을 등록해 주세요.");
-        if(input.mall()!=Mall.NAVER_SMART_STORE&&"SELLER".equals(input.kind()))throw new IllegalArgumentException("판매자 주소 등록은 네이버 쇼핑윈도에서 사용해 주세요.");
-        if("BRAND_STORE".equals(input.kind())&&(id==null||input.mall()!=Mall.NAVER_SMART_STORE||input.retailer()!=null&&!input.retailer().isBlank()||input.sellerKey()!=null&&!input.sellerKey().isBlank()||input.productUrl()!=null))throw new IllegalArgumentException("공식몰 상품 링크로 판매채널을 확인해 등록해 주세요.");
+        if(input.mall()==ProcurementMall.NAVER_SMART_STORE&&!List.of("SELLER","BRANCH","BRAND_STORE").contains(input.kind()))throw new IllegalArgumentException("네이버 쇼핑윈도는 실제 판매자별 매장을 등록해 주세요.");
+        if(input.mall()!=ProcurementMall.NAVER_SMART_STORE&&"SELLER".equals(input.kind()))throw new IllegalArgumentException("판매자 주소 등록은 네이버 쇼핑윈도에서 사용해 주세요.");
+        if("BRAND_STORE".equals(input.kind())&&(id==null||input.mall()!=ProcurementMall.NAVER_SMART_STORE||input.retailer()!=null&&!input.retailer().isBlank()||input.sellerKey()!=null&&!input.sellerKey().isBlank()||input.productUrl()!=null))throw new IllegalArgumentException("공식몰 상품 링크로 판매채널을 확인해 등록해 주세요.");
         String name=ProductStore.text(input.name(),120,true);
-        if("COMPANY".equals(input.kind())&&(input.mall()!=Mall.LOTTE_ON||!"주식회사 LF".equals(name)||input.sellerKey()!=null&&!input.sellerKey().isBlank()||input.retailer()!=null&&!input.retailer().isBlank()))throw new IllegalArgumentException("롯데ON의 주식회사 LF만 회사 매장으로 선택할 수 있습니다.");
+        if("COMPANY".equals(input.kind())&&(input.mall()!=ProcurementMall.LOTTE_ON||!"주식회사 LF".equals(name)||input.sellerKey()!=null&&!input.sellerKey().isBlank()||input.retailer()!=null&&!input.retailer().isBlank()))throw new IllegalArgumentException("롯데ON의 주식회사 LF만 회사 매장으로 선택할 수 있습니다.");
         if(id!=null&&"COMPANY".equals(input.kind()))throw new IllegalArgumentException("회사 매장 이름은 변경할 수 없습니다.");
         String retailer="BRANCH".equals(input.kind())?ProductStore.text(input.retailer(),120,false):"";
-        if(input.mall()==Mall.HI_THEHYUNDAI&&"BRANCH".equals(input.kind()))retailer="현대백화점";
-        if(id==null&&"BRANCH".equals(input.kind())&&Set.of(Mall.LOTTE_ON,Mall.NAVER_SMART_STORE).contains(input.mall())&&(retailer==null||retailer.isBlank()))throw new IllegalArgumentException("백화점 이름을 입력해 주세요.");
+        if(input.mall()==ProcurementMall.HI_THEHYUNDAI&&"BRANCH".equals(input.kind()))retailer="현대백화점";
+        if(id==null&&"BRANCH".equals(input.kind())&&Set.of(ProcurementMall.LOTTE_ON,ProcurementMall.NAVER_SMART_STORE).contains(input.mall())&&(retailer==null||retailer.isBlank()))throw new IllegalArgumentException("백화점 이름을 입력해 주세요.");
         if(id!=null){var old=store(id.toString());ProductStore.revision(old.revision(),input.revision());if(old.mall()!=input.mall()||!old.kind().equals(input.kind()))throw new IllegalArgumentException("매장의 쇼핑몰과 구분은 변경할 수 없습니다.");
             if(retailer==null||retailer.isBlank())retailer=old.retailer();
             if(!old.identities().isEmpty()&&!SupplierStorePolicy.normalize(old.retailer()).equals(SupplierStorePolicy.normalize(retailer)))throw new IllegalArgumentException("외부 식별자가 연결된 매장의 백화점은 변경할 수 없습니다.");
@@ -66,7 +66,7 @@ public class SupplierPreferenceService {
         db.authorize(actor,true);db.lock();checkPreferenceRevision(input.preferenceRevision());
         String name=ProductStore.text(input.name(),120,true);
         var external=new ExternalIdentity("NAVER_CHANNEL",verified.channelUid());
-        var owners=stores().stream().filter(s->s.mall()==Mall.NAVER_SMART_STORE&&s.identities().contains(external)).toList();
+        var owners=stores().stream().filter(s->s.mall()==ProcurementMall.NAVER_SMART_STORE&&s.identities().contains(external)).toList();
         if(owners.size()>1)throw new IllegalArgumentException("판매채널 연결을 확인해 주세요.");
         Store saved;
         if(!owners.isEmpty()){
@@ -76,15 +76,15 @@ public class SupplierPreferenceService {
             var aliases=new LinkedHashSet<>(saved.aliases());aliases.add(saved.name());aliases.add(name);
             db.jdbc.update("UPDATE supplier_store SET kind='BRAND_STORE',name=?,aliases=?,revision=revision+1,updated_at=? WHERE id=?",name,db.encode(aliases),db.time.now(),saved.id());
         }else{
-            saved=insert(Mall.NAVER_SMART_STORE,"BRAND_STORE",name,"external:NAVER_CHANNEL:"+verified.channelUid());
-            db.jdbc.update("INSERT INTO supplier_store_identity(mall,namespace,external_id,store_id) VALUES(?,?,?,?)",Mall.NAVER_SMART_STORE.name(),external.namespace(),external.externalId(),saved.id());
+            saved=insert(ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE",name,"external:NAVER_CHANNEL:"+verified.channelUid());
+            db.jdbc.update("INSERT INTO supplier_store_identity(mall,namespace,external_id,store_id) VALUES(?,?,?,?)",ProcurementMall.NAVER_SMART_STORE.name(),external.namespace(),external.externalId(),saved.id());
         }
         changed();return store(saved.id());
     }
-    private String retailerFor(StoreInput input){return !"BRANCH".equals(input.kind())?"":input.mall()==Mall.HI_THEHYUNDAI?"현대백화점":input.retailer();}
+    private String retailerFor(StoreInput input){return !"BRANCH".equals(input.kind())?"":input.mall()==ProcurementMall.HI_THEHYUNDAI?"현대백화점":input.retailer();}
     void checkPreferenceRevision(Long revision){ProductStore.revision(snapshot().revision(),revision);}
     @Transactional(isolation=Isolation.READ_COMMITTED)
-    public Preferences saveMall(Long actor,Mall mall,MallPreferenceInput input){
+    public Preferences saveMall(Long actor,ProcurementMall mall,MallPreferenceInput input){
         db.authorize(actor,true);db.lock();checkPreferenceRevision(input.revision());
         if(!Set.of("ALL","STORES").contains(Objects.toString(input.scope(),"")))throw new IllegalArgumentException("허용 범위를 선택해 주세요.");
         boolean branchRequired=input.branchRequired()==null?branchRequirements().getOrDefault(mall,true):input.branchRequired();
@@ -106,7 +106,7 @@ public class SupplierPreferenceService {
         changed();return snapshot();
     }
     @Transactional(isolation=Isolation.READ_COMMITTED)
-    public Preferences deleteMall(Long actor,Mall mall,Long revision){
+    public Preferences deleteMall(Long actor,ProcurementMall mall,Long revision){
         db.authorize(actor,true);db.lock();checkPreferenceRevision(revision);
         db.jdbc.update("DELETE FROM supplier_preference WHERE mall=?",mall.name());changed();return snapshot();
     }
@@ -114,10 +114,10 @@ public class SupplierPreferenceService {
         db.authorize(actor,true);
         if(!snapshot().allowed(target.mall(),target.id())){insertRule(target.mall(),target.id());changed();}
     }
-    private void insertRule(Mall mall,String storeId){db.jdbc.update("INSERT INTO supplier_preference(id,mall,store_id,scope_key) VALUES(?,?,?,?)",ProductStore.id(),mall.name(),storeId,storeId==null?"ALL":storeId);}
-    private Store insert(Mall mall,String kind,String name,String key){long id=ProductStore.id();db.jdbc.update("INSERT INTO supplier_store(id,mall,kind,name,identity_key,aliases,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",id,mall.name(),kind,name,key,db.encode(List.of(name)),db.time.now(),db.time.now());return new Store(Long.toString(id),mall,kind,name,key,List.of(name),0);}
+    private void insertRule(ProcurementMall mall,String storeId){db.jdbc.update("INSERT INTO supplier_preference(id,mall,store_id,scope_key) VALUES(?,?,?,?)",ProductStore.id(),mall.name(),storeId,storeId==null?"ALL":storeId);}
+    private Store insert(ProcurementMall mall,String kind,String name,String key){long id=ProductStore.id();db.jdbc.update("INSERT INTO supplier_store(id,mall,kind,name,identity_key,aliases,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",id,mall.name(),kind,name,key,db.encode(List.of(name)),db.time.now(),db.time.now());return new Store(Long.toString(id),mall,kind,name,key,List.of(name),0);}
     /** 검색 원문의 확인된 지점/실제 판매자만 등록한다. 이름을 바꾸어도 기존 식별자를 재사용한다. */
-    Store observed(Mall mall,SupplierStorePolicy.Identity identity){
+    Store observed(ProcurementMall mall,SupplierStorePolicy.Identity identity){
         if(identity==null)return null;var all=stores();if(SupplierStorePolicy.conflicts(all,mall,identity))return null;var existing=SupplierStorePolicy.resolve(all,mall,identity);
         if(existing==null&&!"SELLER".equals(identity.kind())&&all.stream().anyMatch(s->s.mall()==mall&&s.kind().equals(identity.kind())&&SupplierStorePolicy.normalize(s.retailer()).isBlank()&&s.aliases().stream().anyMatch(a->SupplierStorePolicy.normalize(a).equals(SupplierStorePolicy.normalize(identity.name())))))return null;
         var saved=existing!=null?existing:insert(mall,identity.kind(),identity.name(),identity.key());
@@ -139,7 +139,7 @@ public class SupplierPreferenceService {
             var result=db.decode(r.getString("observation"),cc.ataglace.molebutter.dto.product.ProductDtos.SupplierResult.class);
             if(result==null||result.branch()==null||!"CONFIRMED".equals(result.branch().state())||result.branch().store()==null)return null;
             var e=result.branch().store();if(e.namespace()==null||e.externalId()==null)return null;
-            var mall=Mall.valueOf(r.getString("mall"));if(all.stream().anyMatch(s->s.mall()==mall&&s.identities().contains(new ExternalIdentity(e.namespace(),e.externalId()))))return null;
+            var mall=ProcurementMall.valueOf(r.getString("mall"));if(all.stream().anyMatch(s->s.mall()==mall&&s.identities().contains(new ExternalIdentity(e.namespace(),e.externalId()))))return null;
             return new IdentityCandidate(r.getString("id"),r.getString("observed_run_id"),mall,e);
         }).stream().filter(Objects::nonNull).toList();
     }

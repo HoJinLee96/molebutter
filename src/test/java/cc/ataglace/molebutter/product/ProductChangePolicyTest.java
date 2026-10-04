@@ -5,13 +5,13 @@ import static org.assertj.core.api.Assertions.*;
 import java.time.LocalDateTime;
 import java.util.*;
 import cc.ataglace.molebutter.dto.product.ChangeDtos.*;
-import cc.ataglace.molebutter.dto.product.ProductDtos.Mall;
+import cc.ataglace.molebutter.dto.product.ProductDtos.ProcurementMall;
 import cc.ataglace.molebutter.service.product.ProductChangePolicy;
 
 class ProductChangePolicyTest {
     final LocalDateTime at=LocalDateTime.parse("2026-09-28T03:52:14");
     OptionValue option(String id,Long stock,String state){return new OptionValue(id,"블랙","OPTION",stock,state,at);}
-    Observation value(Long price,boolean partial,OptionValue... options){return new Observation("1","HI:1:nv",Mall.HI_THEHYUNDAI,"store","store:channel","현대 천호","https://example.test",price,0L,at,List.of(options),partial,true,true,true,at);}
+    Observation value(Long price,boolean partial,OptionValue... options){return new Observation("1","HI:1:nv",ProcurementMall.HI_THEHYUNDAI,"store","store:channel","현대 천호","https://example.test",price,0L,at,List.of(options),partial,true,true,true,at);}
     @Test void comparesPriceFeeAndExactOptionWithoutSummingListings(){
         var b=value(156450L,false,option("black",100L,"AVAILABLE"));var n=value(149900L,false,option("black",37L,"AVAILABLE"));
         assertThat(ProductChangePolicy.compare(b,n)).extracting(Delta::difference).containsExactly(-6550L,-63L);

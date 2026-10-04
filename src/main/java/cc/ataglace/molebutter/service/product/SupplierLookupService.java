@@ -15,7 +15,7 @@ public class SupplierLookupService {
     public SupplierLookupService(SupplierProductGateway sources,BusinessTime time){this(sources,time,null);}
     @org.springframework.beans.factory.annotation.Autowired
     public SupplierLookupService(SupplierProductGateway sources,BusinessTime time,RecommendationLookupService diagnostics){this.sources=sources;this.time=time;this.diagnostics=diagnostics;}
-    private final Map<Mall,RecommendationDiagnostic> restrictedMalls=new EnumMap<>(Mall.class);
+    private final Map<ProcurementMall,RecommendationDiagnostic> restrictedMalls=new EnumMap<>(ProcurementMall.class);
     private final Map<String,RecommendationDiagnostic> currentDiagnostics=new LinkedHashMap<>();
     private String worker;
     private long cachedRun=Long.MIN_VALUE;
@@ -33,15 +33,15 @@ public class SupplierLookupService {
         if(diagnostics!=null){restrictedMalls.clear();restrictedMalls.putAll(diagnostics.restrictions(work.runId()));diagnostics.list(work.runId(),work.productId()).forEach(d->currentDiagnostics.put(d.listingKey(),d));}
         return lookupWithRecommendations(work,search,heartbeat);
     }
-    public synchronized void invalidate(Mall mall,String productId){detailsCache.remove(mall+":"+productId);}
+    public synchronized void invalidate(ProcurementMall mall,String productId){detailsCache.remove(mall+":"+productId);}
     private RefreshResult lookupWithRecommendations(SupplierRefreshService.Work work,SearchResult search,BooleanSupplier heartbeat) {
         var candidates=ProductCandidateSearch.classify(search);
         var offers=new LinkedHashMap<String,Offer>();
         candidates.offers().forEach(o->offers.putIfAbsent(SupplierStorePolicy.listingKey(o),o));
         var results=new LinkedHashMap<String,SupplierResult>();
         var proofs=new HashMap<String,SupplierResult>();
-        var sortedNaver=new ArrayDeque<>(offers.values().stream().filter(o->o.mall()==Mall.NAVER_SMART_STORE).sorted(Comparator.comparing(Offer::price,Comparator.nullsLast(Long::compareTo)).thenComparing(SupplierStorePolicy::listingKey)).toList());
-        var ordered=offers.values().stream().map(o->o.mall()==Mall.NAVER_SMART_STORE?sortedNaver.removeFirst():o).toList();
+        var sortedNaver=new ArrayDeque<>(offers.values().stream().filter(o->o.mall()==ProcurementMall.NAVER_SMART_STORE).sorted(Comparator.comparing(Offer::price,Comparator.nullsLast(Long::compareTo)).thenComparing(SupplierStorePolicy::listingKey)).toList());
+        var ordered=offers.values().stream().map(o->o.mall()==ProcurementMall.NAVER_SMART_STORE?sortedNaver.removeFirst():o).toList();
         var basis=work.selectionBasis()==null?new cc.ataglace.molebutter.dto.product.SupplierDtos.SelectionBasis(null,null,null,null):work.selectionBasis();
         // The exact selected listing is checked first, even after it has left common preferences.
         Long reference=null;
@@ -125,7 +125,7 @@ public class SupplierLookupService {
         return observed(work,offer,detail,time.now());
     }
     private SupplierResult observed(SupplierRefreshService.Work work,Offer offer,SourceDetails detail,java.time.LocalDateTime observedAt){
-        if(offer.mall()==Mall.NAVER_SMART_STORE){offer=offer.withChannel(NaverChannelPolicy.inspected(offer,detail));if(!NaverChannelPolicy.comparable(offer))return new SupplierResult(offer,searchResult(null),"CHANNEL_UNCONFIRMED",List.of(),"판매채널 확인 필요");}
+        if(offer.mall()==ProcurementMall.NAVER_SMART_STORE){offer=offer.withChannel(NaverChannelPolicy.inspected(offer,detail));if(!NaverChannelPolicy.comparable(offer))return new SupplierResult(offer,searchResult(null),"CHANNEL_UNCONFIRMED",List.of(),"판매채널 확인 필요");}
         var branch=SupplierBranch.resolve(offer,detail);String state=detail.options().isEmpty()?"OPTIONS_UNKNOWN":!detail.optionsComplete()?"OPTIONS_PARTIAL":"CONFIRMED";
         var result=new SupplierResult(offer,searchResult(detail.modelCode()),state,detail.options(),state.equals("OPTIONS_PARTIAL")?"일부 옵션만 확인했습니다.":null,detail.title(),detail.modelCode(),detail.brand(),branch);
         boolean verified=SupplierRecommendationPolicy.verified(work.preferences(),work.manualStores(),result)&&branch!=null&&branch.store()!=null&&!"CONFLICT".equals(branch.state());
