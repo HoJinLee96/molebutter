@@ -76,6 +76,18 @@ class ProductFlowIT {
         refresh.finish("delta",w,new RefreshResult("SUCCESS",null,null,null,List.of(results),time.now(),null,false,List.of(),"COMPLETED"));
         refresh.claim("delta");
     }
+    @Test void completedRefreshWritesOneBackgroundAuditForTheCommittedResult(){
+        var p=create("DCWA279BK");start(current(p));var w=refresh.claim("audit-result");
+        var result=new RefreshResult("SUCCESS",null,null,null,List.of(deltaListing(156450,100L)),time.now(),null);
+        String target=w.runId()+":"+w.productId();
+        refresh.finish("audit-result",w,result);
+        refresh.finish("audit-result",w,result);
+        var entries=jdbc.queryForList("SELECT * FROM operation_audit_log WHERE event_type='SUPPLIER_LOOKUP_RESULT' AND target_id=?",target);
+        assertThat(entries).hasSize(1);
+        assertThat(entries.getFirst()).containsEntry("execution_source","BACKGROUND")
+            .containsEntry("user_id",null).containsEntry("user_role",null).containsEntry("email",null);
+        assertThat(entries.getFirst().get("operation_id").toString()).isEqualTo(UUID.fromString(entries.getFirst().get("operation_id").toString()).toString());
+    }
     @Test void deltasKeepReviewBaselineAcrossRefreshesAndRevertWithoutDeletingHistory(){
         var p=create("DCWA279BK");deltaFinish(p,deltaListing(156450,100L));choose(p,byMall(p,Mall.LFMALL));
         assertThat(changeService.summary(Long.parseLong(p.id())).anyChanged()).isFalse();

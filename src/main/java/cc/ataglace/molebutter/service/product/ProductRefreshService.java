@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 @Service @RequiredArgsConstructor
 public class ProductRefreshService {
     private final ProductStore db;
+    private final cc.ataglace.molebutter.service.audit.OperationAuditService audit;
     private final NaverSearchRecoveryService recovery;
     private final ProductChangeService changes;
     private final RecommendationLookupService recommendationLookups;
@@ -113,6 +114,8 @@ public class ProductRefreshService {
             suppliers.record(w,result);
             changes.automatic(w,result);
         }
+        boolean completed=Set.of("SUCCESS","PARTIAL","SOLD_OUT","NO_MATCH").contains(result.status());
+        audit.backgroundAfterCommit("SUPPLIER_LOOKUP_RESULT","SUPPLIER_REFRESH_ENTRY",w.runId()+":"+w.productId(),completed,completed?null:result.status());
         release(worker);
     }
     public Long searchStarted(String owner,Work work){return recovery.begin(owner,work);}

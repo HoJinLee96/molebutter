@@ -97,6 +97,8 @@ class AuthenticationFlowIT {
     @Autowired EmailVerificationService verification;
     @Autowired AdminBootstrap bootstrap;
     @Autowired ApplicationContext context;
+    @Autowired cc.ataglace.molebutter.service.audit.OperationAuditService operations;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
 
     @Test
     void defaultInMemoryAuthenticationIsNotCreated() {
@@ -277,6 +279,31 @@ class AuthenticationFlowIT {
         assertThat(store.exists(key)).isFalse();
     }
 
+    @Test void httpAuditKeepsRequestOperationIdAndAuthenticatedActor() throws Exception {
+        String email=uniqueEmail();signup(email);
+        long id=users.findByEmail(email).orElseThrow().getId();
+        var admin=admin();admin.operationId=UUID.randomUUID().toString();
+        String path="/api/admin/users/"+id+"/approve";
+        assertStatus(admin.post(path,Map.of("role","VIEWER")),200);
+        var entries=jdbc.queryForList("SELECT * FROM operation_audit_log WHERE operation_id=?",admin.operationId);
+        assertThat(entries).hasSize(1);
+        assertThat(entries.getFirst()).containsEntry("execution_source","HTTP")
+            .containsEntry("user_id",users.findByEmail("admin@example.com").orElseThrow().getId())
+            .containsEntry("user_role","ADMIN").containsEntry("email","admin@example.com")
+            .containsEntry("event_type","USER_APPROVE").containsEntry("http_method","POST").containsEntry("request_uri",path);
+    }
+
+    @Test void backgroundAuditHasNoFabricatedAccountAndOnlyRecordsCommittedResults() {
+        String target=java.util.UUID.randomUUID().toString();
+        var tx=new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        tx.executeWithoutResult(status->{operations.backgroundAfterCommit("BACKGROUND_TEST","TEST",target,true,null);status.setRollbackOnly();});
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM operation_audit_log WHERE target_id=?",Long.class,target)).isZero();
+        tx.executeWithoutResult(status->operations.backgroundAfterCommit("BACKGROUND_TEST","TEST",target,true,null));
+        var entry=jdbc.queryForMap("SELECT * FROM operation_audit_log WHERE target_id=?",target);
+        assertThat(entry).containsEntry("execution_source","BACKGROUND").containsEntry("user_id",null).containsEntry("user_role",null).containsEntry("email",null);
+        assertThat(entry.get("operation_id").toString()).isEqualTo(java.util.UUID.fromString(entry.get("operation_id").toString()).toString());
+    }
+
     @Test
     void migrationsValidateAndRuntimeAccountCannotCreateTables() {
         flyway.validate();
@@ -357,6 +384,7 @@ class AuthenticationFlowIT {
         final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
         final Map<String, String> cookies = new HashMap<>();
         String csrf;
+        String operationId;
         void csrf() throws Exception {
             var response = get("/api/auth/csrf");
             assertStatus(response, 200);
@@ -379,6 +407,7 @@ class AuthenticationFlowIT {
             if (!cookies.isEmpty()) request.header("Cookie", cookies.entrySet().stream()
                     .map(e -> e.getKey() + "=" + e.getValue()).collect(java.util.stream.Collectors.joining("; ")));
             if (csrfHeader != null) request.header("X-XSRF-TOKEN", csrfHeader);
+            if (operationId != null) request.header("X-Operation-Id",operationId);
             request.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
                     : HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)));
             var response = client.send(request.build(), HttpResponse.BodyHandlers.ofString());

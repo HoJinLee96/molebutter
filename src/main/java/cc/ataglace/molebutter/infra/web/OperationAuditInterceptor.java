@@ -63,7 +63,9 @@ public class OperationAuditInterceptor implements HandlerInterceptor {
         }
 
         // 작동 감사 로그 기록
-        operationAuditService.register(userRole, userId, userEmail, annotation.value(), targetType, targetId,
+        operationAuditService.register(cc.ataglace.molebutter.service.audit.OperationContext.http(
+                cc.ataglace.molebutter.service.notification.FailureNotificationService.requestKey(request),userId,userRole,userEmail),
+                annotation.value(), targetType, targetId,
                 request.getMethod(), request.getRequestURI(), clientInfo.ip(), clientInfo.userAgent(),
                 success, failureReason);
     }

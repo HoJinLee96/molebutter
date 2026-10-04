@@ -52,13 +52,13 @@ public class OperationAuditLog {
     private Long id;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "user_role", nullable = false, length = 20)
+    @Column(name = "user_role", length = 20)
     private UserRole userRole;
 
-    @Column(name = "user_id", nullable = false)
+    @Column(name = "user_id")
     private Long userId;
 
-    @Column(name = "email", nullable = false, length = EMAIL_MAX)
+    @Column(name = "email", length = EMAIL_MAX)
     private String email;
 
     @Column(name = "event_type", nullable = false, length = EVENT_TYPE_MAX)
@@ -88,6 +88,12 @@ public class OperationAuditLog {
     @Column(name = "failure_reason", length = FAILURE_REASON_MAX)
     private String failureReason;
 
+    @Column(name = "execution_source", nullable = false, length = 12)
+    private String executionSource;
+
+    @Column(name = "operation_id", length = 36)
+    private String operationId;
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     protected LocalDateTime createdAt;
@@ -95,7 +101,9 @@ public class OperationAuditLog {
     @Builder
     private OperationAuditLog(UserRole userRole, Long userId, String email, String eventType,
             String targetType, String targetId, String httpMethod, String requestUri,
-            String ip, String userAgent, boolean success, String failureReason) {
+            String ip, String userAgent, boolean success, String failureReason, String executionSource, String operationId) {
+        this.executionSource = executionSource == null ? "HTTP" : executionSource;
+        this.operationId = operationId;
         this.userRole = userRole;
         this.userId = userId;
         this.email = truncate(email, EMAIL_MAX);

@@ -27,8 +27,34 @@ public class OperationAuditService {
     public void register(UserRole userRole, Long userId, String email, String eventType, String targetType,
             String targetId, String httpMethod, String requestUri, String ip, String userAgent,
             boolean success, String failureReason) {
+        register(OperationContext.http(java.util.UUID.randomUUID().toString(),userId,userRole,email),eventType,targetType,targetId,
+                httpMethod,requestUri,ip,userAgent,success,failureReason);
+    }
+
+    /** Committed background results use the same audit store without fabricating a signed-in account. */
+    public void backgroundAfterCommit(String eventType,String targetType,String targetId,boolean success,String failureCode) {
+        if(!org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive())
+            throw new IllegalStateException("Background audit requires a business transaction");
+        var context=OperationContext.background();
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+            new org.springframework.transaction.support.TransactionSynchronization() {
+                @Override public void afterCommit() {
+                    register(context,eventType,targetType,targetId,null,null,null,null,success,failureCode);
+                }
+            });
+    }
+
+    public void registerBackground(String eventType,String targetType,String targetId,boolean success,String failureCode) {
+        register(OperationContext.background(),eventType,targetType,targetId,null,null,null,null,success,failureCode);
+    }
+
+    public void register(OperationContext context,String eventType,String targetType,String targetId,
+            String httpMethod,String requestUri,String ip,String userAgent,boolean success,String failureReason) {
+        UserRole userRole=context.actorRole();Long userId=context.actorId();String email=context.actorEmail();
         try {
             newTxTemplate.executeWithoutResult(status -> repository.save(OperationAuditLog.builder()
+                    .executionSource(context.source().name())
+                    .operationId(context.operationId())
                     .userRole(userRole)
                     .userId(userId)
                     .email(email)
@@ -43,8 +69,8 @@ public class OperationAuditService {
                     .failureReason(failureReason)
                     .build()));
         } catch (Exception e) {
-            log.error("작동 감사 저장 실패. eventType={}, userId={}, email={}, userRole={}, targetId={}, method={}, uri={}, success={}, failureReason={}",
-                eventType, userId, email, userRole, targetId, httpMethod, requestUri, success, failureReason, e);
+            log.error("작동 감사 저장 실패. eventType={}, userId={}, email={}, userRole={}, targetId={}, method={}, uri={}, success={}, failureReason={}, exceptionType={}",
+                eventType, userId, email, userRole, targetId, httpMethod, requestUri, success, failureReason, e.getClass().getSimpleName());
         }
     }
 }
