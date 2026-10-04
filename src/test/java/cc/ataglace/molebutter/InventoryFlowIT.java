@@ -1,5 +1,6 @@
 package cc.ataglace.molebutter;
 
+import cc.ataglace.molebutter.dto.NamedSettingInput;
 import static org.assertj.core.api.Assertions.*;
 import java.net.*;
 import java.net.http.*;
@@ -34,6 +35,9 @@ import tools.jackson.databind.ObjectMapper;
 class InventoryFlowIT {
     @DynamicPropertySource static void databases(DynamicPropertyRegistry r){AuthenticationFlowIT.databases(r);}
     @Autowired cc.ataglace.molebutter.service.inventory.InventoryPaymentMethodService payments; @Autowired InventoryService inventory; @Autowired ProductService products; @Autowired JdbcTemplate jdbc;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @Autowired cc.ataglace.molebutter.service.common.CatalogConsistencyGuard catalogGuard;
+    @Autowired cc.ataglace.molebutter.service.notification.NotificationService notifications;
     @Autowired UserRepository users; @Autowired ObjectMapper json; @Autowired AuthTokenService tokens; @LocalServerPort int port;
     long admin,staff,viewer;String product;
     final LocalDate date=LocalDate.of(2026,10,1);final LocalDateTime at=date.atTime(10,0);
@@ -423,6 +427,45 @@ class InventoryFlowIT {
         assertThat(owner.send("POST","/api/settings/payment-methods",Map.of("name","HTTP 카드-"+request()),true).statusCode()).isEqualTo(200);
         var invalid=new PurchaseInput(date,"","","","","",null,"",List.of(line(product,1,null,0)),null,-1L);
         assertThatThrownBy(()->inventory.create(admin,request(),invalid)).hasMessageContaining("결제 금액");
+    }
+    @Test void concurrentPurchaseRetriesCreateOneOrderAndPreserveTheOriginalFingerprint() throws Exception {
+        String req=request();var input=order(line(product,1,10L,0));
+        try(var pool=Executors.newFixedThreadPool(2)) {
+            var gate=new CountDownLatch(1);
+            var a=pool.submit(()->{gate.await();return inventory.create(admin,req,input);});
+            var b=pool.submit(()->{gate.await();return inventory.create(admin,req,input);});
+            gate.countDown();assertThat(id(a.get(10,TimeUnit.SECONDS))).isEqualTo(id(b.get(10,TimeUnit.SECONDS)));
+        }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM inventory_purchase WHERE request_id=?",Long.class,req)).isEqualTo(1);
+    }
+    @Test void independentOrdersCanReceiveWhileAnotherOrderIsLockedAndCatalogWritesWait() throws Exception {
+        var first=first(create(line(product,1,10L,0)));var second=first(create(line(product,1,10L,0)));
+        var held=new CountDownLatch(1);var release=new CountDownLatch(1);
+        try(var pool=Executors.newFixedThreadPool(3)) {
+            var blocker=pool.submit(()->new org.springframework.transaction.support.TransactionTemplate(transactionManager).execute(status->{
+                catalogGuard.shared();jdbc.queryForList("SELECT id FROM inventory_purchase WHERE id=? FOR UPDATE",Long.parseLong(first.get("purchaseId").toString()));
+                held.countDown();try{if(!release.await(10,TimeUnit.SECONDS))throw new IllegalStateException("test lock timeout");}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}return true;
+            }));
+            try {
+                assertThat(held.await(5,TimeUnit.SECONDS)).isTrue();
+                balances(pool.submit(()->move(second,Kind.RECEIPT,1,null)).get(5,TimeUnit.SECONDS),1,0);
+                var catalog=pool.submit(()->{var p=products.product(Long.parseLong(product));return products.edit(admin,Long.parseLong(product),new CatalogEdit(p.revision(),"","RENAMED-"+request(),p.searchQuery()));});
+                assertThatThrownBy(()->catalog.get(200,TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+                release.countDown();blocker.get(5,TimeUnit.SECONDS);catalog.get(5,TimeUnit.SECONDS);
+            } finally {release.countDown();}
+        }
+        ledger(second);
+    }
+    @Test void inventoryFailureNotificationsRespectCurrentRoleAndUnknownApiRoutesAreDenied() throws Exception {
+        var item=first(create(line(product,1,10L,0)));var browser=new Browser(staff);
+        assertThat(browser.send("POST","/api/inventory/items/"+id(item)+"/movements",new MovementInput(99L,Kind.RECEIPT,1L,at,"",null,null),true).statusCode()).isEqualTo(409);
+        var notice=notifications.list(staff,null,20).items().getFirst();
+        assertThat(notifications.target(staff,Long.parseLong(notice.id())).url()).isEqualTo("/inventory");
+        for(long actor:List.of(admin,staff,viewer))assertThat(new Browser(actor).get("/api/not-yet-registered").statusCode()).isEqualTo(403);
+        assertThat(browser.get("/api/auth/me").statusCode()).isEqualTo(200);
+        jdbc.update("UPDATE `user` SET user_role='VIEWER' WHERE id=?",staff);
+        assertThat(notifications.list(staff,null,20).items().getFirst().accessible()).isFalse();
+        assertThat(notifications.target(staff,Long.parseLong(notice.id())).url()).isNull();
     }
     class Browser {
         final HttpClient client=HttpClient.newHttpClient();final String token;String csrf;String cookie;

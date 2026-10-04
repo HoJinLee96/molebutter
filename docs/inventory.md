@@ -116,3 +116,7 @@ NODE_PATH=/path/to/node_modules node scripts/test-product-ui.cjs
 ```
 
 통합 검증은 임시 MySQL·Redis만 사용한다. Maven 의존성 캐시가 없을 때 `MOLEBUTTER_TEST_MAVEN_OFFLINE=false`로 다운로드를 허용할 수 있다. 브라우저 검증은 실제 Thymeleaf 렌더링과 모의 API를 사용하며 `target/ui-check/`에 화면을 저장한다. 판매 예약·판매채널 연동·다중 장소 이동·복수 결제·원가 배분은 이번 버전에 포함하지 않는다.
+
+## 구현 경계와 동시 처리
+
+조회·주문/항목 변경·수량 기록은 `InventoryQueryService`, `InventoryPurchaseService`, `InventoryMovementService`로 분리한다. 응답은 `InventoryView`의 공개/관리자 필드만 반환한다. 카탈로그 변경은 배타 가드, 재고 변경은 공유 가드와 요청 ID·주문·항목·이력 순서의 잠금을 사용한다. 서로 다른 주문은 병렬 처리할 수 있고 같은 요청은 기존 해시로 한 번만 반영한다.

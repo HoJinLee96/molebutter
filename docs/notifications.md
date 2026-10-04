@@ -31,3 +31,5 @@ V15는 `notification_event`(사건)와 `user_notification`(수신·개별 삭제
 ## 검증
 
 `ProductFlowIT`의 알림 테스트는 롤백/중복/커서/개별 삭제/재개 후 재발행/권한/CSRF/엑셀/정정 결과를 검증한다. `MigrationUpgradeIT`는 V14→V15 전환과 기존 선정 데이터를 확인한다. `scripts/test-notifications-ui.cjs`는 모의 API와 실제 화면 코드로 1440px·390px에서 알림 진입·이동·삭제·오류 복구와 키보드 동작을 검증한다. 운영 DB 및 외부 쇼핑몰은 사용하지 않는다.
+
+재고 변경의 상태 충돌·서버 실패도 본인 실패 알림에 포함한다. 대상은 `/inventory`이며 현재 `INVENTORY` 권한을 검사한다. 역할 변경 후에는 기존 알림의 내용과 대상 이동을 숨긴다.

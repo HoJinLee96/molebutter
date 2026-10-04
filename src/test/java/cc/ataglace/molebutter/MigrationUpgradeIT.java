@@ -256,11 +256,20 @@ class MigrationUpgradeIT {
             try(var r=st.executeQuery("SELECT quantity,hand_delta,pending_delta,request_hash FROM inventory_movement WHERE id=100")){r.next();assertThat(r.getLong(1)).isEqualTo(2);assertThat(r.getLong(2)).isEqualTo(2);assertThat(r.getLong(3)).isEqualTo(-2);assertThat(r.getString(4)).isEqualTo("legacy-hash");}
         }
         try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()){st.executeUpdate("UPDATE inventory_item SET location='legacy location' WHERE id=100");}
-        var noLocation=Flyway.configure().dataSource(url,user,password).load();assertThat(noLocation.migrate().migrationsExecuted).isEqualTo(1);noLocation.validate();assertThat(noLocation.info().current().getVersion().getVersion()).isEqualTo("26");assertThat(noLocation.migrate().migrationsExecuted).isZero();
+        var noLocation=Flyway.configure().dataSource(url,user,password).target("26").load();assertThat(noLocation.migrate().migrationsExecuted).isEqualTo(1);noLocation.validate();assertThat(noLocation.info().current().getVersion().getVersion()).isEqualTo("26");assertThat(noLocation.migrate().migrationsExecuted).isZero();
         try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
             try(var r=st.executeQuery("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='inventory_item' AND column_name='location'")){r.next();assertThat(r.getInt(1)).isZero();}
             try(var r=st.executeQuery("SELECT product_id,on_hand,pending,unit_price FROM inventory_item WHERE id=100")){r.next();assertThat(r.getLong(1)).isEqualTo(1);assertThat(r.getLong(2)).isEqualTo(2);assertThat(r.getLong(3)).isEqualTo(1);assertThat(r.getLong(4)).isEqualTo(12345);}
             try(var r=st.executeQuery("SELECT COUNT(*) FROM inventory_movement WHERE id=100")){r.next();assertThat(r.getInt(1)).isEqualTo(1);}
+        }
+        var ready=Flyway.configure().dataSource(url,user,password).target("27").load();
+        assertThat(ready.migrate().migrationsExecuted).isEqualTo(1);ready.validate();
+        assertThat(ready.info().current().getVersion().getVersion()).isEqualTo("27");assertThat(ready.migrate().migrationsExecuted).isZero();
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
+            st.executeUpdate("INSERT INTO inventory_request_lock(request_id) VALUES('10000000-1000-4000-8000-100000000000')");
+            try(var r=st.executeQuery("SELECT COUNT(*) FROM inventory_request_lock")){r.next();assertThat(r.getInt(1)).isEqualTo(1);}
+            try(var r=st.executeQuery("SELECT product_id,on_hand,pending,unit_price FROM inventory_item WHERE id=100")){r.next();assertThat(r.getLong(1)).isEqualTo(1);assertThat(r.getLong(2)).isEqualTo(2);assertThat(r.getLong(3)).isEqualTo(1);assertThat(r.getLong(4)).isEqualTo(12345);}
+            try(var r=st.executeQuery("SELECT quantity,hand_delta,pending_delta,request_hash FROM inventory_movement WHERE id=100")){r.next();assertThat(r.getLong(1)).isEqualTo(2);assertThat(r.getLong(2)).isEqualTo(2);assertThat(r.getLong(3)).isEqualTo(-2);assertThat(r.getString(4)).isEqualTo("legacy-hash");}
         }
     }
 }

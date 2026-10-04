@@ -88,6 +88,10 @@ public class SecurityConfig {
                             auth.requestMatchers(section.getApiPatterns()).hasAuthority(authority);
                         }
                     }
+                    auth.requestMatchers("/api/auth/me", "/api/auth/password/change",
+                            "/api/notifications", "/api/notifications/**").authenticated();
+                    // A new API must explicitly register its permission before it becomes accessible.
+                    auth.requestMatchers("/api/**").denyAll();
                     auth.anyRequest().authenticated();
                 })
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

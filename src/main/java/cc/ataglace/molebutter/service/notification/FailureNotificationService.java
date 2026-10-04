@@ -26,6 +26,7 @@ public class FailureNotificationService {
         if(path.startsWith("/api/products")){target="PRODUCTS";title="상품 처리 실패";
             if(path.matches("/api/products/[0-9]+(?:/.*)?")){target="PRODUCT";targetId=Long.valueOf(path.split("/")[3]);}}
         else if(path.startsWith("/api/product-refresh")){target="REFRESH";title="최신화 요청 실패";if(path.matches("/api/product-refresh/[0-9]+/.*"))targetId=Long.valueOf(path.split("/")[3]);else target="PRODUCTS";}
+        else if(path.equals("/api/inventory")||path.startsWith("/api/inventory/")){target="INVENTORY";title="재고 처리 실패";}
         else if(path.startsWith("/api/settings/")){target="SETTINGS";title="설정 저장 실패";}
         else if(path.startsWith("/api/attendance-manage/corrections/")||path.startsWith("/api/attendance/corrections/")){target="CORRECTION";title="근태 정정 처리 실패";try{targetId=Long.valueOf(path.split("/")[4]);}catch(Exception e){target="ATTENDANCE";}}
         else if(path.startsWith("/api/attendance")){target="ATTENDANCE";title="근태 처리 실패";}
