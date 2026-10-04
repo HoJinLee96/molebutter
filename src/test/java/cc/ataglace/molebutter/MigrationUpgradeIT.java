@@ -271,5 +271,17 @@ class MigrationUpgradeIT {
             try(var r=st.executeQuery("SELECT product_id,on_hand,pending,unit_price FROM inventory_item WHERE id=100")){r.next();assertThat(r.getLong(1)).isEqualTo(1);assertThat(r.getLong(2)).isEqualTo(2);assertThat(r.getLong(3)).isEqualTo(1);assertThat(r.getLong(4)).isEqualTo(12345);}
             try(var r=st.executeQuery("SELECT quantity,hand_delta,pending_delta,request_hash FROM inventory_movement WHERE id=100")){r.next();assertThat(r.getLong(1)).isEqualTo(2);assertThat(r.getLong(2)).isEqualTo(2);assertThat(r.getLong(3)).isEqualTo(-2);assertThat(r.getString(4)).isEqualTo("legacy-hash");}
         }
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
+            st.executeUpdate("INSERT INTO operation_audit_log(id,user_role,user_id,email,event_type,success,created_at) VALUES(100,'ADMIN',1,'owner@example.com','EXISTING_AUDIT',TRUE,NOW(6))");
+        }
+        var audit=Flyway.configure().dataSource(url,user,password).target("28").load();
+        assertThat(audit.migrate().migrationsExecuted).isEqualTo(1);audit.validate();
+        assertThat(audit.info().current().getVersion().getVersion()).isEqualTo("28");assertThat(audit.migrate().migrationsExecuted).isZero();
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
+            try(var r=st.executeQuery("SELECT execution_source,user_id,email FROM operation_audit_log WHERE id=100")){r.next();assertThat(r.getString(1)).isEqualTo("HTTP");assertThat(r.getLong(2)).isEqualTo(1);assertThat(r.getString(3)).isEqualTo("owner@example.com");}
+            st.executeUpdate("INSERT INTO operation_audit_log(id,event_type,execution_source,success,created_at) VALUES(101,'BACKGROUND_TEST','BACKGROUND',TRUE,NOW(6))");
+            assertThatThrownBy(()->st.executeUpdate("INSERT INTO operation_audit_log(id,event_type,success,created_at) VALUES(102,'INVALID_HTTP',TRUE,NOW(6))")).isInstanceOf(java.sql.SQLException.class);
+            try(var r=st.executeQuery("SELECT on_hand,pending,unit_price FROM inventory_item WHERE id=100")){r.next();assertThat(r.getLong(1)).isEqualTo(2);assertThat(r.getLong(2)).isEqualTo(1);assertThat(r.getLong(3)).isEqualTo(12345);}
+        }
     }
 }
