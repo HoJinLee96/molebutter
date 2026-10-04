@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter;
+import cc.ataglace.molebutter.service.common.BusinessTime;
 
 import static org.assertj.core.api.Assertions.*;
 import java.net.*;
@@ -43,7 +44,7 @@ class ProductFlowIT {
         public SourceDetails inspect(Mall mall,String id,String url){return new cc.ataglace.molebutter.infra.product.MallOptionParser(new ObjectMapper()).details(mall,payload,id);}
     }
     @Autowired BrandGateway brandGateway; @Autowired OfficialBrandStoreService officialStores;
-    static class TestTime extends ProductTime {volatile LocalDateTime value=LocalDateTime.parse("2026-09-24T18:00:00");@Override public LocalDateTime now(){return value;}}
+    static class TestTime extends BusinessTime {volatile LocalDateTime value=LocalDateTime.parse("2026-09-24T18:00:00");@Override public LocalDateTime now(){return value;}}
     @Autowired cc.ataglace.molebutter.service.notification.NotificationService notifications;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired cc.ataglace.molebutter.service.attendance.AttendanceService attendance;

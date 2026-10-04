@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.service.product;
+import cc.ataglace.molebutter.service.common.BusinessTime;
 
 import java.util.*;
 import java.util.function.BooleanSupplier;
@@ -9,11 +10,11 @@ import cc.ataglace.molebutter.infra.product.*;
 @Service @lombok.extern.slf4j.Slf4j
 public class ProductLookupService {
     private final ProductSourceGateway sources;
-    private final ProductTime time;
+    private final BusinessTime time;
     private final RecommendationLookupService diagnostics;
-    public ProductLookupService(ProductSourceGateway sources,ProductTime time){this(sources,time,null);}
+    public ProductLookupService(ProductSourceGateway sources,BusinessTime time){this(sources,time,null);}
     @org.springframework.beans.factory.annotation.Autowired
-    public ProductLookupService(ProductSourceGateway sources,ProductTime time,RecommendationLookupService diagnostics){this.sources=sources;this.time=time;this.diagnostics=diagnostics;}
+    public ProductLookupService(ProductSourceGateway sources,BusinessTime time,RecommendationLookupService diagnostics){this.sources=sources;this.time=time;this.diagnostics=diagnostics;}
     private final Map<Mall,RecommendationDiagnostic> restrictedMalls=new EnumMap<>(Mall.class);
     private final Map<String,RecommendationDiagnostic> currentDiagnostics=new LinkedHashMap<>();
     private String worker;

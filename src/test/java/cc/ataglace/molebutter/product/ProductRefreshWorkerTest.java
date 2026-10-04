@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.product;
+import cc.ataglace.molebutter.service.common.BusinessTime;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -22,7 +23,7 @@ class ProductRefreshWorkerTest {
         when(runs.searchStarted(anyString(),eq(work))).thenReturn(10L);
         when(runs.searchSucceeded(anyString(),eq(work),eq(10L))).thenReturn(true);
         when(search.search(work.query(),Set.of(),3)).thenReturn(new SearchResult(List.of(wanted,other),false,"최대 3페이지 조회","PAGE_LIMIT"));
-        new ProductRefreshWorker(runs,lookup,search,new ProductTime(),mock(SupplierStockLookupService.class)).process(work);
+        new ProductRefreshWorker(runs,lookup,search,new BusinessTime(),mock(SupplierStockLookupService.class)).process(work);
         var capture=ArgumentCaptor.forClass(SearchResult.class);verify(runs).cache(eq(work),capture.capture());
         assertThat(capture.getValue().offers()).extracting(Offer::mall).containsExactly(Mall.LFMALL,Mall.HI_THEHYUNDAI);
         assertThat(capture.getValue().completionReason()).isEqualTo("COMPLETED");assertThat(capture.getValue().complete()).isTrue();assertThat(capture.getValue().message()).isNull();
@@ -36,7 +37,7 @@ class ProductRefreshWorkerTest {
         when(runs.searchStarted(anyString(),eq(work))).thenReturn(10L);
         when(runs.searchSucceeded(anyString(),eq(work),eq(10L))).thenReturn(true);
         var found=new SearchResult(List.of(),false,null,"PAGE_LIMIT");when(search.search("query",Set.of(),3)).thenReturn(found);
-        var worker=new ProductRefreshWorker(runs,lookup,search,new ProductTime(),mock(SupplierStockLookupService.class));worker.process(work);
+        var worker=new ProductRefreshWorker(runs,lookup,search,new BusinessTime(),mock(SupplierStockLookupService.class));worker.process(work);
         var order=inOrder(search,runs,lookup);order.verify(search).search("query",Set.of(),3);
         order.verify(runs).searchSucceeded(anyString(),eq(work),eq(10L));order.verify(runs).cache(eq(work),any());order.verify(lookup).lookup(eq(work),any(),any(),anyString());
         clearInvocations(runs,lookup,search);when(runs.cached(work)).thenReturn(found);worker.process(work);
@@ -48,7 +49,7 @@ class ProductRefreshWorkerTest {
         when(runs.heartbeat(anyString(),eq(work))).thenReturn(true);
         when(runs.searchStarted(anyString(),eq(work))).thenReturn(10L);
         when(search.search(anyString(),anySet(),anyInt())).thenThrow(new NaverPriceSearch.SearchBlocked(NaverPriceSearch.BlockReason.LOGIN_REQUIRED,"login"));
-        new ProductRefreshWorker(runs,lookup,search,new ProductTime(),mock(SupplierStockLookupService.class)).process(work);
+        new ProductRefreshWorker(runs,lookup,search,new BusinessTime(),mock(SupplierStockLookupService.class)).process(work);
         verify(runs).searchFailed(anyString(),eq(work),eq(10L),isA(NaverPriceSearch.SearchBlocked.class));
         verify(runs,never()).finish(anyString(),any(),any());verifyNoInteractions(lookup);
     }
@@ -57,14 +58,14 @@ class ProductRefreshWorkerTest {
         var product=new ProductRefreshService.Work(1,2,0,"query","code","GENERAL",null);var offer=new Offer("nv","title","네이버","42","https://shopping.naver.com/window-products/department/42",10L,0L,Mall.NAVER_SMART_STORE,null);
         var result=new SupplierResult(offer,new CodeMatch("SEARCH_RESULT",null,null,null,null,null),"OPTIONS_UNKNOWN",List.of(),null);
         var manual=new SupplierStockLookupService.Work(3,4,product,5,offer,result);when(queue.claim(anyString())).thenReturn(manual,null);when(lookup.inspectFresh(product,offer)).thenReturn(result);
-        var worker=new ProductRefreshWorker(runs,lookup,search,new ProductTime(),queue);org.springframework.test.util.ReflectionTestUtils.setField(worker,"enabled",true);worker.tick();
+        var worker=new ProductRefreshWorker(runs,lookup,search,new BusinessTime(),queue);org.springframework.test.util.ReflectionTestUtils.setField(worker,"enabled",true);worker.tick();
         verify(queue).finish(anyString(),eq(manual),eq(result));verify(lookup).invalidate(Mall.NAVER_SMART_STORE,"42");verifyNoInteractions(runs,search);worker.tick();verify(runs).claim(anyString());verifyNoInteractions(search);
     }
     @Test void manualRestrictionStopsQueueWithoutRecordingSuccess(){
         var runs=mock(ProductRefreshService.class);var lookup=mock(ProductLookupService.class);var search=mock(NaverPriceSearch.class);var queue=mock(SupplierStockLookupService.class);
         var product=new ProductRefreshService.Work(1,2,0,"query","code","GENERAL",null);var offer=new Offer("nv","title","네이버","42","https://shopping.naver.com/window-products/department/42",10L,0L,Mall.NAVER_SMART_STORE,null);
         var previous=new SupplierResult(offer,new CodeMatch("SEARCH_RESULT",null,null,null,null,null),"SKIPPED_SAME_STORE",List.of(),null);var manual=new SupplierStockLookupService.Work(3,4,product,5,offer,previous);
-        when(lookup.inspectFresh(product,offer)).thenThrow(new NaverPriceSearch.SearchBlocked("HTTP 429"));new ProductRefreshWorker(runs,lookup,search,new ProductTime(),queue).processStock(manual);
+        when(lookup.inspectFresh(product,offer)).thenThrow(new NaverPriceSearch.SearchBlocked("HTTP 429"));new ProductRefreshWorker(runs,lookup,search,new BusinessTime(),queue).processStock(manual);
         verify(queue).blocked(anyString(),eq(manual),eq("HTTP 429"));verify(queue,never()).finish(anyString(),any(),any());verifyNoInteractions(runs,search);
     }
 }

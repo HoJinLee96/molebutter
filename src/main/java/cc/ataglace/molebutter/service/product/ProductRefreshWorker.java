@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.service.product;
+import cc.ataglace.molebutter.service.common.BusinessTime;
 
 import java.util.*;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,7 +15,7 @@ public class ProductRefreshWorker {
     private final ProductRefreshService runs;
     private final ProductLookupService lookup;
     private final NaverPriceSearch search;
-    private final ProductTime time;
+    private final BusinessTime time;
     private final SupplierStockLookupService stockLookups;
     private final String owner=UUID.randomUUID().toString();
     @Value("${product.refresh.worker-enabled:true}") private boolean enabled;

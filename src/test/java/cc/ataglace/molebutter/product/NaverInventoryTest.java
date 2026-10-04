@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.product;
+import cc.ataglace.molebutter.service.common.BusinessTime;
 
 import static org.assertj.core.api.Assertions.*;
 import java.util.*;
@@ -93,7 +94,7 @@ class NaverInventoryTest {
         var prefs=new Preferences(1,List.of(store),List.of(new Rule("1",Mall.NAVER_SMART_STORE,"1",0)));
         var work=new ProductRefreshService.Work(1,2,0,"HIWA450","HIWA6E450BK","LF_ACCESSORY","HAZZYS",prefs,Map.of());
         var offer=new Offer("nv","HIWA6E450BK","헤지스","12610379894","https://shopping.naver.com/window-products/brandfashion/12610379894",94000L,0L,Mall.NAVER_SMART_STORE,null);
-        var service=new ProductLookupService(gateway,new ProductTime());var search=new SearchResult(List.of(offer),true,null);
+        var service=new ProductLookupService(gateway,new BusinessTime());var search=new SearchResult(List.of(offer),true,null);
         var result=service.lookup(work,search,()->true);service.lookup(work,search,()->true);
         assertThat(calls).containsExactly("12610379894");assertThat(result.status()).isEqualTo("SUCCESS");assertThat(result.suppliers().getFirst().state()).isEqualTo("CONFIRMED");assertThat(result.suppliers().getFirst().options().getFirst().stock()).isEqualTo(3);
     }

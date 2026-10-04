@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.product;
+import cc.ataglace.molebutter.service.common.BusinessTime;
 
 import static org.assertj.core.api.Assertions.*;
 import java.util.*;
@@ -21,7 +22,7 @@ class RecommendationFailureTest {
     }
     @Test void restrictionPreservesSelectedStockAndContinuesOtherMallAndNextProduct(){
         var g=new Gateway();g.errors.put("blocked",new SupplierAccessRestricted(Mall.LOTTE_IMALL,"HTTP_RESTRICTED",403));
-        var l=new ProductLookupService(g,new ProductTime());
+        var l=new ProductLookupService(g,new BusinessTime());
         var found=new SearchResult(List.of(selected,offer(Mall.LFMALL,"preferred",168970),offer(Mall.LOTTE_IMALL,"blocked",150190),offer(Mall.LOTTE_IMALL,"skip",150200),offer(Mall.HI_THEHYUNDAI,"alternative",155000)),true,null);
         var r=l.lookup(work(1,2),found,()->true);
         assertThat(r.status()).isEqualTo("SUCCESS");assertThat(r.message()).isNull();
@@ -35,13 +36,13 @@ class RecommendationFailureTest {
     }
     @Test void ordinaryFailureContinuesSameMallAndDoesNotDowngradeStatus(){
         var g=new Gateway();g.errors.put("first",new SupplierLookupFailure(SupplierLookupFailure.Code.TIMEOUT,"FETCH",null,null));
-        var r=new ProductLookupService(g,new ProductTime()).lookup(work(1,2),new SearchResult(List.of(selected,offer(Mall.LOTTE_IMALL,"first",150190),offer(Mall.LOTTE_IMALL,"second",150200)),true,null),()->true);
+        var r=new ProductLookupService(g,new BusinessTime()).lookup(work(1,2),new SearchResult(List.of(selected,offer(Mall.LOTTE_IMALL,"first",150190),offer(Mall.LOTTE_IMALL,"second",150200)),true,null),()->true);
         assertThat(g.calls).containsExactly("selected","first","second");assertThat(r.status()).isEqualTo("SUCCESS");
         assertThat(r.recommendationDiagnostics()).singleElement().satisfies(d->assertThat(d.causeCode()).isEqualTo("TIMEOUT"));
     }
     @Test void requiredRequestsStillBlockAndKnownRestrictionPreventsRequiredRequest(){
         var g=new Gateway();g.errors.put("blocked",new SupplierAccessRestricted(Mall.LOTTE_IMALL,"SECURITY_CHECK",null));
-        var l=new ProductLookupService(g,new ProductTime());var blocked=offer(Mall.LOTTE_IMALL,"blocked",150190);
+        var l=new ProductLookupService(g,new BusinessTime());var blocked=offer(Mall.LOTTE_IMALL,"blocked",150190);
         l.lookup(work(1,2),new SearchResult(List.of(selected,blocked),true,null),()->true);
         var w=new ProductRefreshService.Work(1,3,0,"query","code","GENERAL",null,prefs,Map.of(),new SelectionBasis("2",SupplierStorePolicy.listingKey(blocked),null,"change"));
         assertThatThrownBy(()->l.lookup(w,new SearchResult(List.of(blocked),true,null),()->true)).isInstanceOf(SupplierAccessRestricted.class);
@@ -51,7 +52,7 @@ class RecommendationFailureTest {
     }
     @Test void naverBrowserRestrictionAndLostOwnershipAreNeverSwallowed(){
         var g=new Gateway();g.errors.put("other",new NaverPriceSearch.SearchBlocked(NaverPriceSearch.BlockReason.LOGIN_REQUIRED,"login"));
-        var l=new ProductLookupService(g,new ProductTime());var found=new SearchResult(List.of(selected,offer(Mall.LOTTE_IMALL,"other",150190)),true,null);
+        var l=new ProductLookupService(g,new BusinessTime());var found=new SearchResult(List.of(selected,offer(Mall.LOTTE_IMALL,"other",150190)),true,null);
         assertThatThrownBy(()->l.lookup(work(1,2),found,()->true)).isInstanceOf(NaverPriceSearch.SearchBlocked.class);
         assertThatThrownBy(()->l.lookup(work(1,2),found,()->false)).isInstanceOf(IllegalStateException.class).hasMessageContaining("소유권");
     }
@@ -60,7 +61,7 @@ class RecommendationFailureTest {
         var offers=new ArrayList<Offer>();offers.add(selected);offers.add(offer(Mall.LOTTE_IMALL,"blocked",10000));
         for(int i=0;i<60;i++)offers.add(offer(Mall.LOTTE_IMALL,"skip"+i,10001+i));
         for(int i=0;i<40;i++)offers.add(offer(Mall.HI_THEHYUNDAI,"other"+i,11000+i));
-        var result=new ProductLookupService(g,new ProductTime()).lookup(work(1,2),new SearchResult(offers,true,null),()->true);
+        var result=new ProductLookupService(g,new BusinessTime()).lookup(work(1,2),new SearchResult(offers,true,null),()->true);
         assertThat(g.calls).hasSize(41);assertThat(result.recommendationLimited()).isTrue();
         assertThat(result.recommendationDiagnostics()).hasSize(61);
     }
