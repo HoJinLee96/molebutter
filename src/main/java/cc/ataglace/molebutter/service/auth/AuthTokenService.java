@@ -107,7 +107,7 @@ public class AuthTokenService {
                 revokeFamily(familyId, claims.getExpiration().toInstant());
             }
         } catch (JwtException e) {
-            log.debug("[AUTH] 로그아웃 refresh 파싱 실패(무시): {}", e.getMessage());
+            log.debug("[AUTH] 로그아웃 refresh 파싱 실패(무시): {}", e.getClass().getSimpleName());
         }
     }
 
@@ -126,7 +126,7 @@ public class AuthTokenService {
                 store.put(ACCESS_BLACKLIST_KEY + claims.getId(), "revoked", ttl);
             }
         } catch (JwtException e) {
-            log.debug("[AUTH] access blacklist 파싱 실패(무시): {}", e.getMessage());
+            log.debug("[AUTH] access blacklist 파싱 실패(무시): {}", e.getClass().getSimpleName());
         }
     }
 

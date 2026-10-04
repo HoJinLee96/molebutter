@@ -58,7 +58,7 @@ public class EmailVerificationService {
         } catch (RuntimeException e) {
             store.compareAndDelete(key(CODE_KEY, purpose, email), code);
             store.compareAndDelete(cooldownKey, code);
-            log.error("인증번호 메일 발송 실패. email={} purpose={}", email, purpose, e);
+            log.error("인증번호 메일 발송 실패. purpose={} type={}", purpose, e.getClass().getSimpleName());
             throw new BusinessException(ErrorCode.EMAIL_SEND_FAILED);
         }
     }

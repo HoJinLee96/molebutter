@@ -30,7 +30,7 @@ public class GlobalExceptionHandler {
     private final cc.ataglace.molebutter.service.notification.FailureNotificationService notifications;
     private void notifyFailure(HttpServletRequest request,String message) {
         try { notifications.record(request,message); }
-        catch(Exception failure) { log.error("알림 저장 실패",failure); }
+        catch(Exception failure) { log.error("알림 저장 실패 type={}", failure.getClass().getSimpleName()); }
     }
 
 
@@ -61,7 +61,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(BindException.class)
     protected ResponseEntity<ApiResponse<Void>> handleBindException(BindException e) {
-        log.info("BindException : {}", e.getMessage());
+        log.info("BindException: invalid input");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(ErrorCode.INVALID_INPUT_VALUE));
@@ -70,7 +70,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     protected ResponseEntity<ApiResponse<Void>> handleMethodArgumentNotValidException(
             MethodArgumentNotValidException e) {
-        log.info("MethodArgumentNotValidException : {}", e.getMessage());
+        log.info("MethodArgumentNotValidException: invalid input");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(ErrorCode.INVALID_INPUT_VALUE));
@@ -82,7 +82,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     protected ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadableException(
             HttpMessageNotReadableException e) {
-        log.info("HttpMessageNotReadableException : {}", e.getMessage());
+        log.info("HttpMessageNotReadableException: invalid input");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(ErrorCode.INVALID_INPUT_VALUE));
@@ -90,7 +90,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ConstraintViolationException.class)
     protected ResponseEntity<ApiResponse<Void>> handleConstraintViolationException(ConstraintViolationException e) {
-        log.info("ConstraintViolationException : {}", e.getMessage());
+        log.info("ConstraintViolationException: invalid input");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(ErrorCode.INVALID_INPUT_VALUE));
@@ -100,7 +100,7 @@ public class GlobalExceptionHandler {
     protected ResponseEntity<ApiResponse<Void>> handleOptimisticLockingFailureException(
             ObjectOptimisticLockingFailureException e, HttpServletRequest request) {
         notifyFailure(request,"다른 작업에서 변경되었습니다. 다시 확인해 주세요.");
-        log.warn("ObjectOptimisticLockingFailureException : {}", e.getMessage());
+        log.warn("ObjectOptimisticLockingFailureException");
         return ResponseEntity
                 .status(ErrorCode.OPTIMISTIC_LOCKING_FAILURE.getStatus())
                 .body(ApiResponse.error(ErrorCode.OPTIMISTIC_LOCKING_FAILURE));
@@ -112,7 +112,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     protected ResponseEntity<ApiResponse<Void>> handleHttpRequestMethodNotSupportedException(
             HttpRequestMethodNotSupportedException e) {
-        log.warn("HttpRequestMethodNotSupportedException : {}", e.getMessage());
+        log.warn("HttpRequestMethodNotSupportedException");
         return ResponseEntity
                 .status(HttpStatus.METHOD_NOT_ALLOWED)
                 .body(ApiResponse.error(ErrorCode.METHOD_NOT_ALLOWED));
@@ -120,7 +120,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     protected ResponseEntity<ApiResponse<Void>> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException e) {
-        log.warn("MaxUploadSizeExceededException : {}", e.getMessage());
+        log.warn("MaxUploadSizeExceededException");
         return ResponseEntity
                 .status(HttpStatus.TOO_MANY_REQUESTS)
                 .body(ApiResponse.error(
@@ -136,7 +136,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(IllegalArgumentException.class)
     protected ResponseEntity<ApiResponse<Void>> handleIllegalArgumentException(IllegalArgumentException e) {
-        log.warn("IllegalArgumentException : {}", e.getMessage());
+        log.info("Invalid argument type={}", e.getClass().getSimpleName());
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(HttpStatus.BAD_REQUEST, e.getMessage()));
@@ -145,7 +145,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalStateException.class)
     protected ResponseEntity<ApiResponse<Void>> handleIllegalStateException(IllegalStateException e, HttpServletRequest request) {
         if(e instanceof OperationFailure)notifyFailure(request,e.getMessage());
-        log.warn("IllegalStateException : {}", e.getMessage());
+        log.warn("IllegalStateException type={}", e.getClass().getSimpleName());
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
                 .body(ApiResponse.error(HttpStatus.CONFLICT, e.getMessage()));
@@ -153,7 +153,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ResponseStatusException.class)
     protected ResponseEntity<ApiResponse<Void>> handleResponseStatusException(ResponseStatusException e) {
-        log.warn("ResponseStatusException : {}", e.getReason());
+        log.warn("ResponseStatusException status={}", e.getStatusCode().value());
         HttpStatus status = HttpStatus.resolve(e.getStatusCode().value());
         HttpStatus responseStatus = status == null ? HttpStatus.INTERNAL_SERVER_ERROR : status;
         return ResponseEntity
@@ -163,7 +163,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AsyncRequestNotUsableException.class)
     protected void handleAsyncRequestNotUsableException(AsyncRequestNotUsableException e) {
-        log.debug("Client aborted response before it could be written: {}", e.getMessage());
+        log.debug("Client aborted response before it could be written");
     }
 
     /**
@@ -184,10 +184,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     protected ResponseEntity<ApiResponse<Void>> handleException(Exception e, HttpServletRequest request) {
         if (isClientAbort(e)) {
-            log.debug("Client aborted response before it could be written: {}", e.getMessage());
+            log.debug("Client aborted response before it could be written");
             return ResponseEntity.noContent().build();
         }
-        log.error("Unhandled Exception : {}", e.getMessage(), e);
+        log.error("Unhandled Exception type={} request={} frames={}", e.getClass().getName(), requestDescription(request), java.util.Arrays.toString(e.getStackTrace()));
         notifyFailure(request,"처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -198,11 +198,7 @@ public class GlobalExceptionHandler {
         if (request == null) {
             return "-";
         }
-        String query = request.getQueryString();
-        String uri = query == null || query.isBlank()
-                ? request.getRequestURI()
-                : request.getRequestURI() + "?" + query;
-        return request.getMethod() + " " + uri;
+        return request.getMethod() + " " + request.getRequestURI();
     }
 
     private boolean isClientAbort(Throwable throwable) {
