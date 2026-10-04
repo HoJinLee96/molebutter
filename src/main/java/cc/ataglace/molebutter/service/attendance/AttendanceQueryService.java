@@ -81,29 +81,29 @@ public class AttendanceQueryService {
             LocalDate start = from == null || from.isBlank() ? current.atDay(1) : LocalDate.parse(from);
             LocalDate end = to == null || to.isBlank() ? current.atEndOfMonth() : LocalDate.parse(to);
             if (start.getYear() < 1000 || end.getYear() > 9999 || end.isBefore(start) || ChronoUnit.DAYS.between(start, end) >= 366)
-                throw new IllegalArgumentException("조회 기간은 시작일부터 종료일까지 최대 366일입니다.");
+                throw new InputValidationFailure("조회 기간은 시작일부터 종료일까지 최대 366일입니다.");
             var p = common(q, userId); p.put("from", start); p.put("to", end); p.put("status", status == null ? null : status.name());
             return p;
-        } catch (DateTimeParseException e) { throw new IllegalArgumentException("날짜는 YYYY-MM-DD 형식으로 입력해 주세요."); }
+        } catch (DateTimeParseException e) { throw new InputValidationFailure("날짜는 YYYY-MM-DD 형식으로 입력해 주세요."); }
     }
     private Map<String, Object> summaryFilter(String month, String q, Long userId) {
         try {
             YearMonth m = month == null || month.isBlank() ? YearMonth.from(time.now()) : YearMonth.parse(month);
-            if (m.getYear() < 1000 || m.getYear() > 9998) throw new IllegalArgumentException("조회 월이 올바르지 않습니다.");
+            if (m.getYear() < 1000 || m.getYear() > 9998) throw new InputValidationFailure("조회 월이 올바르지 않습니다.");
             var p = common(q, userId); p.put("month", m.toString()); p.put("from", m.atDay(1)); p.put("to", m.atEndOfMonth());
             p.put("until", m.plusMonths(1).atDay(1).atStartOfDay()); return p;
-        } catch (DateTimeParseException e) { throw new IllegalArgumentException("월은 YYYY-MM 형식으로 입력해 주세요."); }
+        } catch (DateTimeParseException e) { throw new InputValidationFailure("월은 YYYY-MM 형식으로 입력해 주세요."); }
     }
     private Map<String, Object> common(String q, Long userId) {
         String query = q == null ? "" : q.trim();
-        if (query.length() > 255 || (userId != null && userId <= 0)) throw new IllegalArgumentException("직원 검색 조건이 올바르지 않습니다.");
+        if (query.length() > 255 || (userId != null && userId <= 0)) throw new InputValidationFailure("직원 검색 조건이 올바르지 않습니다.");
         Map<String, Object> p = new HashMap<>(); p.put("q", query); p.put("userId", userId); return p;
     }
     private void authorize(Long actor) {
         var user = users.findById(actor).orElseThrow(() -> new BusinessException(ErrorCode.HANDLE_ACCESS_DENIED));
         if (user.isSigninBlocked() || user.getRole() != UserRole.ADMIN) throw new BusinessException(ErrorCode.HANDLE_ACCESS_DENIED);
     }
-    private static void checkPage(int page) { if (page < 0) throw new IllegalArgumentException("페이지는 0 이상이어야 합니다."); }
+    private static void checkPage(int page) { if (page < 0) throw new InputValidationFailure("페이지는 0 이상이어야 합니다."); }
     private static int pages(long count) { return (int) Math.min(Integer.MAX_VALUE, (count + PAGE_SIZE - 1) / PAGE_SIZE); }
     @FunctionalInterface private interface Output { void write(Writer writer) throws IOException; }
     private static Path file(Output output) throws IOException {

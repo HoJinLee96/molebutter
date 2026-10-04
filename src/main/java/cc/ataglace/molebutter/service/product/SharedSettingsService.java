@@ -1,5 +1,8 @@
 package cc.ataglace.molebutter.service.product;
 
+import cc.ataglace.molebutter.exception.OperationFailure;
+import cc.ataglace.molebutter.exception.InputValidationFailure;
+import cc.ataglace.molebutter.dto.NamedSettingInput;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -13,7 +16,6 @@ import lombok.RequiredArgsConstructor;
 @Transactional(readOnly = true)
 public class SharedSettingsService {
     private final ProductStore db;
-    public record NameInput(String name, Long revision) {}
     public record RevisionInput(Long revision) {}
     public record Brand(String id, String name, long revision, long usageCount,String codeBrand) {}
 
@@ -26,12 +28,12 @@ public class SharedSettingsService {
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
-    public Brand saveBrand(Long actor, Long id, NameInput input) {
+    public Brand saveBrand(Long actor, Long id, NamedSettingInput input) {
         db.authorize(actor,true); db.lock();
         String name=ProductStore.text(input.name(),100,true);
         if(id!=null) ProductStore.revision(brand(actor,id).revision(),input.revision());
         if(db.jdbc.queryForObject("SELECT COUNT(*) FROM product_brand WHERE name=? AND id<>?",Long.class,name,id==null?0:id)>0)
-            throw new IllegalArgumentException("이미 등록된 브랜드 이름입니다.");
+            throw new InputValidationFailure("이미 등록된 브랜드 이름입니다.");
         if(id==null) {
             id=ProductStore.id();
             db.jdbc.update("INSERT INTO product_brand(id,name,code_brand,created_at,updated_at) VALUES(?,?,?,?,?)",id,name,ProductCodePolicy.brandKey(name),db.time.now(),db.time.now());
@@ -48,7 +50,7 @@ public class SharedSettingsService {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public void deleteBrand(Long actor,long id,Long revision) {
         db.authorize(actor,true); db.lock(); var b=brand(actor,id); ProductStore.revision(b.revision(),revision);
-        if(b.usageCount()>0) throw new cc.ataglace.molebutter.exception.OperationFailure("보관 중인 상품을 포함해 "+b.usageCount()+"개 상품에서 사용하는 브랜드는 삭제할 수 없습니다.");
+        if(b.usageCount()>0) throw new OperationFailure("보관 중인 상품을 포함해 "+b.usageCount()+"개 상품에서 사용하는 브랜드는 삭제할 수 없습니다.");
         db.jdbc.update("DELETE FROM product_brand WHERE id=?",id);
     }
 }

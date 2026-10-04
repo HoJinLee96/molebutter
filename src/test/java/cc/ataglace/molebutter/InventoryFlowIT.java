@@ -405,12 +405,12 @@ class InventoryFlowIT {
         assertThat(updated).containsEntry("productCode",item.get("productCode")).doesNotContainKeys("purchasedCode","purchasedName");ledger(updated);
     }
     @Test void paymentMethodsPreserveHistoricalNamesAndDeletedSelectionsAndAmountsArePrivate() throws Exception {
-        var method=payments.save(admin,null,new cc.ataglace.molebutter.service.product.SharedSettingsService.NameInput("업무 카드-"+request(),null));
+        var method=payments.save(admin,null,new cc.ataglace.molebutter.dto.NamedSettingInput("업무 카드-"+request(),null));
         var input=new PurchaseInput(date,"매장","","","","",date,"결제 메모",List.of(line(product,2,100L,0)),method.id(),0L);
         var o=inventory.create(admin,request(),input);assertThat(o).containsEntry("paymentAmount",0L).containsEntry("paymentMethod",method.name());
-        var renamed=payments.save(admin,Long.parseLong(method.id()),new cc.ataglace.molebutter.service.product.SharedSettingsService.NameInput("수정 카드-"+request(),method.revision()));
+        var renamed=payments.save(admin,Long.parseLong(method.id()),new cc.ataglace.molebutter.dto.NamedSettingInput("수정 카드-"+request(),method.revision()));
         assertThat(inventory.purchase(admin,id(o))).containsEntry("paymentMethod",method.name());
-        assertThatThrownBy(()->payments.save(admin,Long.parseLong(method.id()),new cc.ataglace.molebutter.service.product.SharedSettingsService.NameInput("충돌",method.revision()))).isInstanceOf(cc.ataglace.molebutter.exception.OperationFailure.class);
+        assertThatThrownBy(()->payments.save(admin,Long.parseLong(method.id()),new cc.ataglace.molebutter.dto.NamedSettingInput("충돌",method.revision()))).isInstanceOf(cc.ataglace.molebutter.exception.OperationFailure.class);
         payments.delete(admin,Long.parseLong(method.id()),renamed.revision());assertThat(payments.list(admin)).noneMatch(m->m.id().equals(method.id()));
         o=inventory.editPurchase(admin,id(o),new PurchaseEdit(0L,date,"변경 매장","","","",null,date,"메모",method.id(),null));
         assertThat(o).containsEntry("paymentMethod",method.name()).containsEntry("paymentAmount",null);
