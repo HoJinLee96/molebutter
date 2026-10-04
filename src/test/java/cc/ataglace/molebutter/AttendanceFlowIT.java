@@ -48,7 +48,7 @@ import tools.jackson.databind.JsonNode;
 
 /** scripts/test-integration.sh가 준비한 임시 MySQL/Redis에만 연결한다. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "spring.config.import=classpath:bootstrap-admin-test.properties", "spring.datasource.username=test_app",
+        "product.refresh.worker-enabled=false", "spring.config.import=classpath:bootstrap-admin-test.properties", "spring.datasource.username=test_app",
         "spring.datasource.password=isolated-test-app-password",
         "spring.flyway.user=test_migrator", "spring.flyway.password=isolated-test-migration-password",
         "spring.data.redis.host=127.0.0.1", "spring.data.redis.password=", "mail.provider=test",
