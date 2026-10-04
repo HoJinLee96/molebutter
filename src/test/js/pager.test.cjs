@@ -15,7 +15,7 @@ function fixture(){
     const root=element(),changes=[];
     document={activeElement:null,getElementById:()=>root,querySelectorAll:()=>[],createElement:element,createTextNode:text=>({textContent:text})};
     const context=vm.createContext({document});
-    vm.runInContext(readFileSync('src/main/resources/static/js/attendance-ui.js','utf8')+';globalThis.ui=AttendanceUI;',context);
+    vm.runInContext(readFileSync('src/main/resources/static/js/app-ui.js','utf8')+';globalThis.ui=AppUI;',context);
     const all=()=>{const walk=n=>[n,...(n.children??[]).flatMap(walk)];return walk(root);};
     return {root,document,changes,all,
         render:(page,totalPages,numbered=true,label)=>context.ui.pager('pager',{page,totalPages},page=>changes.push(page),{numbered,label}),

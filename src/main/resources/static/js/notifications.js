@@ -2,7 +2,7 @@
 (() => {
     const bell = document.getElementById('notification-bell');
     if (!bell) return;
-    const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const escape = AppUI.escape;
     const dialog = document.createElement('dialog');
     dialog.id = 'notification-drawer'; dialog.className = 'notification-drawer';
     dialog.setAttribute('aria-labelledby', 'notification-title');

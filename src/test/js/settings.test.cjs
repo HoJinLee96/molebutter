@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {readFileSync}=require('node:fs');
 const vm=require('node:vm');
-const source=readFileSync('src/main/resources/static/js/settings.js','utf8');
+const source=readFileSync('src/main/resources/static/js/app-ui.js','utf8')+readFileSync('src/main/resources/static/js/settings.js','utf8');
 const template=readFileSync('src/main/resources/templates/settings.html','utf8');
 const settle=()=>new Promise(r=>setImmediate(r));
 function fixture({admin=true,post=async()=>({}),fail=false}={}){

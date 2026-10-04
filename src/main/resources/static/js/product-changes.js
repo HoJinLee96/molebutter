@@ -1,6 +1,6 @@
 /* Shared rendering of server-calculated deltas. Never derives stock or review state in the browser. */
 window.ProductChanges=(() => {
-    const {escape:e,stamp}=AttendanceUI;
+    const {escape:e,stamp}=AppUI;
     const number=n=>Number(n).toLocaleString('ko-KR');
     const unit=k=>['PRICE','DELIVERY','GROUP_PRICE'].includes(k)?'원':'개';
     const names={PRICE:'상품가',GROUP_PRICE:'매장 최저 검색가',DELIVERY:'배송비',STOCK:'재고',SOLD_OUT:'품절 전환',RESTOCK:'재입고',AVAILABILITY:'구매 상태 변경',OPTION_NEW:'신규 옵션',OPTION_MISSING:'옵션 구성 변경',NEW:'신규 판매글',MISSING:'이번 검색에서 미발견',REAPPEARED:'이번 검색에서 재발견',IDENTITY:'매장·채널 변경'};

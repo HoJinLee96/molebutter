@@ -1,7 +1,7 @@
 (() => {
     'use strict';
     const $ = id => document.getElementById(id), admin = document.body.dataset.inventoryAdmin === 'true';
-    const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const escape = AppUI.escape;
     const labels = {RECEIPT:'입고',CANCEL_PENDING:'미입고 취소',SALE_OUT:'판매 출고',SUPPLIER_RETURN:'매입 반품',CUSTOMER_RETURN:'고객 반품 입고',DISPOSE:'폐기',ADJUST_IN:'실사 정정 +',ADJUST_OUT:'실사 정정 −',REVERSE:'기록 취소',ORDER_INCREASE:'주문 수량 증가',ORDER_DECREASE:'주문 수량 감소',NONE:'기록 없음',PENDING:'환불 대기',COMPLETED:'환불 완료'};
     const money = v => v == null ? '미확인' : BigInt(v).toLocaleString('ko-KR') + '원';
     const now = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0,16);

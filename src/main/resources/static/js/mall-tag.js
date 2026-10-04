@@ -7,7 +7,7 @@ const MallTag = (() => {
         LOTTE_IMALL: '롯데홈쇼핑', HI_THEHYUNDAI: '더현대Hi', HMALL: '현대Hmall' };
     const tones = { LFMALL: 'lfmall', HAZZYS: 'hazzys', NAVER_SMART_STORE: 'naver', LOTTE_ON: 'lotte-on',
         LOTTE_IMALL: 'lotte-imall', HI_THEHYUNDAI: 'hi-thehyundai', HMALL: 'hmall' };
-    const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const escape = AppUI.escape;
     const name = code => names[code] ?? code ?? '';
     /** 모르는 코드는 회색 꼬리표. label을 주면 같은 색에 다른 문구(예: 네이버 스마트스토어)를 쓴다. */
     const html = (code, label = name(code)) => `<span class="mall-tag mall-tag--${tones[code] ?? 'unknown'}">${escape(label)}</span>`;
