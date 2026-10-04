@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.controller;
+import cc.ataglace.molebutter.exception.InputValidationFailure;
 
 import java.util.*;
 import org.springframework.http.*;
@@ -54,7 +55,7 @@ public class ProductController {
     @GetMapping("/api/product-refresh/{id}/search-attempts") public ApiResponse<PageResponse<Map<String,Object>>> searchAttempts(@AuthenticationPrincipal UserPrincipal u,@PathVariable long id,@RequestParam(defaultValue="0")int page,@RequestParam(defaultValue="")String code,@RequestParam(required=false)Long product){return ApiResponse.success(refresh.searchAttempts(u.userId(),id,page,code,product));}
     public record SearchGateResume(Long version){}
     @PostMapping("/api/product-refresh/search-gate/resume") @OperationAudit(value="PRODUCT_SEARCH_RESUME",targetType="PRODUCT_REFRESH")
-    public ApiResponse<Object> resumeSearch(@AuthenticationPrincipal UserPrincipal u,@RequestBody SearchGateResume input){if(input.version()==null)throw new IllegalArgumentException("버전이 필요합니다.");refresh.resumeSearchGate(u.userId(),input.version());return ApiResponse.success(null);}
+    public ApiResponse<Object> resumeSearch(@AuthenticationPrincipal UserPrincipal u,@RequestBody SearchGateResume input){if(input.version()==null)throw new InputValidationFailure("버전이 필요합니다.");refresh.resumeSearchGate(u.userId(),input.version());return ApiResponse.success(null);}
     @PostMapping("/api/product-refresh/{id}/{action}") @OperationAudit(value="PRODUCT_REFRESH_CONTROL",targetType="PRODUCT_REFRESH",targetIdPathVariable="id")
     public ApiResponse<Object> control(@AuthenticationPrincipal UserPrincipal u,@PathVariable long id,@PathVariable String action){if(action.equals("retry"))return ApiResponse.success(Map.of("id",refresh.retry(u.userId(),id)));refresh.control(u.userId(),id,action);return ApiResponse.success(null);}
 }

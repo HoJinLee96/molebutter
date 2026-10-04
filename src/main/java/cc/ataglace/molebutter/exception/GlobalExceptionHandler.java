@@ -129,26 +129,27 @@ public class GlobalExceptionHandler {
                         "10MB 이하 파일만 업로드할 수 있습니다."));
     }
 
-    /**
-     * 서비스 가드 예외(초과매입 후속 잔여 — "가드 예외 메시지 500 삼킴" 해소).
-     * IllegalArgumentException=잘못된 입력(400), IllegalStateException=상태 전이 충돌(409).
-     * 메시지를 그대로 내려 화면이 "실제 반품비를 입력하세요" 같은 안내를 보여줄 수 있게 한다.
-     */
+    /** Only application-owned explanations may be returned verbatim. */
+    @ExceptionHandler(InputValidationFailure.class)
+    protected ResponseEntity<ApiResponse<Void>> handleInputValidationFailure(InputValidationFailure e) {
+        return ResponseEntity.badRequest().body(ApiResponse.error(HttpStatus.BAD_REQUEST, e.getMessage()));
+    }
+
+    @ExceptionHandler(OperationFailure.class)
+    protected ResponseEntity<ApiResponse<Void>> handleOperationFailure(OperationFailure e, HttpServletRequest request) {
+        notifyFailure(request, e.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(HttpStatus.CONFLICT, e.getMessage()));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     protected ResponseEntity<ApiResponse<Void>> handleIllegalArgumentException(IllegalArgumentException e) {
         log.info("Invalid argument type={}", e.getClass().getSimpleName());
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.error(HttpStatus.BAD_REQUEST, e.getMessage()));
+        return ResponseEntity.badRequest().body(ApiResponse.error(ErrorCode.INVALID_INPUT_VALUE));
     }
 
     @ExceptionHandler(IllegalStateException.class)
     protected ResponseEntity<ApiResponse<Void>> handleIllegalStateException(IllegalStateException e, HttpServletRequest request) {
-        if(e instanceof OperationFailure)notifyFailure(request,e.getMessage());
-        log.warn("IllegalStateException type={}", e.getClass().getSimpleName());
-        return ResponseEntity
-                .status(HttpStatus.CONFLICT)
-                .body(ApiResponse.error(HttpStatus.CONFLICT, e.getMessage()));
+        return handleException(e, request);
     }
 
     @ExceptionHandler(ResponseStatusException.class)
@@ -158,7 +159,7 @@ public class GlobalExceptionHandler {
         HttpStatus responseStatus = status == null ? HttpStatus.INTERNAL_SERVER_ERROR : status;
         return ResponseEntity
                 .status(responseStatus)
-                .body(ApiResponse.error(responseStatus, e.getReason()));
+                .body(ApiResponse.error(responseStatus, responseStatus.getReasonPhrase()));
     }
 
     @ExceptionHandler(AsyncRequestNotUsableException.class)

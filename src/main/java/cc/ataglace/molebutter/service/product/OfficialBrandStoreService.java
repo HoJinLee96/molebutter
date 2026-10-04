@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.service.product;
+import cc.ataglace.molebutter.exception.InputValidationFailure;
 
 import java.net.URI;
 import java.util.Objects;
@@ -29,24 +30,24 @@ public class OfficialBrandStoreService {
                 default->throw new IllegalArgumentException();
             };
             var m=java.util.regex.Pattern.compile(pattern).matcher(path);if(!m.matches())throw new IllegalArgumentException();return m.group(1);
-        }catch(IllegalArgumentException ex){throw new IllegalArgumentException("지원하는 네이버 공식몰의 상품 페이지 링크를 입력해 주세요.");}
+        }catch(IllegalArgumentException ex){throw new InputValidationFailure("지원하는 네이버 공식몰의 상품 페이지 링크를 입력해 주세요.");}
     }
     public ChannelPreview preview(Long actor,String url){
         db.authorize(actor,true);long revision=preferences.get(actor).revision();String id=productId(url);
         var detail=gateway.inspect(ProcurementMall.NAVER_SMART_STORE,id,url.trim());
         var offer=new Offer(null,null,null,id,url,null,null,ProcurementMall.NAVER_SMART_STORE,null);
-        if(NaverChannelPolicy.inspected(offer,detail).type()!=NaverChannelType.WINDOW)throw new IllegalArgumentException("쇼핑윈도 판매채널을 확인하지 못했습니다.");
+        if(NaverChannelPolicy.inspected(offer,detail).type()!=NaverChannelType.WINDOW)throw new InputValidationFailure("쇼핑윈도 판매채널을 확인하지 못했습니다.");
         var evidence=detail.storeEvidence();
         // Gateway의 본상품 ID 검사에 통과한 판매채널 근거만 사용한다.
         if(evidence==null||!"SELLER".equals(evidence.kind())||!"NAVER_CHANNEL".equals(evidence.namespace())||evidence.externalId()==null||evidence.externalId().isBlank()||evidence.externalId().length()>200||evidence.name()==null||evidence.name().isBlank())
-            throw new IllegalArgumentException("본상품의 판매채널을 확인하지 못했습니다. 상품 링크를 확인해 주세요.");
+            throw new InputValidationFailure("본상품의 판매채널을 확인하지 못했습니다. 상품 링크를 확인해 주세요.");
         return new ChannelPreview(id,evidence.externalId(),evidence.name(),revision);
     }
     public Store register(Long actor,StoreInput input){
         db.authorize(actor,true);
-        if(input.mall()!=ProcurementMall.NAVER_SMART_STORE||!"BRAND_STORE".equals(input.kind())||input.retailer()!=null&&!input.retailer().isBlank()||input.sellerKey()!=null&&!input.sellerKey().isBlank())throw new IllegalArgumentException("네이버 쇼핑윈도 공식몰 정보를 입력해 주세요.");
+        if(input.mall()!=ProcurementMall.NAVER_SMART_STORE||!"BRAND_STORE".equals(input.kind())||input.retailer()!=null&&!input.retailer().isBlank()||input.sellerKey()!=null&&!input.sellerKey().isBlank())throw new InputValidationFailure("네이버 쇼핑윈도 공식몰 정보를 입력해 주세요.");
         var verified=preview(actor,input.productUrl());
-        if(!verified.channelUid().equals(input.expectedChannelUid()))throw new IllegalArgumentException("판매채널이 변경되었습니다. 다시 확인해 주세요.");
+        if(!verified.channelUid().equals(input.expectedChannelUid()))throw new InputValidationFailure("판매채널이 변경되었습니다. 다시 확인해 주세요.");
         return preferences.registerBrandStore(actor,input,verified);
     }
 }

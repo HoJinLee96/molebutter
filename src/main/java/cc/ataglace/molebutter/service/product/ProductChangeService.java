@@ -217,7 +217,7 @@ public class ProductChangeService {
             """,product);
     }
     @Transactional(readOnly=true) public PageResponse<HistoryItem> history(Long actor,long product,String supplier,String kind,int page){
-        db.authorize(actor,false);visible(product);if(page<0||!Set.of("ALL","PRICE","DELIVERY","STOCK","STATE","REVIEW").contains(kind))throw new IllegalArgumentException("변동 조회 조건을 확인해 주세요.");
+        db.authorize(actor,false);visible(product);if(page<0||!Set.of("ALL","PRICE","DELIVERY","STOCK","STATE","REVIEW").contains(kind))throw new InputValidationFailure("변동 조회 조건을 확인해 주세요.");
         if(supplier!=null&&!supplier.isBlank())Long.parseLong(supplier);else supplier="";
         String where=" WHERE product_id=? AND JSON_LENGTH(changes)>0 AND (?='' OR supplier_id=?) AND (?='ALL' OR JSON_CONTAINS(categories,JSON_QUOTE(?)))";
         String union="SELECT id,source_type source,CAST(supplier_id AS CHAR) supplier,CAST(origin_product_id AS CHAR) origin,observed_at at,snapshot,changes,NULL actor FROM product_value_observation"+where+

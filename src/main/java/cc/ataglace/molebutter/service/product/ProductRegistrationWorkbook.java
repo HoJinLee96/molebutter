@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.service.product;
+import cc.ataglace.molebutter.exception.InputValidationFailure;
 
 import java.io.*;
 import java.util.*;
@@ -90,5 +91,5 @@ public class ProductRegistrationWorkbook {
         f.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD,"");f.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA,"");
         return f.newDocumentBuilder().parse(new ByteArrayInputStream(data));
     }
-    private static IllegalArgumentException invalid(String message) {return new IllegalArgumentException(message);}
+    private static IllegalArgumentException invalid(String message) {return new InputValidationFailure(message);}
 }

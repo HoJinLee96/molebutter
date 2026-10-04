@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.service.product;
+import cc.ataglace.molebutter.exception.InputValidationFailure;
 import cc.ataglace.molebutter.service.common.BusinessTime;
 
 import java.nio.file.*;
@@ -10,7 +11,7 @@ import tools.jackson.databind.json.JsonMapper;
 /** Standalone JDBC maintenance: no web server, scheduler, migrations or external search requests. */
 public final class SearchStatusRepairCommand {
     public static void main(String[] args)throws Exception {
-        if(args.length<2||!Set.of("preview","apply").contains(args[0]))throw new IllegalArgumentException("Usage: preview|apply application.properties db.properties");
+        if(args.length<2||!Set.of("preview","apply").contains(args[0]))throw new InputValidationFailure("Usage: preview|apply application.properties db.properties");
         Properties p=new Properties();for(int i=1;i<args.length;i++)try(var reader=Files.newBufferedReader(Path.of(args[i]))){p.load(reader);}
         var source=new DriverManagerDataSource(p.getProperty("spring.datasource.url"),p.getProperty("spring.datasource.username"),p.getProperty("spring.datasource.password"));
         var store=new ProductStore(new JdbcTemplate(source),JsonMapper.builder().build(),new BusinessTime());
