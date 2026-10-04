@@ -1,6 +1,6 @@
 (() => {
     const $ = id => document.getElementById(id);
-    const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const escape = AppUI.escape;
     const admin = document.body.dataset.settingsAdmin === 'true';
     let brands = [], payments = [], schedule, target, saving = false, ready = false;
     function selectTab() {

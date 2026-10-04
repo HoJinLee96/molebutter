@@ -1,5 +1,6 @@
 (() => {
-    const { $, escape: e, stamp, pager } = AttendanceUI;
+    const { $, escape: e, stamp, pager } = AppUI;
+    document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => $(button.dataset.close).close()));
     if (document.body.dataset.productView !== 'lookup-v11') { setError('page-error','서버를 다시 실행한 뒤 새로고침해 주세요.'); return; }
     const page = document.body.dataset.page, catalog = page === 'products';
     const money = v => v == null ? '미확인' : Number(v).toLocaleString('ko-KR')+'원';

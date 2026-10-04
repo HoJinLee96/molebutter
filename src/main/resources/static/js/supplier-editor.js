@@ -1,6 +1,6 @@
 /* 설정과 상품 상세에서 사용하는 공통 매장 선택창. 매장 등록과 선호 선택은 별도 동작이다. */
 (() => {
-    const e=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const e = AppUI.escape;
     const name=s=>[s?.retailer,s?.name].filter(Boolean).join(' · ');
     const groups=data=>data.groups||[...new Set(data.rules.map(r=>r.mall))].map(mall=>{const rules=data.rules.filter(r=>r.mall===mall),all=rules.some(r=>!r.storeId);return {mall,scope:all?'ALL':'STORES',storeIds:all?[]:rules.map(r=>r.storeId)};});
     const request=(method,url,body)=>apiRequest(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});

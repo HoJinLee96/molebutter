@@ -1,5 +1,5 @@
 (() => {
-    const $=id=>document.getElementById(id),e=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const { $, escape: e } = AppUI;
     const admin=document.body.dataset.settingsAdmin==='true';let data,malls=[],candidates=[],busy=false;
     async function load(){[data,malls,candidates]=await Promise.all([apiGet('/api/settings/preferred-suppliers'),apiGet('/api/settings/suppliers'),admin?apiGet('/api/settings/supplier-store-identities'):Promise.resolve([])]);
         const groups=SupplierEditor.groups(data),pending=[...new Set(candidates.map(c=>c.mall))].filter(mall=>!groups.some(g=>g.mall===mall));

@@ -15,7 +15,7 @@ function fixture({load=async()=>pageOf(),post=async()=>null,brandFailure=false,l
  $('product-q').value='복원 검색어';$('product-status').value='SOLD_OUT';
  const ctx=vm.createContext({URL,URLSearchParams,console,FormData,location:{search:''},history:{replaceState(){}},window:{addEventListener(n,fn){events[n]=fn;}},setInterval(){},setTimeout(fn){timers.set(++timerId,fn);return timerId;},clearTimeout(id){timers.delete(id);},
  document:{hidden:false,body:{dataset:{page,productView:legacy?'old':'lookup-v11'}},addEventListener(){},querySelectorAll(q){return q==='[data-mode]'?tabs:[];}},
- AttendanceUI:{$,escape:v=>String(v??''),stamp:v=>v,pager(id,data,change,options){pagers[id]={data,change,options};}},ProductSourceSearch:{webUrl:()=>''},
+ AppUI:{$,escape:v=>String(v??''),stamp:v=>v,pager(id,data,change,options){pagers[id]={data,change,options};}},ProductSourceSearch:{webUrl:()=>''},
  setError(id,message){if($(id)){$(id).textContent=message||'';$(id).hidden=!message;}},
  apiGet:async url=>{calls.push(url);if(url.startsWith('/api/products/change-counts'))return {selected:0,all:0};if(url==='/api/settings/brands'){if(brandFailure)throw Error('설정 조회 실패');return [{id:'1',name:'헤지스'}];}return load(url);},
  apiPost:async(url,body)=>{posts.push({url,body});return post(url,body);}});vm.runInContext(readFileSync('src/main/resources/static/js/product-refresh-watch.js','utf8'),ctx);vm.runInContext(readFileSync('src/main/resources/static/js/mall-tag.js','utf8'),ctx);vm.runInContext(source,ctx);
