@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.service.product;
+import cc.ataglace.molebutter.service.common.BusinessTime;
 
 import java.sql.*;
 import java.time.LocalDateTime;
@@ -14,16 +15,19 @@ import lombok.RequiredArgsConstructor;
 public class ProductStore {
     final JdbcTemplate jdbc;
     final ObjectMapper json;
-    final ProductTime time;
+    final BusinessTime time;
+    private final cc.ataglace.molebutter.service.common.BusinessAccess access;
     private final cc.ataglace.molebutter.service.common.CatalogConsistencyGuard guard;
     @org.springframework.beans.factory.annotation.Autowired
-    public ProductStore(JdbcTemplate jdbc,ObjectMapper json,ProductTime time,
+    public ProductStore(JdbcTemplate jdbc,ObjectMapper json,BusinessTime time,
+            cc.ataglace.molebutter.service.common.BusinessAccess access,
             cc.ataglace.molebutter.service.common.CatalogConsistencyGuard guard) {
-        this.jdbc=jdbc;this.json=json;this.time=time;this.guard=guard;
+        this.jdbc=jdbc;this.json=json;this.time=time;this.access=access;this.guard=guard;
     }
-    /** Offline repair entrypoints keep their transaction and existing constructor. */
-    public ProductStore(JdbcTemplate jdbc,ObjectMapper json,ProductTime time) {
-        this(jdbc,json,time,new cc.ataglace.molebutter.service.common.CatalogConsistencyGuard(jdbc));
+    /** Offline repair entrypoints supply their own transaction and use the same policies. */
+    public ProductStore(JdbcTemplate jdbc,ObjectMapper json,BusinessTime time) {
+        this(jdbc,json,time,new cc.ataglace.molebutter.service.common.BusinessAccess(jdbc),
+                new cc.ataglace.molebutter.service.common.CatalogConsistencyGuard(jdbc));
     }
     public static long id(){return cc.ataglace.molebutter.service.common.BusinessIds.next();}
     String encode(Object value){return json.writeValueAsString(value);}
@@ -32,7 +36,7 @@ public class ProductStore {
     // 상품 변경과 실행 결과 확정은 같은 잠금 순서를 사용한다.
     public void lock(){guard.exclusive();}
     public void authorize(Long actor,boolean adminOnly) {
-        new cc.ataglace.molebutter.service.common.BusinessAccess(jdbc).productActor(actor,adminOnly);
+        access.productActor(actor,adminOnly);
     }
     static LocalDateTime date(ResultSet r,String name)throws SQLException{var t=r.getTimestamp(name);return t==null?null:t.toLocalDateTime();}
     public static void revision(long current,Long requested){cc.ataglace.molebutter.service.common.BusinessRevision.check(current,requested);}

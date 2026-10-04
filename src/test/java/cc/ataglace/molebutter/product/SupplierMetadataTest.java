@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.product;
+import cc.ataglace.molebutter.service.common.BusinessTime;
 
 import static org.assertj.core.api.Assertions.*;
 import java.util.*;
@@ -50,7 +51,7 @@ class SupplierMetadataTest {
     }
     @Test void lookupCachesMetadataPerRunAndKeepsMissingStockUnknown(){
         var calls=new ArrayList<String>();ProductSourceGateway gateway=new ProductSourceGateway(){public String validateUrl(Mall m,String u){return u;}public List<SourceOption> options(Mall m,String id,String u){throw new AssertionError();}public SourceDetails inspect(Mall m,String id,String u){calls.add(id);return new SourceDetails("ABCD123","","",List.of(),"천호점",new StoreEvidence("BRANCH","현대백화점","천호점","NAVER_DEPARTMENT","1/2"),true,new NaverChannel(NaverChannelType.WINDOW,"DEPARTMENT"));}};
-        var service=new ProductLookupService(gateway,new ProductTime());var preferences=new Preferences(1,List.of(),List.of(new Rule("1",Mall.NAVER_SMART_STORE,null,0)));var work=new ProductRefreshService.Work(42,2,0,"ABCD123","ABCD6F123BK","LF_ACCESSORY","HAZZYS",preferences,Map.of());var search=new SearchResult(List.of(offer(Mall.NAVER_SMART_STORE,"1","ABCD123")),true,null);
+        var service=new ProductLookupService(gateway,new BusinessTime());var preferences=new Preferences(1,List.of(),List.of(new Rule("1",Mall.NAVER_SMART_STORE,null,0)));var work=new ProductRefreshService.Work(42,2,0,"ABCD123","ABCD6F123BK","LF_ACCESSORY","HAZZYS",preferences,Map.of());var search=new SearchResult(List.of(offer(Mall.NAVER_SMART_STORE,"1","ABCD123")),true,null);
         var result=service.lookup(work,search,()->true);service.lookup(work,search,()->true);
         assertThat(calls).containsExactly("1");assertThat(result.suppliers().getFirst().state()).isEqualTo("OPTIONS_UNKNOWN");assertThat(result.suppliers().getFirst().options()).isEmpty();assertThat(result.suppliers().getFirst().branch().name()).isEqualTo("천호점");
     }

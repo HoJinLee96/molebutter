@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.product;
+import cc.ataglace.molebutter.service.common.BusinessTime;
 
 import static org.assertj.core.api.Assertions.*;
 import java.util.*;
@@ -18,13 +19,13 @@ class SupplierRecommendationTest {
         public List<SourceOption> options(Mall m,String id,String url){calls.add(id);return List.of(new SourceOption("FREE","FREE",3L,"AVAILABLE"));}
     };}
     @Test void noSelectionSkipsNonPreferredAndMissingBaselineDefersDiscovery(){
-        var calls=new ArrayList<String>();var lookup=new ProductLookupService(gateway(calls),new ProductTime());
+        var calls=new ArrayList<String>();var lookup=new ProductLookupService(gateway(calls),new BusinessTime());
         var selected=lf("s",94000);var search=new SearchResult(List.of(hi("r",90000),lf("p",100000)),true,null);
         assertThat(lookup.lookup(work(null),search,()->true).suppliers()).extracting(s->s.offer().mallProductId()).containsExactly("p");
         assertThat(lookup.lookup(work(selected),search,()->true).suppliers()).extracting(s->s.offer().mallProductId()).containsExactly("p");assertThat(calls).containsExactly("p");
     }
     @Test void selectedThenPreferredThenFortyCheapestAdditionalRequestsAndRunCache(){
-        var calls=new ArrayList<String>();var lookup=new ProductLookupService(gateway(calls),new ProductTime());var selected=lf("s",94000);
+        var calls=new ArrayList<String>();var lookup=new ProductLookupService(gateway(calls),new BusinessTime());var selected=lf("s",94000);
         var offers=new ArrayList<Offer>();for(int i=44;i>=0;i--)offers.add(hi("r"+i,80000+i));offers.add(lf("p",100000));offers.add(selected);offers.add(hi("tooClose",93001));offers.add(hi("threshold",93000));
         var result=lookup.lookup(work(selected),new SearchResult(offers,true,null),()->true);
         assertThat(calls.subList(0,2)).containsExactly("s","p");assertThat(calls).hasSize(42);assertThat(calls.get(2)).isEqualTo("r0");assertThat(calls.getLast()).isEqualTo("r39");assertThat(result.recommendationLimited()).isTrue();
@@ -32,7 +33,7 @@ class SupplierRecommendationTest {
     }
     @Test void selectedNonPreferredStillCheckedFirstAndShippingNotUsed(){
         var calls=new ArrayList<String>();var selected=hi("s",94000);
-        var result=new ProductLookupService(gateway(calls),new ProductTime()).lookup(work(selected),new SearchResult(List.of(hi("r",93000),lf("p",100000),selected,hi("tooClose",93001)),true,null),()->true);
+        var result=new ProductLookupService(gateway(calls),new BusinessTime()).lookup(work(selected),new SearchResult(List.of(hi("r",93000),lf("p",100000),selected,hi("tooClose",93001)),true,null),()->true);
         assertThat(calls).containsExactly("s","p","r");assertThat(result.suppliers()).extracting(s->s.offer().mallProductId()).containsExactly("s","p","r");
     }
     @Test void exactThresholdAndPartialStockDoNotImplySoldOut(){

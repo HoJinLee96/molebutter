@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.product;
+import cc.ataglace.molebutter.service.common.BusinessTime;
 
 import org.junit.jupiter.api.Test;
 import java.util.*;
@@ -37,7 +38,7 @@ class NaverChannelPolicyTest {
     @Test void ordinarySelectedListingNeverTriggersDetailsOrRecommendations(){
         var calls=new ArrayList<String>();var selected=offer("https://smartstore.naver.com/lotte/products/42",10000);
         var gateway=new ProductSourceGateway(){public String validateUrl(Mall m,String url){return url;}public List<SourceOption> options(Mall m,String id,String url){calls.add(url);throw new AssertionError("Ordinary store must not be requested");}};
-        var result=new ProductLookupService(gateway,new ProductTime()).lookup(work(selected),new SearchResult(List.of(selected),true,null),()->true);
+        var result=new ProductLookupService(gateway,new BusinessTime()).lookup(work(selected),new SearchResult(List.of(selected),true,null),()->true);
         assertThat(calls).isEmpty();assertThat(result.suppliers()).isEmpty();assertThat(result.message()).isEqualTo("대상 판매글 없음");assertThat(result.searchPrice()).isNull();
     }
     @Test void ambiguousUrlNeedsPositiveApiEvidenceAndCannotUseManualBranchBypass(){
@@ -45,7 +46,7 @@ class NaverChannelPolicyTest {
         for(var type:List.of(NaverChannelType.UNKNOWN,NaverChannelType.SMARTSTORE,NaverChannelType.WINDOW)){
             var gateway=new ProductSourceGateway(){public String validateUrl(Mall m,String url){return url;}public List<SourceOption> options(Mall m,String id,String url){return List.of();}
                 public SourceDetails inspect(Mall m,String id,String url){calls.add(url);return new SourceDetails("","","",List.of(new SourceOption("42","상품 전체",50L,"AVAILABLE","PRODUCT")),"",null,true,new NaverChannel(type,"BRAND_FASHION"));}};
-            var result=new ProductLookupService(gateway,new ProductTime()).lookup(work(null),new SearchResult(List.of(ambiguous),true,null),()->true);
+            var result=new ProductLookupService(gateway,new BusinessTime()).lookup(work(null),new SearchResult(List.of(ambiguous),true,null),()->true);
             assertThat(result.suppliers()).hasSize(type==NaverChannelType.WINDOW?1:0);
             assertThat(result.message()).isEqualTo(type==NaverChannelType.WINDOW?null:"대상 판매글 없음");
         }
