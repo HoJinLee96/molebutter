@@ -1,6 +1,6 @@
 package cc.ataglace.molebutter.infra.product;
-import cc.ataglace.molebutter.exception.InputValidationFailure;
 
+import cc.ataglace.molebutter.exception.InputValidationFailure;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;

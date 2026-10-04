@@ -1,5 +1,4 @@
 package cc.ataglace.molebutter.product;
-import cc.ataglace.molebutter.service.common.BusinessTime;
 import static org.assertj.core.api.Assertions.*;
 import java.util.*;
 import org.junit.jupiter.api.Test;
@@ -7,6 +6,7 @@ import cc.ataglace.molebutter.dto.product.ProductDtos.*;
 import cc.ataglace.molebutter.infra.product.*;
 import cc.ataglace.molebutter.service.product.*;
 
+import cc.ataglace.molebutter.service.common.BusinessTime;
 class ProductLookupTest {
     @Test void failuresRecordContextAndSafeReasonWithoutRawResponse(){
         var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(SupplierLookupService.class);

@@ -1,6 +1,6 @@
 package cc.ataglace.molebutter.product;
-import cc.ataglace.molebutter.service.common.BusinessTime;
 
+import cc.ataglace.molebutter.service.common.BusinessTime;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -13,6 +13,29 @@ import cc.ataglace.molebutter.infra.product.*;
 import cc.ataglace.molebutter.service.product.*;
 
 class ProductRefreshWorkerTest {
+    @Test void scheduledFailureHidesExceptionDetailsAndAllowsTheNextPoll() {
+        String secret="SYNTHETIC_SECRET_NOT_FOR_LOGS";
+        var runs=mock(SupplierRefreshService.class);var lookup=mock(SupplierLookupService.class);
+        var search=mock(NaverPriceSearch.class);var queue=mock(SupplierStockLookupService.class);
+        when(queue.claim(anyString())).thenThrow(new RuntimeException(secret,new RuntimeException(secret))).thenReturn(null);
+        var worker=new SupplierRefreshWorker(runs,lookup,search,new BusinessTime(),queue);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"enabled",true);
+        var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(SupplierRefreshWorker.class);
+        var originalLevel=logger.getLevel();
+        var output=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        output.start();logger.addAppender(output);
+        try {
+            logger.setLevel(ch.qos.logback.classic.Level.WARN);
+            worker.tick();
+            verifyNoInteractions(runs,lookup,search);
+            assertThat(output.list).isNotEmpty().allSatisfy(event->{
+                assertThat(event.getFormattedMessage()).contains("RuntimeException").doesNotContain(secret);
+                assertThat(event.getThrowableProxy()).isNull();
+            });
+            worker.tick();
+            verify(runs).schedule();verify(runs).claim(anyString());
+        } finally {logger.detachAppender(output);output.stop();logger.setLevel(originalLevel);}
+    }
     @Test void searchesSavedQueryAndCachesNonPreferredCandidatesForOtherProductsInSameRun(){
         var runs=mock(SupplierRefreshService.class);var lookup=mock(SupplierLookupService.class);var search=mock(NaverPriceSearch.class);
         var prefs=new Preferences(1,List.of(),List.of(new Rule("1",ProcurementMall.LFMALL,null,0)),Map.of(ProcurementMall.LFMALL,false));
