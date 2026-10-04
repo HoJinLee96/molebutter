@@ -19,7 +19,7 @@ public class RecommendationLookupService {
     public boolean restricted(long run,Mall mall){return db.jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_lookup_diagnostic WHERE run_id=? AND mall=? AND restricted=TRUE",Long.class,run,mall.name())>0;}
     public List<RecommendationDiagnostic> list(long run,long product){return db.jdbc.queryForList("SELECT payload FROM recommendation_lookup_diagnostic WHERE run_id=? AND product_id=? ORDER BY id",String.class,run,product).stream().map(v->db.decode(v,RecommendationDiagnostic.class)).toList();}
     @Transactional(isolation=Isolation.READ_COMMITTED)
-    public void record(String owner,ProductRefreshService.Work work,RecommendationDiagnostic diagnostic,boolean restricted){
+    public void record(String owner,SupplierRefreshService.Work work,RecommendationDiagnostic diagnostic,boolean restricted){
         db.lock();
         if(owner==null||db.jdbc.queryForObject("SELECT COUNT(*) FROM product_settings WHERE id=1 AND worker_owner=? AND worker_until>?",Long.class,owner,db.time.now())!=1
             ||db.jdbc.queryForObject("SELECT COUNT(*) FROM product_refresh_run r JOIN product_refresh_entry e ON e.run_id=r.id JOIN catalog_product p ON p.id=e.product_id WHERE r.id=? AND r.status IN ('RUNNING','PAUSED') AND e.product_id=? AND e.status='CHECKING' AND e.lookup_revision=? AND p.lookup_revision=e.lookup_revision AND p.deleted_at IS NULL AND p.merged_into IS NULL",Long.class,work.runId(),work.productId(),work.revision())!=1)

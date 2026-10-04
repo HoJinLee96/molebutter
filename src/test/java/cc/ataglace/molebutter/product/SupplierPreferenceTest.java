@@ -21,18 +21,18 @@ class SupplierPreferenceTest {
         assertThat(SupplierStorePolicy.identity(two,branch("목동점"))).isNull();
         assertThat(SupplierStorePolicy.listingKey(one)).isNotEqualTo(SupplierStorePolicy.listingKey(two));
     }
-    @Test void filtersBeforeSupplierCallsAndKeepsUnknownForReview(){List<String> calls=new ArrayList<>();ProductSourceGateway gateway=new ProductSourceGateway(){public String validateUrl(Mall mall,String url){return url;} public List<SourceOption> options(Mall mall,String id,String url){calls.add(id);return List.of(new SourceOption("FREE","FREE",1L,"AVAILABLE"));}};var work=new ProductRefreshService.Work(1,2,0,"ABCD123","ABCD6F123BK","LF_ACCESSORY","HAZZYS",specific,Map.of());var result=new ProductLookupService(gateway,new BusinessTime()).lookup(work,new SearchResult(List.of(offer(Mall.LFMALL,"skipMall","ABCD123"),offer(Mall.HI_THEHYUNDAI,"skipBranch","천호점 ABCD123"),offer(Mall.HI_THEHYUNDAI,"keep","목동점 ABCD123"),offer(Mall.HI_THEHYUNDAI,"unknown","ABCD123")),true,null),()->true);assertThat(calls).containsExactly("keep","unknown");assertThat(result.suppliers()).hasSize(2);}
+    @Test void filtersBeforeSupplierCallsAndKeepsUnknownForReview(){List<String> calls=new ArrayList<>();SupplierProductGateway gateway=new SupplierProductGateway(){public String validateUrl(Mall mall,String url){return url;} public List<SourceOption> options(Mall mall,String id,String url){calls.add(id);return List.of(new SourceOption("FREE","FREE",1L,"AVAILABLE"));}};var work=new SupplierRefreshService.Work(1,2,0,"ABCD123","ABCD6F123BK","LF_ACCESSORY","HAZZYS",specific,Map.of());var result=new SupplierLookupService(gateway,new BusinessTime()).lookup(work,new SearchResult(List.of(offer(Mall.LFMALL,"skipMall","ABCD123"),offer(Mall.HI_THEHYUNDAI,"skipBranch","천호점 ABCD123"),offer(Mall.HI_THEHYUNDAI,"keep","목동점 ABCD123"),offer(Mall.HI_THEHYUNDAI,"unknown","ABCD123")),true,null),()->true);assertThat(calls).containsExactly("keep","unknown");assertThat(result.suppliers()).hasSize(2);}
     Offer smart(String id){return new Offer("NV"+id,"ABCD123","스마트스토어",id,"https://smartstore.naver.com/seller/products/"+id,94000L,0L,Mall.NAVER_SMART_STORE,null);}
     Store store(String id,Mall mall,String retailer,String name){return new Store(id,mall,"BRANCH",name,"branch:"+retailer+":"+name,List.of(name),0,retailer,List.of());}
-    ProductRefreshService.Work work(long run,Preferences prefs,Map<String,String> manual){return new ProductRefreshService.Work(run,2,0,"ABCD123","ABCD6F123BK","LF_ACCESSORY","HAZZYS",prefs,manual);}
+    SupplierRefreshService.Work work(long run,Preferences prefs,Map<String,String> manual){return new SupplierRefreshService.Work(run,2,0,"ABCD123","ABCD6F123BK","LF_ACCESSORY","HAZZYS",prefs,manual);}
     @Test void failedInspectionStillFiltersBranchesAndSkipsManualNonPreferredBeforeNetwork(){
         var calls=new ArrayList<String>();
-        ProductSourceGateway gateway=new ProductSourceGateway(){
+        SupplierProductGateway gateway=new SupplierProductGateway(){
             public String validateUrl(Mall m,String u){return u;}
             public List<SourceOption> options(Mall m,String id,String u){calls.add(id);throw new IllegalStateException("timeout");}
         };
         var manual=offer(Mall.HI_THEHYUNDAI,"manual","ABCD123");
-        var result=new ProductLookupService(gateway,new BusinessTime()).lookup(work(1,specific,Map.of(SupplierStorePolicy.listingKey(manual),"other")),
+        var result=new SupplierLookupService(gateway,new BusinessTime()).lookup(work(1,specific,Map.of(SupplierStorePolicy.listingKey(manual),"other")),
             new SearchResult(List.of(offer(Mall.HI_THEHYUNDAI,"wrong","천호점 ABCD123"),offer(Mall.HI_THEHYUNDAI,"right","목동점 ABCD123"),offer(Mall.HI_THEHYUNDAI,"unknown","ABCD123"),manual),true,null),()->true);
         assertThat(calls).containsExactly("right","unknown");
         assertThat(result.suppliers()).extracting(r->r.offer().mallProductId()).containsExactly("right","unknown");
@@ -41,7 +41,7 @@ class SupplierPreferenceTest {
     @Test void departmentPreferencesKeepUnknownWindowStoreForReviewButExcludeVerifiedGeneralSeller(){
         var st=store("1",Mall.NAVER_SMART_STORE,"현대백화점","천호점");
         var prefs=new Preferences(1,List.of(st),List.of(new Rule("2",st.mall(),st.id(),0)));
-        ProductSourceGateway gateway=new ProductSourceGateway(){
+        SupplierProductGateway gateway=new SupplierProductGateway(){
             public String validateUrl(Mall m,String u){return u;}
             public List<SourceOption> options(Mall m,String id,String u){throw new AssertionError("스마트스토어 재고를 조회하면 안 됩니다.");}
             public SourceDetails inspect(Mall m,String id,String u){
@@ -55,7 +55,7 @@ class SupplierPreferenceTest {
                 return new SourceDetails("ABCD123","","",List.of(),null,evidence,true,new NaverChannel(NaverChannelType.WINDOW,"DEPARTMENT"));
             }
         };
-        var result=new ProductLookupService(gateway,new BusinessTime()).lookup(work(1,prefs,Map.of()),new SearchResult(java.util.stream.IntStream.rangeClosed(10,14).mapToObj(n->new Offer("NV"+n,"ABCD123","백화점",Integer.toString(n),"https://shopping.naver.com/window-products/department/"+n,94000L,0L,Mall.NAVER_SMART_STORE,null)).toList(),true,null),()->true);
+        var result=new SupplierLookupService(gateway,new BusinessTime()).lookup(work(1,prefs,Map.of()),new SearchResult(java.util.stream.IntStream.rangeClosed(10,14).mapToObj(n->new Offer("NV"+n,"ABCD123","백화점",Integer.toString(n),"https://shopping.naver.com/window-products/department/"+n,94000L,0L,Mall.NAVER_SMART_STORE,null)).toList(),true,null),()->true);
         assertThat(result.suppliers()).extracting(r->r.offer().mallProductId()).containsExactly("10","12","13");
         assertThat(result.suppliers()).extracting(SupplierResult::state).containsExactly("OPTIONS_UNKNOWN","OPTIONS_UNKNOWN","FAILED");
         assertThat(result.suppliers()).allMatch(r->r.options().isEmpty());
@@ -63,7 +63,7 @@ class SupplierPreferenceTest {
     }
     @Test void excludedMallsAndRepeatedOffersDoNotInspectOrHeartbeatAndCacheIsLimitedToRun(){
         var calls=new ArrayList<String>();var beats=new java.util.concurrent.atomic.AtomicInteger();
-        ProductSourceGateway gateway=new ProductSourceGateway(){
+        SupplierProductGateway gateway=new SupplierProductGateway(){
             public String validateUrl(Mall m,String u){return u;}
             public List<SourceOption> options(Mall m,String id,String u){calls.add(id);return List.of(new SourceOption("FREE","FREE",2L,"AVAILABLE"));}
         };
@@ -71,30 +71,30 @@ class SupplierPreferenceTest {
         var lf=offer(Mall.LFMALL,"lf","ABCD123");
         var hmall=new Offer("hm","ABCD123","현대Hmall","1","https://www.hmall.com/p/pda/itemPtc.do?slitmCd=1",1L,0L,Mall.HMALL,null);
         var search=new SearchResult(List.of(hmall,lf,lf),true,null);
-        var lookup=new ProductLookupService(gateway,new BusinessTime());
+        var lookup=new SupplierLookupService(gateway,new BusinessTime());
         for(long run:List.of(1L,1L,2L))assertThat(lookup.lookup(work(run,prefs,Map.of()),search,()->{beats.incrementAndGet();return true;}).suppliers()).hasSize(1);
         assertThat(calls).containsExactly("lf","lf");assertThat(beats.get()).isEqualTo(3);
     }
 
     @Test void unresolvedProductAddressesUseBranchFilterWithoutSupplierRequests(){
-        ProductSourceGateway gateway=new ProductSourceGateway(){
+        SupplierProductGateway gateway=new SupplierProductGateway(){
             public String validateUrl(Mall m,String u){throw new AssertionError();}
             public List<SourceOption> options(Mall m,String id,String u){throw new AssertionError();}
         };
         var offers=List.of("목동점","천호점","").stream().map(name->new Offer("NV"+name,"ABCD123 "+name,"더현대Hi","","https://hi.thehyundai.com/",100L,0L,Mall.HI_THEHYUNDAI,null)).toList();
-        var result=new ProductLookupService(gateway,new BusinessTime()).lookup(work(1,specific,Map.of()),new SearchResult(offers,true,null),()->true);
+        var result=new SupplierLookupService(gateway,new BusinessTime()).lookup(work(1,specific,Map.of()),new SearchResult(offers,true,null),()->true);
         assertThat(result.suppliers()).hasSize(2).allMatch(r->r.state().equals("REVIEW"));
         assertThat(result.suppliers()).noneMatch(r->"천호점".equals(r.branch().name()));
     }
     @Test void largeRunEvictsOldDetailsButKeepsRecentResponsesReusable(){
         var calls=new ArrayList<String>();
-        ProductSourceGateway gateway=new ProductSourceGateway(){
+        SupplierProductGateway gateway=new SupplierProductGateway(){
             public String validateUrl(Mall m,String u){return u;}
             public List<SourceOption> options(Mall m,String id,String u){calls.add(id);return List.of();}
         };
         var prefs=new Preferences(1,List.of(),List.of(new Rule("1",Mall.LFMALL,null,0)));
         var offers=java.util.stream.IntStream.range(0,401).mapToObj(i->offer(Mall.LFMALL,"item"+i,"ABCD123")).toList();
-        var lookup=new ProductLookupService(gateway,new BusinessTime());
+        var lookup=new SupplierLookupService(gateway,new BusinessTime());
         lookup.lookup(work(1,prefs,Map.of()),new SearchResult(offers,true,null),()->true);
         lookup.lookup(work(1,prefs,Map.of()),new SearchResult(List.of(offers.getLast(),offers.getFirst()),true,null),()->true);
         assertThat(calls).hasSize(402);assertThat(calls.getLast()).isEqualTo("item0");

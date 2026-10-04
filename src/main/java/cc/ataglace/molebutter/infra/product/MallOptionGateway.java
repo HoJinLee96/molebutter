@@ -19,7 +19,7 @@ import cc.ataglace.molebutter.infra.product.NaverPriceSearch.SearchBlocked;
 /** 매입처별 응답에서 명시적인 옵션 ID/수량/구매 가능 여부만 추출한다. 합계·첫 옵션·누락값 0 대체는 금지한다. */
 @Component
 @lombok.extern.slf4j.Slf4j
-public class MallOptionGateway implements ProductSourceGateway {
+public class MallOptionGateway implements SupplierProductGateway {
     private final ObjectMapper json;
     private final HttpClient http;
     private final Duration requestTimeout;

@@ -17,16 +17,16 @@ public final class SearchCompletion {
     public static RefreshResult summarize(List<SupplierResult> observations,String reason,LocalDateTime at,
             Preferences preferences,Map<String,String> manual,boolean limited,List<RecommendationDiagnostic> diagnostics,
             cc.ataglace.molebutter.dto.product.SupplierDtos.SelectionBasis selection){
-        var targets=observations.stream().filter(r->ProductStatusPolicy.target(r,preferences,manual,selection)).toList();
-        var summary=ProductLookupService.summarize(targets,normal(reason),at);
-        var assessment=ProductStatusPolicy.assess(targets,normal(reason));
+        var targets=observations.stream().filter(r->SupplierLookupStatusPolicy.target(r,preferences,manual,selection)).toList();
+        var summary=SupplierLookupService.summarize(targets,normal(reason),at);
+        var assessment=SupplierLookupStatusPolicy.assess(targets,normal(reason));
         if(targets.stream().anyMatch(r->!"FAILED".equals(r.state())&&!SupplierRecommendationPolicy.verified(preferences,manual,r))){
-            var issues=new ArrayList<>(assessment.reasons());issues.remove("ALL_UNAVAILABLE");issues.add("STORE_UNCONFIRMED");assessment=new ProductStatusPolicy.Assessment("PARTIAL",List.copyOf(issues));
+            var issues=new ArrayList<>(assessment.reasons());issues.remove("ALL_UNAVAILABLE");issues.add("STORE_UNCONFIRMED");assessment=new SupplierLookupStatusPolicy.Assessment("PARTIAL",List.copyOf(issues));
         }
         long failures=targets.stream().filter(r->"FAILED".equals(r.state())).count();
         long unknown=targets.stream().filter(r->!r.skipped()&&!"FAILED".equals(r.state())
             &&SupplierRecommendationPolicy.verified(preferences,manual,r)
-            &&(r.options().isEmpty()||"OPTIONS_PARTIAL".equals(r.state())||r.options().stream().anyMatch(o->!ProductStatusPolicy.closed(o)&&(o.stock()==null||"STOCK_UNKNOWN".equals(o.state()))))).count();
+            &&(r.options().isEmpty()||"OPTIONS_PARTIAL".equals(r.state())||r.options().stream().anyMatch(o->!SupplierLookupStatusPolicy.closed(o)&&(o.stock()==null||"STOCK_UNKNOWN".equals(o.state()))))).count();
         var notices=new ArrayList<String>();
         if(unknown>0)notices.add("재고 미확인 "+unknown+"건");
         if(failures>0)notices.add("조회 실패 "+failures+"건");
@@ -38,6 +38,6 @@ public final class SearchCompletion {
         if(assessment.reasons().contains("PRICE_UNCONFIRMED"))notices.add("가격 미확인");
         if(assessment.reasons().contains("DELIVERY_UNCONFIRMED"))notices.add("배송비 미확인");
         return new RefreshResult(assessment.status(),summary.searchPrice(),summary.searchMall(),summary.searchDeliveryFee(),observations,at,
-            notices.isEmpty()?null:String.join(" · ",notices),limited,diagnostics,reason,ProductStatusPolicy.VERSION,assessment.reasons());
+            notices.isEmpty()?null:String.join(" · ",notices),limited,diagnostics,reason,SupplierLookupStatusPolicy.VERSION,assessment.reasons());
     }
 }

@@ -86,9 +86,9 @@ class LotteSupplierTest {
     }
     @Test void duplicateNaverExposuresShareDetailsButRetainSeparatePricesAndIds()throws Exception {
         var d=details(fixture());var calls=new ArrayList<String>();
-        ProductSourceGateway gateway=new ProductSourceGateway(){public String validateUrl(Mall m,String u){return u;}public List<SourceOption> options(Mall m,String id,String u){return List.of();}public SourceDetails inspect(Mall m,String id,String u){calls.add(id);return d;}};
-        var service=new ProductLookupService(gateway,new BusinessTime());var p=new Preferences(1,List.of(lf(List.of())),List.of(new Rule("R",Mall.LOTTE_ON,"LF",0)));
-        var w=new ProductRefreshService.Work(1,2,0,"WCBA052","WCBA5F052BK","LF_ACCESSORY","DAKS",p,Map.of());
+        SupplierProductGateway gateway=new SupplierProductGateway(){public String validateUrl(Mall m,String u){return u;}public List<SourceOption> options(Mall m,String id,String u){return List.of();}public SourceDetails inspect(Mall m,String id,String u){calls.add(id);return d;}};
+        var service=new SupplierLookupService(gateway,new BusinessTime());var p=new Preferences(1,List.of(lf(List.of())),List.of(new Rule("R",Mall.LOTTE_ON,"LF",0)));
+        var w=new SupplierRefreshService.Work(1,2,0,"WCBA052","WCBA5F052BK","LF_ACCESSORY","DAKS",p,Map.of());
         var result=service.lookup(w,new SearchResult(List.of(offer("NV1","롯데ON",134000),offer("NV2","롯데백화점",140000)),true,null),()->true);
         assertThat(calls).containsExactly(sku);assertThat(result.suppliers()).hasSize(2);assertThat(result.suppliers()).extracting(s->s.offer().price()).containsExactly(134000L,140000L);
         assertThat(result.suppliers()).extracting(s->s.offer().naverProductId()).containsExactly("NV1","NV2");

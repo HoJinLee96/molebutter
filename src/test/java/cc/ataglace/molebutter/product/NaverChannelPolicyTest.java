@@ -14,7 +14,7 @@ class NaverChannelPolicyTest {
     final String window="https://shopping.naver.com/window-products/department/42";
     Offer offer(String url,long price){return new Offer("NV", "가방", "롯데백화점", "42",url,price,0L,Mall.NAVER_SMART_STORE,null);}
     final Preferences prefs=new Preferences(1,List.of(),List.of(new Rule("1",Mall.NAVER_SMART_STORE,null,0)),Map.of(Mall.NAVER_SMART_STORE,false));
-    ProductRefreshService.Work work(Offer selected){return new ProductRefreshService.Work(1,2,0,"가방","CODE","GENERAL",null,prefs,Map.of(),new SelectionBasis(selected==null?null:"selected",selected==null?null:SupplierStorePolicy.listingKey(selected),null,"change"));}
+    SupplierRefreshService.Work work(Offer selected){return new SupplierRefreshService.Work(1,2,0,"가방","CODE","GENERAL",null,prefs,Map.of(),new SelectionBasis(selected==null?null:"selected",selected==null?null:SupplierStorePolicy.listingKey(selected),null,"change"));}
     @Test void legacyUrlsAndExplicitUnknownAreDifferent(){
         var json=new ObjectMapper();var old=offer(window,10000);
         assertThat(NaverChannelPolicy.comparable(old)).isTrue();
@@ -37,16 +37,16 @@ class NaverChannelPolicyTest {
     }
     @Test void ordinarySelectedListingNeverTriggersDetailsOrRecommendations(){
         var calls=new ArrayList<String>();var selected=offer("https://smartstore.naver.com/lotte/products/42",10000);
-        var gateway=new ProductSourceGateway(){public String validateUrl(Mall m,String url){return url;}public List<SourceOption> options(Mall m,String id,String url){calls.add(url);throw new AssertionError("Ordinary store must not be requested");}};
-        var result=new ProductLookupService(gateway,new BusinessTime()).lookup(work(selected),new SearchResult(List.of(selected),true,null),()->true);
+        var gateway=new SupplierProductGateway(){public String validateUrl(Mall m,String url){return url;}public List<SourceOption> options(Mall m,String id,String url){calls.add(url);throw new AssertionError("Ordinary store must not be requested");}};
+        var result=new SupplierLookupService(gateway,new BusinessTime()).lookup(work(selected),new SearchResult(List.of(selected),true,null),()->true);
         assertThat(calls).isEmpty();assertThat(result.suppliers()).isEmpty();assertThat(result.message()).isEqualTo("대상 판매글 없음");assertThat(result.searchPrice()).isNull();
     }
     @Test void ambiguousUrlNeedsPositiveApiEvidenceAndCannotUseManualBranchBypass(){
         var calls=new ArrayList<String>();var ambiguous=offer("https://brand.naver.com/daks/products/42",10000);
         for(var type:List.of(NaverChannelType.UNKNOWN,NaverChannelType.SMARTSTORE,NaverChannelType.WINDOW)){
-            var gateway=new ProductSourceGateway(){public String validateUrl(Mall m,String url){return url;}public List<SourceOption> options(Mall m,String id,String url){return List.of();}
+            var gateway=new SupplierProductGateway(){public String validateUrl(Mall m,String url){return url;}public List<SourceOption> options(Mall m,String id,String url){return List.of();}
                 public SourceDetails inspect(Mall m,String id,String url){calls.add(url);return new SourceDetails("","","",List.of(new SourceOption("42","상품 전체",50L,"AVAILABLE","PRODUCT")),"",null,true,new NaverChannel(type,"BRAND_FASHION"));}};
-            var result=new ProductLookupService(gateway,new BusinessTime()).lookup(work(null),new SearchResult(List.of(ambiguous),true,null),()->true);
+            var result=new SupplierLookupService(gateway,new BusinessTime()).lookup(work(null),new SearchResult(List.of(ambiguous),true,null),()->true);
             assertThat(result.suppliers()).hasSize(type==NaverChannelType.WINDOW?1:0);
             assertThat(result.message()).isEqualTo(type==NaverChannelType.WINDOW?null:"대상 판매글 없음");
         }

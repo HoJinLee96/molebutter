@@ -11,9 +11,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Component @RequiredArgsConstructor @EnableScheduling @Slf4j
-public class ProductRefreshWorker {
-    private final ProductRefreshService runs;
-    private final ProductLookupService lookup;
+public class SupplierRefreshWorker {
+    private final SupplierRefreshService runs;
+    private final SupplierLookupService lookup;
     private final NaverPriceSearch search;
     private final BusinessTime time;
     private final SupplierStockLookupService stockLookups;
@@ -33,7 +33,7 @@ public class ProductRefreshWorker {
             stockLookups.finish(owner,work,new SupplierResult(work.offer(),old.match(),"FAILED",List.of(),failure.getMessage(),old.sourceTitle(),old.sourceModelCode(),old.sourceBrand(),old.branch(),evidence));
         }finally{lookup.invalidate(work.offer().mall(),work.offer().mallProductId());}
     }
-    public void process(ProductRefreshService.Work work) {
+    public void process(SupplierRefreshService.Work work) {
         try {
             if(!runs.heartbeat(owner,work))return;
             SearchResult found=runs.cached(work);

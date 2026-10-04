@@ -16,7 +16,7 @@ import lombok.RequiredArgsConstructor;
 @RestController @RequiredArgsConstructor
 public class ProductController {
     private final ProductService products;
-    private final ProductRefreshService refresh;
+    private final SupplierRefreshService refresh;
     private final ProductChangeService changes;
     @GetMapping("/api/products/{id}/changes") public ApiResponse<PageResponse<cc.ataglace.molebutter.dto.product.ChangeDtos.HistoryItem>> changes(@AuthenticationPrincipal UserPrincipal u,@PathVariable long id,@RequestParam(defaultValue="")String supplier,@RequestParam(defaultValue="ALL")String kind,@RequestParam(defaultValue="0")int page){return ApiResponse.success(changes.history(u.userId(),id,supplier,kind,page));}
     @PostMapping("/api/products/{id}/change-reviews") @OperationAudit(value="PRODUCT_CHANGE_REVIEW",targetType="PRODUCT",targetIdPathVariable="id")

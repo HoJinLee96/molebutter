@@ -49,7 +49,7 @@ public class ProductStatusRepair {
                     ||!latest.checkedAt().equals(row.get("latest_at") instanceof java.sql.Timestamp t?t.toLocalDateTime():row.get("latest_at")))continue;
                 var next=SearchCompletion.summarize(latest.suppliers(),reason,latest.checkedAt(),preferences,Map.of(),latest.recommendationLimited(),latest.recommendationDiagnostics(),db.decode((String)row.get("selection_snapshot"),cc.ataglace.molebutter.dto.product.SupplierDtos.SelectionBasis.class));
                 String notice=next.message();
-                if(Objects.equals(latest.statusPolicyVersion(),ProductStatusPolicy.VERSION)&&latest.statusReasons().equals(next.statusReasons())&&latest.status().equals(next.status())&&Objects.equals(latest.message(),notice)&&Objects.equals(latest.completionReason(),reason))continue;
+                if(Objects.equals(latest.statusPolicyVersion(),SupplierLookupStatusPolicy.VERSION)&&latest.statusReasons().equals(next.statusReasons())&&latest.status().equals(next.status())&&Objects.equals(latest.message(),notice)&&Objects.equals(latest.completionReason(),reason))continue;
                 changes.add(new Change(product,(String)row.get("product_code"),((Number)row.get("revision")).longValue(),((Number)row.get("run_id")).longValue(),(String)row.get("latest_status"),next.status(),notice,reason,original));
             }catch(RuntimeException ex){log.warn("[PRODUCT_STATUS_REPAIR_SKIPPED] productId={} exception={}",product,ex.getClass().getSimpleName());}
         }
@@ -68,7 +68,7 @@ public class ProductStatusRepair {
             int changed=db.jdbc.update("""
                 UPDATE catalog_product SET latest_status=?,latest_result=JSON_SET(latest_result,'$.status',?,'$.message',?,'$.completionReason',?,'$.statusPolicyVersion',?,'$.statusReasons',CAST(? AS JSON)),revision=revision+1
                 WHERE id=? AND revision=? AND latest_status=?
-                """,expected.after(),expected.after(),expected.message(),expected.reason(),ProductStatusPolicy.VERSION,db.encode(reassessment(expected).statusReasons()),expected.productId(),expected.revision(),expected.before());
+                """,expected.after(),expected.after(),expected.message(),expected.reason(),SupplierLookupStatusPolicy.VERSION,db.encode(reassessment(expected).statusReasons()),expected.productId(),expected.revision(),expected.before());
             if(changed==1)log.info("[PRODUCT_STATUS_REPAIRED] productId={} runId={} before={} after={} reason={}",expected.productId(),expected.runId(),expected.before(),expected.after(),expected.reason());
             return changed==1;
         }));

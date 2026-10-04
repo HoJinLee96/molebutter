@@ -26,7 +26,7 @@ public class NaverSearchRecoveryService {
         var r=db.jdbc.queryForMap("SELECT search_gate_version version,search_cooldown_until untilAt,search_manual_resume_required manualResumeRequired,CAST(search_gate_run_id AS CHAR) runId,CAST(search_gate_attempt_id AS CHAR) attemptId FROM product_settings WHERE id=1");
         r.put("untilAt",date(r.get("untilAt")));return r;
     }
-    public Long begin(String owner,ProductRefreshService.Work w){
+    public Long begin(String owner,SupplierRefreshService.Work w){
         db.lock();if(!owns(owner))return null;
         if(gated()){release(owner);return null;}
         if(db.jdbc.queryForObject("SELECT COUNT(*) FROM product_refresh_entry e JOIN product_refresh_run r ON r.id=e.run_id JOIN catalog_product p ON p.id=e.product_id WHERE e.run_id=? AND e.product_id=? AND e.status='CHECKING' AND r.status='RUNNING' AND p.lookup_revision=e.lookup_revision AND p.deleted_at IS NULL AND p.merged_into IS NULL",Long.class,w.runId(),w.productId())!=1){
@@ -35,8 +35,8 @@ public class NaverSearchRecoveryService {
         long id=ProductStore.id();int n=db.jdbc.queryForObject("SELECT COALESCE(MAX(attempt_no),0)+1 FROM product_search_attempt WHERE run_id=? AND product_id=?",Integer.class,w.runId(),w.productId());
         db.jdbc.update("INSERT INTO product_search_attempt(id,run_id,product_id,lookup_revision,attempt_no,owner_token,status,started_at) VALUES(?,?,?,?,?,?,'RUNNING',?)",id,w.runId(),w.productId(),w.revision(),n,owner,db.time.now());return id;
     }
-    private boolean current(String owner,ProductRefreshService.Work w,Map<String,Object> a){return owns(owner)&&owner.equals(a.get("owner_token"))&&"RUNNING".equals(a.get("status"))&&number(a,"run_id")==w.runId()&&number(a,"product_id")==w.productId()&&number(a,"lookup_revision")==w.revision();}
-    public boolean success(String owner,ProductRefreshService.Work w,long id){
+    private boolean current(String owner,SupplierRefreshService.Work w,Map<String,Object> a){return owns(owner)&&owner.equals(a.get("owner_token"))&&"RUNNING".equals(a.get("status"))&&number(a,"run_id")==w.runId()&&number(a,"product_id")==w.productId()&&number(a,"lookup_revision")==w.revision();}
+    public boolean success(String owner,SupplierRefreshService.Work w,long id){
         db.lock();var a=attempt(id);if(!current(owner,w,a))return false;
         boolean valid=db.jdbc.queryForObject("SELECT COUNT(*) FROM product_refresh_entry e JOIN product_refresh_run r ON r.id=e.run_id JOIN catalog_product p ON p.id=e.product_id WHERE e.run_id=? AND e.product_id=? AND e.status='CHECKING' AND r.status IN ('RUNNING','PAUSED') AND p.lookup_revision=? AND p.deleted_at IS NULL AND p.merged_into IS NULL",Long.class,w.runId(),w.productId(),w.revision())==1;
         db.jdbc.update("UPDATE product_search_attempt SET status=?,finished_at=? WHERE id=?",valid?"SUCCEEDED":"CANCELLED",db.time.now(),id);
@@ -48,7 +48,7 @@ public class NaverSearchRecoveryService {
         return true;
     }
     public void searchInterval(){db.jdbc.update("UPDATE product_settings SET next_search_at=GREATEST(COALESCE(next_search_at,?),?) WHERE id=1",db.time.now().plusSeconds(30),db.time.now().plusSeconds(30));}
-    public void failure(String owner,ProductRefreshService.Work w,long id,Exception error){
+    public void failure(String owner,SupplierRefreshService.Work w,long id,Exception error){
         String code,stage;Integer http=null;Map<String,Object> diagnostic=Map.of();
         if(error instanceof NaverSearchFailure f){code=f.code().name();stage=f.stage();http=f.httpStatus();diagnostic=f.diagnostics();}
         else if(error instanceof NaverPriceSearch.SearchBlocked b){code=b.reason().name();stage="SEARCH";http=b.httpStatus();}
