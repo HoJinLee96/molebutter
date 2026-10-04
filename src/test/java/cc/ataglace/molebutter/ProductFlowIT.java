@@ -1,6 +1,7 @@
 package cc.ataglace.molebutter;
-import cc.ataglace.molebutter.service.common.BusinessTime;
 
+import cc.ataglace.molebutter.service.common.BusinessTime;
+import cc.ataglace.molebutter.dto.NamedSettingInput;
 import static org.assertj.core.api.Assertions.*;
 import java.net.*;
 import java.net.http.*;
@@ -61,7 +62,7 @@ class ProductFlowIT {
         jdbc.update("UPDATE product_settings SET revision=0,schedule_enabled=TRUE,schedule_time='18:00',last_schedule_date=NULL,worker_owner=NULL,worker_until=NULL,next_search_at=NULL,stock_lookup_blocked_job=NULL,search_cooldown_until=NULL,search_manual_resume_required=FALSE,search_gate_run_id=NULL,search_gate_attempt_id=NULL,search_gate_version=0 WHERE id=1");
         jdbc.update("UPDATE supplier_mall_policy SET branch_required=(mall NOT IN ('LFMALL','HAZZYS'))");
         time.value=LocalDateTime.parse("2026-09-24T18:00:00");actor=users.findByEmail("admin@example.com").orElseThrow().getId();
-        brand=settings.saveBrand(actor,null,new cc.ataglace.molebutter.dto.NamedSettingInput("헤지스",null)).id();
+        brand=settings.saveBrand(actor,null,new NamedSettingInput("헤지스",null)).id();
         for(var mall:ProcurementMall.values())preferred.saveRule(actor,null,new RuleInput(null,mall,null));
     }
     @Autowired ProductChangeService changeService;
@@ -77,14 +78,25 @@ class ProductFlowIT {
         refresh.finish("delta",w,new RefreshResult("SUCCESS",null,null,null,List.of(results),time.now(),null,false,List.of(),"COMPLETED"));
         refresh.claim("delta");
     }
-    @Test void completedRefreshWritesOneBackgroundAuditForTheCommittedResult(){
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"SUCCESS,true", "PARTIAL,true", "SOLD_OUT,true", "NO_MATCH,true", "FAILED,false", "STALE,false"})
+    void completedRefreshWritesOneBackgroundAuditForTheCommittedResult(String outcome,boolean completed){
         var p=create("DCWA279BK");start(current(p));var w=refresh.claim("audit-result");
-        var result=new RefreshResult("SUCCESS",null,null,null,List.of(deltaListing(156450,100L)),time.now(),null);
+        var observed=switch(outcome){
+            case "SUCCESS"->List.of(deltaListing(156450,100L));
+            case "PARTIAL"->List.of(deltaListing(156450,null));
+            case "SOLD_OUT"->List.of(deltaListing(156450,0L));
+            default->List.<SupplierResult>of();
+        };
+        var result=new RefreshResult(outcome,null,null,null,observed,time.now(),null);
         String target=w.runId()+":"+w.productId();
         refresh.finish("audit-result",w,result);
         refresh.finish("audit-result",w,result);
         var entries=jdbc.queryForList("SELECT * FROM operation_audit_log WHERE event_type='SUPPLIER_LOOKUP_RESULT' AND target_id=?",target);
         assertThat(entries).hasSize(1);
+        assertThat(entries.getFirst()).containsEntry("success",completed)
+            .containsEntry("failure_reason",completed?null:outcome);
+        assertThat(jdbc.queryForObject("SELECT status FROM product_refresh_entry WHERE run_id=? AND product_id=?",String.class,w.runId(),w.productId())).isEqualTo(outcome);
         assertThat(entries.getFirst()).containsEntry("execution_source","BACKGROUND")
             .containsEntry("user_id",null).containsEntry("user_role",null).containsEntry("email",null);
         assertThat(entries.getFirst().get("operation_id").toString()).isEqualTo(UUID.fromString(entries.getFirst().get("operation_id").toString()).toString());
@@ -884,7 +896,7 @@ class ProductFlowIT {
     }
     @Test void deprecatedFieldsNeverOverwriteExplicitQuery(){
         var p=create("ABCD6F123BK");assertThat(p.searchQuery()).isEqualTo("ABCD123");assertThat(p.searchQuery()).isEqualTo("ABCD123");
-        settings.saveBrand(actor,Long.valueOf(brand),new cc.ataglace.molebutter.dto.NamedSettingInput("이름 변경",0L));assertThat(current(p).brandKey()).isEqualTo("HAZZYS");assertThat(current(p).lookupRevision()).isEqualTo(p.lookupRevision());
+        settings.saveBrand(actor,Long.valueOf(brand),new NamedSettingInput("이름 변경",0L));assertThat(current(p).brandKey()).isEqualTo("HAZZYS");assertThat(current(p).lookupRevision()).isEqualTo(p.lookupRevision());
         p=current(p);var edited=products.edit(actor,Long.parseLong(p.id()),new CatalogEdit(p.revision(),null,p.productCode(),p.searchQuery(),brand,"AUTO","GENERAL"));assertThat(edited.comparisonCode()).isEmpty();assertThat(edited.searchQuery()).isEqualTo("ABCD123");
         products.bulk(actor,new BulkEdit(List.of(version(edited)),null,null,brand));assertThat(current(edited).codeType()).isEqualTo("GENERAL");assertThat(current(edited).comparisonCode()).isEmpty();
     }
@@ -896,7 +908,7 @@ class ProductFlowIT {
         var again=products.upload(actor,"again.xlsx",bytes);assertThat(again.created()).isZero();assertThat(again.existing()).isEqualTo(3);assertThat(current(p).searchQuery()).isEqualTo("직접 검색어");
         assertThat(products.list(actor,"","ALL","",0).totalElements()).isEqualTo(3);
     }
-    @Test void brandInferenceKeepsAmbiguousNamesUnassigned(){var bytes=WorkbookFixture.create(2,Map.of("F4","ABCD6F123BK","F5","ABCD6F123BK","H4","헤지스 가방","H5","닥스 가방"));settings.saveBrand(actor,null,new cc.ataglace.molebutter.dto.NamedSettingInput("닥스",null));products.upload(actor,"x",bytes);var p=products.list(actor,"","ALL","",0).items().getFirst();assertThat(p.brandId()).isNull();assertThat(p.searchQuery()).isEqualTo(p.productCode());}
+    @Test void brandInferenceKeepsAmbiguousNamesUnassigned(){var bytes=WorkbookFixture.create(2,Map.of("F4","ABCD6F123BK","F5","ABCD6F123BK","H4","헤지스 가방","H5","닥스 가방"));settings.saveBrand(actor,null,new NamedSettingInput("닥스",null));products.upload(actor,"x",bytes);var p=products.list(actor,"","ALL","",0).items().getFirst();assertThat(p.brandId()).isNull();assertThat(p.searchQuery()).isEqualTo(p.productCode());}
     @Test void refreshDoesNotRequireLinksAndKeepsRawOptions(){var p=create("ABCD6F123BK");finish(p);var current=current(p);assertThat(current.latestResult().searchPrice()).isEqualTo(10000);assertThat(current.latestResult().suppliers().getFirst().options().getFirst().stock()).isEqualTo(2);assertThat(products.history(actor,Long.parseLong(p.id()),0).totalElements()).isEqualTo(1);assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_supplier",Long.class)).isEqualTo(1);}
     @Test void progressEndpointTracksItemCompletionBeforeWholeRunAndRejectsStaleCriteria()throws Exception {
         var p=create("ABCD6F123BK");long id=Long.parseLong(p.id());
@@ -915,7 +927,7 @@ class ProductFlowIT {
         status(staff.get("/api/products/1/refresh-status"),404);
         status(new Browser().get(path),401);status(login(account(UserRole.VIEWER)).get(path),403);
     }
-    @Test void managementAndBrandRenameDoNotInvalidatePricesAndSelectedRefreshIsAllowed(){var p=create("ABCD6F123BK");finish(p);products.bulk(actor,new BulkEdit(List.of(version(p)),null,false,null));settings.saveBrand(actor,Long.valueOf(brand),new cc.ataglace.molebutter.dto.NamedSettingInput("새 이름",0L));assertThat(current(p).latestResult()).isNotNull();assertThat(current(p).lookupRevision()).isEqualTo(p.lookupRevision());assertThatThrownBy(()->refresh.start(actor,new RefreshInput("ALL_MANAGED",List.of()))).hasMessageContaining("최신화할 상품");assertThat(start(current(p))).isNotBlank();}
+    @Test void managementAndBrandRenameDoNotInvalidatePricesAndSelectedRefreshIsAllowed(){var p=create("ABCD6F123BK");finish(p);products.bulk(actor,new BulkEdit(List.of(version(p)),null,false,null));settings.saveBrand(actor,Long.valueOf(brand),new NamedSettingInput("새 이름",0L));assertThat(current(p).latestResult()).isNotNull();assertThat(current(p).lookupRevision()).isEqualTo(p.lookupRevision());assertThatThrownBy(()->refresh.start(actor,new RefreshInput("ALL_MANAGED",List.of()))).hasMessageContaining("최신화할 상품");assertThat(start(current(p))).isNotBlank();}
     @Test void staleIdentityRejectsOldResultWithoutOverwritingCurrentState(){var p=create("ABCD6F123BK");start(p);var w=refresh.claim("w");products.edit(actor,Long.parseLong(p.id()),new CatalogEdit(p.revision(),null,"ABCD6F124Y2",p.searchQuery(),brand,"AUTO",null));refresh.finish("w",w,result());assertThat(current(p).latestStatus()).isEqualTo("NOT_CHECKED");assertThat(current(p).latestResult()).isNull();assertThat(jdbc.queryForObject("SELECT status FROM product_refresh_entry",String.class)).isEqualTo("STALE");}
     @Test void sameSearchIsCachedByRunAndLeaseTakeoverFencesOldWorker(){var p=create("ABCD6F123BK");var p2=create("ABCD6E123BK");refresh.start(actor,new RefreshInput("SELECTED",List.of(p.id(),p2.id())));var w=refresh.claim("old");assertThat(refresh.claim("new")).isNull();refresh.cache(w,new SearchResult(List.of(),true,null));time.value=time.value.plusMinutes(11);var replacement=refresh.claim("new");assertThat(replacement).isEqualTo(w);refresh.finish("old",w,result());assertThat(current(p).latestResult()).isNull();assertThat(refresh.cached(replacement)).isNotNull();refresh.finish("new",replacement,result());var next=refresh.claim("new");assertThat(next.query()).isEqualTo(w.query());assertThat(refresh.cached(next)).isNotNull();}
     @Test void pauseBlockResumeCancelAndRetryPreserveHistory(){var p=create("ABCD6F123BK");long id=Long.parseLong(start(p));var w=refresh.claim("w");refresh.blocked("w",w,"접속 제한");assertThat(refresh.claim("w")).isNull();refresh.control(actor,id,"resume");w=refresh.claim("w");refresh.control(actor,id,"pause");refresh.finish("w",w,result());assertThat(refresh.claim("w")).isNull();refresh.control(actor,id,"resume");assertThat(refresh.claim("w")).isNull();long next=Long.parseLong(start(p));refresh.control(actor,next,"cancel");assertThat(current(p).latestResult()).isNull();assertThat(products.detail(actor,Long.parseLong(p.id())).get("lastGoodResult")).isNotNull();assertThat(refresh.retry(actor,next)).isNotBlank();}
@@ -1280,17 +1292,6 @@ class ProductFlowIT {
         var owner=notificationUser(UserRole.VIEWER);var date=LocalDate.of(2025,1,2);
         var request=new cc.ataglace.molebutter.dto.attendance.AttendanceDtos.CorrectionRequest(date,null,null,date.atTime(9,0),date.atTime(18,0),List.of(),"누락 보완");
         var c=attendance.requestCorrection(owner.getId(),request);assertThat(notifications.summary(owner.getId()).count()).isEqualTo(1);
-        attendance.review(actor,Long.parseLong(c.id()),true,new cc.ataglace.molebutter.dto.attendance.AttendanceDtos.ReviewRequest(c.revision(),null));
-        assertThat(notifications.summary(owner.getId()).count()).isEqualTo(2);
-        String ownerNotice=notifications.summary(owner.getId()).latestId(),adminNotice=notifications.summary(actor).latestId();
-        assertThat(notifications.target(owner.getId(),Long.parseLong(ownerNotice)).url()).isEqualTo("/attendance?correction="+c.id());
-        assertThat(notifications.target(actor,Long.parseLong(adminNotice)).url()).isEqualTo("/attendance-manage?correction="+c.id());
-    }
-    @Test void correctionEventsCommitWithBusinessChangesAndNotifyOwnerAndReviewer(){
-        var owner=notificationUser(UserRole.VIEWER);var date=LocalDate.of(2025,1,2);
-        var request=new cc.ataglace.molebutter.dto.attendance.AttendanceDtos.CorrectionRequest(date,null,null,date.atTime(9,0),date.atTime(18,0),List.of(),"누락 보완");
-        var c=attendance.requestCorrection(owner.getId(),request);
-        assertThat(notifications.summary(owner.getId()).count()).isEqualTo(1);
         attendance.review(actor,Long.parseLong(c.id()),true,new cc.ataglace.molebutter.dto.attendance.AttendanceDtos.ReviewRequest(c.revision(),null));
         assertThat(notifications.summary(owner.getId()).count()).isEqualTo(2);
         String ownerNotice=notifications.summary(owner.getId()).latestId(),adminNotice=notifications.summary(actor).latestId();
