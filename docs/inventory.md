@@ -119,4 +119,4 @@ NODE_PATH=/path/to/node_modules node scripts/test-product-ui.cjs
 
 ## 구현 경계와 동시 처리
 
-조회·주문/항목 변경·수량 기록은 `InventoryQueryService`, `InventoryPurchaseService`, `InventoryMovementService`로 분리한다. 응답은 `InventoryView`의 공개/관리자 필드만 반환한다. 카탈로그 변경은 배타 가드, 재고 변경은 공유 가드와 요청 ID·주문·항목·이력 순서의 잠금을 사용한다. 서로 다른 주문은 병렬 처리할 수 있고 같은 요청은 기존 해시로 한 번만 반영한다.
+조회·주문/항목 변경·수량 기록은 `InventoryQueryService`, `InventoryPurchaseService`, `InventoryMovementService`로 분리한다. 응답은 `InventoryView`의 공개/관리자 필드만 반환한다. 카탈로그 변경은 배타 가드, 재고 변경은 공유 가드와 요청 ID·주문·항목·이력 순서의 잠금을 사용한다. 서로 다른 주문은 병렬 처리할 수 있고 같은 요청은 기존 해시로 한 번만 반영한다. [연동 전 기반 정리](market-integration-readiness.md)에 상세 규칙을 기록한다.
