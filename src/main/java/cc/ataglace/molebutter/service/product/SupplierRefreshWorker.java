@@ -10,7 +10,7 @@ import cc.ataglace.molebutter.infra.product.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-@Component @RequiredArgsConstructor @EnableScheduling @Slf4j
+@Component @RequiredArgsConstructor @Slf4j
 public class SupplierRefreshWorker {
     private final SupplierRefreshService runs;
     private final SupplierLookupService lookup;
@@ -23,7 +23,7 @@ public class SupplierRefreshWorker {
     public void tick() {
         if(!enabled)return;
         try{var manual=stockLookups.claim(owner);if(manual!=null){processStock(manual);return;}runs.schedule();var work=runs.claim(owner);if(work!=null)process(work);}
-        catch(Exception e){log.warn("상품 최신화 작업 처리 실패: {}",e.getMessage());}
+        catch(Exception e){log.warn("상품 최신화 작업 처리 실패: {}",e.getClass().getSimpleName());}
     }
     public void processStock(SupplierStockLookupService.Work work){
         try{stockLookups.finish(owner,work,lookup.inspectFresh(work.product(),work.offer()));}

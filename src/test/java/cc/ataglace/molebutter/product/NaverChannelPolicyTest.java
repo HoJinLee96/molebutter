@@ -1,6 +1,6 @@
 package cc.ataglace.molebutter.product;
-import cc.ataglace.molebutter.service.common.BusinessTime;
 
+import cc.ataglace.molebutter.service.common.BusinessTime;
 import org.junit.jupiter.api.Test;
 import java.util.*;
 import tools.jackson.databind.ObjectMapper;

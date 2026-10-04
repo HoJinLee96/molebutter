@@ -1,6 +1,6 @@
 package cc.ataglace.molebutter.service.product;
-import cc.ataglace.molebutter.exception.InputValidationFailure;
 
+import cc.ataglace.molebutter.exception.InputValidationFailure;
 import java.time.*;
 import java.util.*;
 import org.springframework.stereotype.Service;

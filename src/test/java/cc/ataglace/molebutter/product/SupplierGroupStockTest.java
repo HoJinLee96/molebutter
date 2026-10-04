@@ -1,6 +1,6 @@
 package cc.ataglace.molebutter.product;
-import cc.ataglace.molebutter.service.common.BusinessTime;
 
+import cc.ataglace.molebutter.service.common.BusinessTime;
 import static org.assertj.core.api.Assertions.*;
 import java.util.*;
 import java.nio.file.*;

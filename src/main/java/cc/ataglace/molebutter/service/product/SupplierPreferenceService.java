@@ -1,6 +1,7 @@
 package cc.ataglace.molebutter.service.product;
-import cc.ataglace.molebutter.exception.InputValidationFailure;
 
+import cc.ataglace.molebutter.exception.OperationFailure;
+import cc.ataglace.molebutter.exception.InputValidationFailure;
 import java.util.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
@@ -49,7 +50,7 @@ public class SupplierPreferenceService {
             if(retailer==null||retailer.isBlank())retailer=old.retailer();
             if(!old.identities().isEmpty()&&!SupplierStorePolicy.normalize(old.retailer()).equals(SupplierStorePolicy.normalize(retailer)))throw new InputValidationFailure("외부 식별자가 연결된 매장의 백화점은 변경할 수 없습니다.");
             final String retailerName=retailer;
-            if(old.kind().equals("BRANCH")&&stores().stream().anyMatch(s->!s.id().equals(old.id())&&s.mall()==old.mall()&&s.kind().equals("BRANCH")&&SupplierStorePolicy.normalize(s.retailer()).equals(SupplierStorePolicy.normalize(retailerName))&&s.aliases().stream().anyMatch(a->SupplierStorePolicy.normalize(a).equals(SupplierStorePolicy.normalize(name)))))throw new cc.ataglace.molebutter.exception.OperationFailure("다른 매장에서 사용 중인 이름입니다.");
+            if(old.kind().equals("BRANCH")&&stores().stream().anyMatch(s->!s.id().equals(old.id())&&s.mall()==old.mall()&&s.kind().equals("BRANCH")&&SupplierStorePolicy.normalize(s.retailer()).equals(SupplierStorePolicy.normalize(retailerName))&&s.aliases().stream().anyMatch(a->SupplierStorePolicy.normalize(a).equals(SupplierStorePolicy.normalize(name)))))throw new OperationFailure("다른 매장에서 사용 중인 이름입니다.");
             var aliases=new LinkedHashSet<>(old.aliases());aliases.add(old.name());aliases.add(name);
             if(aliases.size()>100)throw new InputValidationFailure("매장 이름 변경 이력이 너무 많습니다.");
             db.jdbc.update("UPDATE supplier_store SET name=?,aliases=?,retailer=?,revision=revision+1,updated_at=? WHERE id=?",name,db.encode(aliases),retailer,db.time.now(),id);changed();return store(id.toString());}
@@ -58,7 +59,7 @@ public class SupplierPreferenceService {
                 &&SupplierStorePolicy.normalize(s.retailer()).equals(SupplierStorePolicy.normalize(retailerFor(input)))).findFirst();
             if(exact.isPresent())return exact.get();}
         final String newRetailer=retailer;
-        if(stores().stream().anyMatch(s->s.mall()==input.mall()&&(s.identityKey().equals(key)||SupplierStorePolicy.normalize(s.retailer()).equals(SupplierStorePolicy.normalize(newRetailer))&&s.aliases().stream().anyMatch(a->SupplierStorePolicy.normalize(a).equals(SupplierStorePolicy.normalize(name))))))throw new cc.ataglace.molebutter.exception.OperationFailure("이미 등록된 매장입니다. 기존 매장을 사용해 주세요.");
+        if(stores().stream().anyMatch(s->s.mall()==input.mall()&&(s.identityKey().equals(key)||SupplierStorePolicy.normalize(s.retailer()).equals(SupplierStorePolicy.normalize(newRetailer))&&s.aliases().stream().anyMatch(a->SupplierStorePolicy.normalize(a).equals(SupplierStorePolicy.normalize(name))))))throw new OperationFailure("이미 등록된 매장입니다. 기존 매장을 사용해 주세요.");
         Store saved=insert(input.mall(),input.kind(),name,key);db.jdbc.update("UPDATE supplier_store SET retailer=? WHERE id=?",retailer,saved.id());changed();return store(saved.id());
     }
     /** 조회는 트랜잭션 밖에서 완료하고, 확인한 식별자의 등록·전환만 원자적으로 수행한다. */
@@ -128,7 +129,7 @@ public class SupplierPreferenceService {
             if(identities.contains(external))continue;
             var owners=db.jdbc.queryForList("SELECT CAST(store_id AS CHAR) FROM supplier_store_identity WHERE mall=? AND namespace=? AND external_id=?",String.class,mall.name(),external.namespace(),external.externalId());
             if(owners.isEmpty())db.jdbc.update("INSERT INTO supplier_store_identity(mall,namespace,external_id,store_id) VALUES(?,?,?,?)",mall.name(),external.namespace(),external.externalId(),saved.id());
-            else if(!owners.getFirst().equals(saved.id()))throw new cc.ataglace.molebutter.exception.OperationFailure("매장 식별자 연결이 충돌합니다.");
+            else if(!owners.getFirst().equals(saved.id()))throw new OperationFailure("매장 식별자 연결이 충돌합니다.");
             identities.add(external);
         }
         return new Store(saved.id(),saved.mall(),saved.kind(),saved.name(),saved.identityKey(),saved.aliases(),saved.revision(),
@@ -146,7 +147,7 @@ public class SupplierPreferenceService {
     }
     @Transactional(isolation=Isolation.READ_COMMITTED) public Store bindIdentity(Long actor,long id,IdentityInput input){
         db.authorize(actor,true);db.lock();var target=store(Long.toString(id));ProductStore.revision(target.revision(),input.revision());
-        var candidate=identityCandidates(actor).stream().filter(c->c.supplierId().equals(input.supplierId())&&Objects.equals(c.observedRunId(),input.observedRunId())).findFirst().orElseThrow(()->new cc.ataglace.molebutter.exception.OperationFailure("조회 결과가 변경되었거나 이미 연결되었습니다. 다시 조회해 주세요."));
+        var candidate=identityCandidates(actor).stream().filter(c->c.supplierId().equals(input.supplierId())&&Objects.equals(c.observedRunId(),input.observedRunId())).findFirst().orElseThrow(()->new OperationFailure("조회 결과가 변경되었거나 이미 연결되었습니다. 다시 조회해 주세요."));
         var e=candidate.evidence();
         if("COMPANY".equals(target.kind())&&(!"주식회사 LF".equals(e.name())||!"COMPANY".equals(e.kind())))throw new InputValidationFailure("확인된 LF 업체만 연결할 수 있습니다.");
         if(target.mall()!=candidate.mall()||!target.kind().equals(e.kind())||!SupplierStorePolicy.normalize(target.retailer()).isBlank()&&!SupplierStorePolicy.normalize(target.retailer()).equals(SupplierStorePolicy.normalize(e.retailer())))throw new InputValidationFailure("동일한 쇼핑몰·백화점·매장 종류만 연결할 수 있습니다.");
@@ -154,12 +155,12 @@ public class SupplierPreferenceService {
         var aliases=new LinkedHashSet<>(target.aliases());aliases.add(e.name());
         db.jdbc.update("UPDATE supplier_store SET retailer=?,aliases=?,revision=revision+1,updated_at=? WHERE id=?",e.retailer(),db.encode(aliases),db.time.now(),id);changed();return store(Long.toString(id));
     }
-    @Transactional(isolation=Isolation.READ_COMMITTED) public void deleteStore(Long actor,long id,Long revision){db.authorize(actor,true);db.lock();ProductStore.revision(store(Long.toString(id)).revision(),revision);long used=db.jdbc.queryForObject("SELECT (SELECT COUNT(*) FROM product_supplier WHERE auto_store_id=? OR manual_store_id=?)+(SELECT COUNT(*) FROM supplier_preference WHERE store_id=?)",Long.class,id,id,id);if(used>0)throw new cc.ataglace.molebutter.exception.OperationFailure("판매글 또는 선호 목록에서 사용 중인 매장입니다.");db.jdbc.update("DELETE FROM supplier_store WHERE id=?",id);changed();}
+    @Transactional(isolation=Isolation.READ_COMMITTED) public void deleteStore(Long actor,long id,Long revision){db.authorize(actor,true);db.lock();ProductStore.revision(store(Long.toString(id)).revision(),revision);long used=db.jdbc.queryForObject("SELECT (SELECT COUNT(*) FROM product_supplier WHERE auto_store_id=? OR manual_store_id=?)+(SELECT COUNT(*) FROM supplier_preference WHERE store_id=?)",Long.class,id,id,id);if(used>0)throw new OperationFailure("판매글 또는 선호 목록에서 사용 중인 매장입니다.");db.jdbc.update("DELETE FROM supplier_store WHERE id=?",id);changed();}
     @Transactional(isolation=Isolation.READ_COMMITTED) public Rule saveRule(Long actor,Long id,RuleInput input){db.authorize(actor,true);db.lock();if(input.mall()==null)throw new InputValidationFailure("쇼핑몰을 선택해 주세요.");String storeId=input.storeId()==null||input.storeId().isBlank()?null:input.storeId();if(storeId!=null&&store(storeId).mall()!=input.mall())throw new InputValidationFailure("해당 쇼핑몰의 매장을 선택해 주세요.");
         var current=snapshot();if(storeId!=null&&!current.branchRequired(input.mall()))throw new InputValidationFailure("지점 구분을 끈 쇼핑몰은 전체 허용으로 저장해 주세요.");final Long requested=id;if(id!=null){var old=current.rules().stream().filter(r->r.id().equals(requested.toString())).findFirst().orElseThrow(()->new InputValidationFailure("선호 항목을 다시 조회해 주세요."));ProductStore.revision(old.revision(),input.revision());}
         final Long target=id;
         if(current.rules().stream().anyMatch(r->!r.id().equals(Objects.toString(target,""))&&r.mall()==input.mall()&&((r.storeId()==null)!=(storeId==null))))throw new InputValidationFailure("전체와 특정 매장 조건은 함께 저장할 수 없습니다. 쇼핑몰 설정에서 변경해 주세요.");
-        if(current.rules().stream().anyMatch(r->!r.id().equals(Objects.toString(target,""))&&r.mall()==input.mall()&&Objects.equals(r.storeId(),storeId)))throw new cc.ataglace.molebutter.exception.OperationFailure("이미 등록된 선호 매입처입니다.");
+        if(current.rules().stream().anyMatch(r->!r.id().equals(Objects.toString(target,""))&&r.mall()==input.mall()&&Objects.equals(r.storeId(),storeId)))throw new OperationFailure("이미 등록된 선호 매입처입니다.");
         if(id==null){id=ProductStore.id();db.jdbc.update("INSERT INTO supplier_preference(id,mall,store_id,scope_key) VALUES(?,?,?,?)",id,input.mall().name(),storeId,storeId==null?"ALL":storeId);}else db.jdbc.update("UPDATE supplier_preference SET mall=?,store_id=?,scope_key=?,revision=revision+1 WHERE id=?",input.mall().name(),storeId,storeId==null?"ALL":storeId,id);
         changed();long saved=id;return snapshot().rules().stream().filter(r->r.id().equals(Long.toString(saved))).findFirst().orElseThrow();}
     @Transactional(isolation=Isolation.READ_COMMITTED) public void deleteRule(Long actor,long id,Long revision){db.authorize(actor,true);db.lock();var r=snapshot().rules().stream().filter(v->v.id().equals(Long.toString(id))).findFirst().orElseThrow(()->new InputValidationFailure("선호 항목을 다시 조회해 주세요."));ProductStore.revision(r.revision(),revision);db.jdbc.update("DELETE FROM supplier_preference WHERE id=?",id);changed();}

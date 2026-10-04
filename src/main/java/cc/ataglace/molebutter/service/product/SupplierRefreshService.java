@@ -1,4 +1,6 @@
 package cc.ataglace.molebutter.service.product;
+
+import cc.ataglace.molebutter.exception.OperationFailure;
 import cc.ataglace.molebutter.exception.InputValidationFailure;
 
 import java.time.*;
@@ -59,8 +61,8 @@ public class SupplierRefreshService {
         return create(actor,ids,"MANUAL");
     }
     private String create(Long actor,List<Long> selected,String trigger) {
-        db.lock();if(db.jdbc.queryForObject("SELECT stock_lookup_blocked_job FROM product_settings WHERE id=1",Long.class)!=null)throw new cc.ataglace.molebutter.exception.OperationFailure("개별 재고 조회의 접속 제한을 먼저 해제해 주세요.");var snapshot=preferences.snapshot();if(snapshot.rules().isEmpty())throw new cc.ataglace.molebutter.exception.OperationFailure("공통 설정에서 선호 매입처를 먼저 등록해 주세요.");
-        if(db.jdbc.queryForObject("SELECT COUNT(*) FROM product_refresh_run WHERE status IN ('RUNNING','PAUSED','BLOCKED','RETRY_WAIT')",Long.class)>0)throw new cc.ataglace.molebutter.exception.OperationFailure("기존 최신화 작업을 완료하거나 취소한 뒤 실행해 주세요.");
+        db.lock();if(db.jdbc.queryForObject("SELECT stock_lookup_blocked_job FROM product_settings WHERE id=1",Long.class)!=null)throw new OperationFailure("개별 재고 조회의 접속 제한을 먼저 해제해 주세요.");var snapshot=preferences.snapshot();if(snapshot.rules().isEmpty())throw new OperationFailure("공통 설정에서 선호 매입처를 먼저 등록해 주세요.");
+        if(db.jdbc.queryForObject("SELECT COUNT(*) FROM product_refresh_run WHERE status IN ('RUNNING','PAUSED','BLOCKED','RETRY_WAIT')",Long.class)>0)throw new OperationFailure("기존 최신화 작업을 완료하거나 취소한 뒤 실행해 주세요.");
         List<Long> ids=selected.isEmpty()?db.jdbc.queryForList("SELECT id FROM catalog_product WHERE managed=TRUE AND merged_into IS NULL AND deleted_at IS NULL ORDER BY id",Long.class):selected;
         if(ids.isEmpty()||ids.size()>5000)throw new InputValidationFailure("최신화할 상품을 1~5,000개 선택해 주세요.");
         var selectedProducts=ids.stream().map(products::product).toList();
@@ -169,9 +171,9 @@ public class SupplierRefreshService {
         if(action.equals("pause")&&List.of("RUNNING","RETRY_WAIT").contains(state))db.jdbc.update("UPDATE product_refresh_run SET status='PAUSED',message='자동 재개 중단됨' WHERE id=?",run);
         else if(action.equals("resume")&&List.of("PAUSED","BLOCKED").contains(state)) {
             var gate=recovery.gate();var cooldown=(LocalDateTime)gate.get("untilAt");
-            if(cooldown!=null&&cooldown.isAfter(db.time.now()))throw new cc.ataglace.molebutter.exception.OperationFailure("예정 시각 이후에 재개할 수 있습니다.");
-            if(next!=null&&next.isAfter(db.time.now()))throw new cc.ataglace.molebutter.exception.OperationFailure("예정 시각 이후에 재개할 수 있습니다.");
-            if(!Boolean.TRUE.equals(db.jdbc.queryForObject("SELECT preference_snapshot IS NOT NULL AND NOT EXISTS (SELECT 1 FROM product_refresh_entry e WHERE e.run_id=product_refresh_run.id AND (COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.selection_snapshot,'$.lookupPolicy')),'')<>'SEARCH_QUERY' OR COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.selection_snapshot,'$.naverPolicy')),'')<>'WINDOW_ONLY' OR COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.selection_snapshot,'$.stockPolicy')),'')<>'STORE_REPRESENTATIVE')) FROM product_refresh_run WHERE id=?",Boolean.class,run)))throw new cc.ataglace.molebutter.exception.OperationFailure("이전 방식의 작업입니다. 취소 후 다시 실행해 주세요.");
+            if(cooldown!=null&&cooldown.isAfter(db.time.now()))throw new OperationFailure("예정 시각 이후에 재개할 수 있습니다.");
+            if(next!=null&&next.isAfter(db.time.now()))throw new OperationFailure("예정 시각 이후에 재개할 수 있습니다.");
+            if(!Boolean.TRUE.equals(db.jdbc.queryForObject("SELECT preference_snapshot IS NOT NULL AND NOT EXISTS (SELECT 1 FROM product_refresh_entry e WHERE e.run_id=product_refresh_run.id AND (COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.selection_snapshot,'$.lookupPolicy')),'')<>'SEARCH_QUERY' OR COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.selection_snapshot,'$.naverPolicy')),'')<>'WINDOW_ONLY' OR COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.selection_snapshot,'$.stockPolicy')),'')<>'STORE_REPRESENTATIVE')) FROM product_refresh_run WHERE id=?",Boolean.class,run)))throw new OperationFailure("이전 방식의 작업입니다. 취소 후 다시 실행해 주세요.");
             boolean finalStop=Boolean.TRUE.equals(gate.get("manualResumeRequired"));
             recovery.resumeGate(((Number)gate.get("version")).longValue());
             db.jdbc.update("UPDATE product_refresh_run SET status='RUNNING',message=NULL,next_retry_at=NULL,search_retry_count=IF(?,0,search_retry_count),search_failure_signature=IF(?,NULL,search_failure_signature),login_retry_count=IF(login_retry_count>=5 OR ?,0,login_retry_count) WHERE id=?",finalStop,finalStop,finalStop,run);
@@ -182,7 +184,7 @@ public class SupplierRefreshService {
             db.jdbc.update("UPDATE catalog_product p JOIN product_refresh_entry i ON i.product_id=p.id SET p.latest_status='CANCELLED',p.latest_result=NULL WHERE i.run_id=? AND i.status IN ('PENDING','CHECKING') AND p.lookup_revision=i.lookup_revision",run);
             db.jdbc.update("UPDATE product_refresh_entry SET status='CANCELLED' WHERE run_id=? AND status IN ('PENDING','CHECKING')",run);
             notifications.refresh(run,"CANCELLED",null);
-        }else throw new cc.ataglace.molebutter.exception.OperationFailure("작업 상태가 변경되었습니다. 새로 조회해 주세요.");
+        }else throw new OperationFailure("작업 상태가 변경되었습니다. 새로 조회해 주세요.");
         for(long product:db.jdbc.queryForList("SELECT e.product_id FROM product_refresh_entry e JOIN catalog_product p ON p.id=e.product_id WHERE e.run_id=? AND p.deleted_at IS NULL AND p.merged_into IS NULL",Long.class,run))changes.reproject(product);
     }
     @Transactional(isolation=Isolation.READ_COMMITTED) public String retry(Long actor,long run) {
