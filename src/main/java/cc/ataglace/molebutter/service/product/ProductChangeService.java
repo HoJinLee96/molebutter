@@ -87,8 +87,8 @@ public class ProductChangeService {
         if(rows.size()!=1||rows.getFirst()!=candidate.revision()||!idle(id)||stored(id)!=null)return false;
         initialize(id);return stored(id)!=null;
     }
-    void automatic(ProductRefreshService.Work work,RefreshResult result){capture(work.productId(),work.revision(),"RUN:"+work.runId(),"REFRESH",result.checkedAt(),null,search(work.runId(),work.productId()));}
-    void manual(ProductRefreshService.Work work,long supplier,long job){capture(work.productId(),work.revision(),"STOCK:"+job,"STOCK_LOOKUP",db.time.now(),Long.toString(supplier),null);}
+    void automatic(SupplierRefreshService.Work work,RefreshResult result){capture(work.productId(),work.revision(),"RUN:"+work.runId(),"REFRESH",result.checkedAt(),null,search(work.runId(),work.productId()));}
+    void manual(SupplierRefreshService.Work work,long supplier,long job){capture(work.productId(),work.revision(),"STOCK:"+job,"STOCK_LOOKUP",db.time.now(),Long.toString(supplier),null);}
     private void capture(long product,long revision,String source,String sourceType,LocalDateTime at,String only,SearchEvidence search){
         var saved=stored(product);boolean initial=saved==null||saved.revision()!=revision;
         State old=initial?empty():saved.state();

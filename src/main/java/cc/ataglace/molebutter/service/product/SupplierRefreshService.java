@@ -12,7 +12,7 @@ import cc.ataglace.molebutter.dto.product.ProductDtos.*;
 import lombok.RequiredArgsConstructor;
 
 @Service @RequiredArgsConstructor
-public class ProductRefreshService {
+public class SupplierRefreshService {
     private final ProductStore db;
     private final cc.ataglace.molebutter.service.audit.OperationAuditService audit;
     private final NaverSearchRecoveryService recovery;
@@ -44,7 +44,7 @@ public class ProductRefreshService {
                 String run=r.getString("run_id"),state=r.getString("latest_status"),message=r.getString("message");
                 if(run!=null) {
                     if(r.getLong("lookup_revision")!=r.getLong("entry_revision")) {state="NOT_CHECKED";message="조회 기준이 변경되었습니다. 다시 조회해 주세요.";}
-                    else state=ProductStatusPolicy.display(state,r.getString("block_reason"));
+                    else state=SupplierLookupStatusPolicy.display(state,r.getString("block_reason"));
                 }
                 return new RefreshStatus(Long.toString(id),state,run,r.getString("run_status"),message,r.getString("block_reason"),r.getInt("login_retry_count"),date(r.getObject("next_retry_at")),date(r.getObject("next_search_at")),r.getInt("search_retry_count"),r.getString("search_failure_stage"),r.getString("search_failure_code"),recovery.gate(),r.getLong("lookup_revision")==r.getLong("entry_revision")&&List.of("PENDING","CHECKING").contains(Objects.toString(r.getString("entry_status"),""))&&RUN_STATUSES.subList(0,4).contains(Objects.toString(r.getString("run_status"),"")));
             },db.time.now().minusHours(24),db.time.now(),id);

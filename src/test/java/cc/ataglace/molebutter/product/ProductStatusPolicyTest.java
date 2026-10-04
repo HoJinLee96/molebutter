@@ -13,14 +13,14 @@ class ProductStatusPolicyTest {
     }
     @Test void unknownAndErrorsNeverBecomeSoldOutEvenWhenEveryRowIsUnknown(){
         for(var r:List.of(row(Mall.LFMALL,"a","OPTIONS_UNKNOWN",null,null),row(Mall.LFMALL,"a","CONFIRMED",null,"STOCK_UNKNOWN"),row(Mall.LFMALL,"a","FAILED",null,null),row(Mall.LFMALL,"a","OPTIONS_PARTIAL",0L,"SOLD_OUT")))
-            assertThat(ProductStatusPolicy.assess(List.of(r),true).status()).isEqualTo("PARTIAL");
+            assertThat(SupplierLookupStatusPolicy.assess(List.of(r),true).status()).isEqualTo("PARTIAL");
     }
     @Test void emptyAndExplicitZeroOrUnavailableAreSoldOutButRetainDifferentReasons(){
-        assertThat(ProductStatusPolicy.assess(List.of(),true).reasons()).containsExactly("NO_TARGET_LISTINGS");
+        assertThat(SupplierLookupStatusPolicy.assess(List.of(),true).reasons()).containsExactly("NO_TARGET_LISTINGS");
         var zero=row(Mall.LFMALL,"a","CONFIRMED",0L,"SOLD_OUT");var unavailable=row(Mall.LFMALL,"b","CONFIRMED",null,"UNAVAILABLE");
-        assertThat(ProductStatusPolicy.assess(List.of(zero,unavailable),true).reasons()).containsExactly("ALL_UNAVAILABLE");
+        assertThat(SupplierLookupStatusPolicy.assess(List.of(zero,unavailable),true).reasons()).containsExactly("ALL_UNAVAILABLE");
         assertThat(unavailable.options().getFirst().stock()).isNull();
-        assertThat(ProductStatusPolicy.assess(List.of(),false).status()).isEqualTo("PARTIAL");
+        assertThat(SupplierLookupStatusPolicy.assess(List.of(),false).status()).isEqualTo("PARTIAL");
     }
     @Test void unselectedRecommendationCannotHideSoldOutOrCreatePartialButSelectedNonpreferredCounts(){
         var prefs=new Preferences(0,List.of(),List.of(new Rule("r",Mall.LFMALL,null,0)),Map.of(Mall.LFMALL,false,Mall.HAZZYS,false));
@@ -35,7 +35,7 @@ class ProductStatusPolicyTest {
     }
     @Test void positiveAndUnknownOrMissingFeeRemainPartial(){
         var good=row(Mall.LFMALL,"a","CONFIRMED",10L,"AVAILABLE");
-        assertThat(ProductStatusPolicy.assess(List.of(good),true).status()).isEqualTo("SUCCESS");
-        assertThat(ProductStatusPolicy.assess(List.of(good,row(Mall.LFMALL,"b","CONFIRMED",null,"STOCK_UNKNOWN")),true).status()).isEqualTo("PARTIAL");
+        assertThat(SupplierLookupStatusPolicy.assess(List.of(good),true).status()).isEqualTo("SUCCESS");
+        assertThat(SupplierLookupStatusPolicy.assess(List.of(good,row(Mall.LFMALL,"b","CONFIRMED",null,"STOCK_UNKNOWN")),true).status()).isEqualTo("PARTIAL");
     }
 }

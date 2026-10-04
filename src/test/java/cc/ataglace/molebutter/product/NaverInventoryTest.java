@@ -21,7 +21,7 @@ class NaverInventoryTest {
         assertThat(data.optionsComplete()).isTrue();
         var supplier=new SupplierResult(new Offer("nv","","", "10481417934","https://shopping.naver.com/window-products/department/10481417934",1000L,0L,Mall.NAVER_SMART_STORE,null),new CodeMatch("SEARCH_RESULT",null,null,null,null,null),"CONFIRMED",data.options(),null);
         assertThat(SupplierRecommendationPolicy.soldOut(supplier)).isFalse();
-        assertThat(ProductLookupService.summarize(List.of(supplier),true,java.time.LocalDateTime.now()).status()).isEqualTo("SUCCESS");
+        assertThat(SupplierLookupService.summarize(List.of(supplier),true,java.time.LocalDateTime.now()).status()).isEqualTo("SUCCESS");
     }
     @Test void simpleStockKeepsZeroUnknownAndUnavailableDistinct()throws Exception{
         var json=new ObjectMapper();
@@ -88,13 +88,13 @@ class NaverInventoryTest {
     }
     @Test void preferredOfficialLookupUsesInventoryAndSharedResponse()throws Exception{
         var calls=new ArrayList<String>();String payload=fixture("12610379894");
-        ProductSourceGateway gateway=new ProductSourceGateway(){public String validateUrl(Mall m,String u){return u;}public List<SourceOption> options(Mall m,String id,String u){throw new AssertionError();}public SourceDetails inspect(Mall m,String id,String u){calls.add(id);return parser.details(m,payload,id);}};
+        SupplierProductGateway gateway=new SupplierProductGateway(){public String validateUrl(Mall m,String u){return u;}public List<SourceOption> options(Mall m,String id,String u){throw new AssertionError();}public SourceDetails inspect(Mall m,String id,String u){calls.add(id);return parser.details(m,payload,id);}};
         var info=parser.details(Mall.NAVER_SMART_STORE,payload,"12610379894").storeEvidence();
         var store=new Store("1",Mall.NAVER_SMART_STORE,"BRAND_STORE","헤지스 공식몰","channel",List.of("헤지스 공식몰"),0,null,List.of(new ExternalIdentity(info.namespace(),info.externalId())));
         var prefs=new Preferences(1,List.of(store),List.of(new Rule("1",Mall.NAVER_SMART_STORE,"1",0)));
-        var work=new ProductRefreshService.Work(1,2,0,"HIWA450","HIWA6E450BK","LF_ACCESSORY","HAZZYS",prefs,Map.of());
+        var work=new SupplierRefreshService.Work(1,2,0,"HIWA450","HIWA6E450BK","LF_ACCESSORY","HAZZYS",prefs,Map.of());
         var offer=new Offer("nv","HIWA6E450BK","헤지스","12610379894","https://shopping.naver.com/window-products/brandfashion/12610379894",94000L,0L,Mall.NAVER_SMART_STORE,null);
-        var service=new ProductLookupService(gateway,new BusinessTime());var search=new SearchResult(List.of(offer),true,null);
+        var service=new SupplierLookupService(gateway,new BusinessTime());var search=new SearchResult(List.of(offer),true,null);
         var result=service.lookup(work,search,()->true);service.lookup(work,search,()->true);
         assertThat(calls).containsExactly("12610379894");assertThat(result.status()).isEqualTo("SUCCESS");assertThat(result.suppliers().getFirst().state()).isEqualTo("CONFIRMED");assertThat(result.suppliers().getFirst().options().getFirst().stock()).isEqualTo(3);
     }

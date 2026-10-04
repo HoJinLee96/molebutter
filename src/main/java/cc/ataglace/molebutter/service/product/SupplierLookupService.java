@@ -8,13 +8,13 @@ import cc.ataglace.molebutter.dto.product.ProductDtos.*;
 import cc.ataglace.molebutter.infra.product.*;
 
 @Service @lombok.extern.slf4j.Slf4j
-public class ProductLookupService {
-    private final ProductSourceGateway sources;
+public class SupplierLookupService {
+    private final SupplierProductGateway sources;
     private final BusinessTime time;
     private final RecommendationLookupService diagnostics;
-    public ProductLookupService(ProductSourceGateway sources,BusinessTime time){this(sources,time,null);}
+    public SupplierLookupService(SupplierProductGateway sources,BusinessTime time){this(sources,time,null);}
     @org.springframework.beans.factory.annotation.Autowired
-    public ProductLookupService(ProductSourceGateway sources,BusinessTime time,RecommendationLookupService diagnostics){this.sources=sources;this.time=time;this.diagnostics=diagnostics;}
+    public SupplierLookupService(SupplierProductGateway sources,BusinessTime time,RecommendationLookupService diagnostics){this.sources=sources;this.time=time;this.diagnostics=diagnostics;}
     private final Map<Mall,RecommendationDiagnostic> restrictedMalls=new EnumMap<>(Mall.class);
     private final Map<String,RecommendationDiagnostic> currentDiagnostics=new LinkedHashMap<>();
     private String worker;
@@ -24,17 +24,17 @@ public class ProductLookupService {
     private final Map<String,CachedDetail> detailsCache=new LinkedHashMap<>(64,0.75f,true) {
         @Override protected boolean removeEldestEntry(Map.Entry<String,CachedDetail> entry){return size()>400;}
     };
-    public synchronized RefreshResult lookup(ProductRefreshService.Work work,SearchResult search,BooleanSupplier heartbeat) {
+    public synchronized RefreshResult lookup(SupplierRefreshService.Work work,SearchResult search,BooleanSupplier heartbeat) {
         return lookup(work,search,heartbeat,null);
     }
-    public synchronized RefreshResult lookup(ProductRefreshService.Work work,SearchResult search,BooleanSupplier heartbeat,String owner) {
+    public synchronized RefreshResult lookup(SupplierRefreshService.Work work,SearchResult search,BooleanSupplier heartbeat,String owner) {
         if(cachedRun!=work.runId()){detailsCache.clear();restrictedMalls.clear();cachedRun=work.runId();}
         worker=owner;currentDiagnostics.clear();
         if(diagnostics!=null){restrictedMalls.clear();restrictedMalls.putAll(diagnostics.restrictions(work.runId()));diagnostics.list(work.runId(),work.productId()).forEach(d->currentDiagnostics.put(d.listingKey(),d));}
         return lookupWithRecommendations(work,search,heartbeat);
     }
     public synchronized void invalidate(Mall mall,String productId){detailsCache.remove(mall+":"+productId);}
-    private RefreshResult lookupWithRecommendations(ProductRefreshService.Work work,SearchResult search,BooleanSupplier heartbeat) {
+    private RefreshResult lookupWithRecommendations(SupplierRefreshService.Work work,SearchResult search,BooleanSupplier heartbeat) {
         var candidates=ProductCandidateSearch.classify(search);
         var offers=new LinkedHashMap<String,Offer>();
         candidates.offers().forEach(o->offers.putIfAbsent(SupplierStorePolicy.listingKey(o),o));
@@ -102,44 +102,44 @@ public class ProductLookupService {
         }
         return SearchCompletion.summarize(saved,SearchCompletion.reason(search),time.now(),work.preferences(),work.manualStores(),limited,List.copyOf(currentDiagnostics.values()),basis);
     }
-    private void remember(ProductRefreshService.Work work,Map<String,SupplierResult> proofs,SupplierResult result){
+    private void remember(SupplierRefreshService.Work work,Map<String,SupplierResult> proofs,SupplierResult result){
         if(result.offer().price()!=null&&result.offer().price()>0&&SupplierGroupStockPolicy.verified(result)&&SupplierGroupStockPolicy.available(result)&&SupplierRecommendationPolicy.verified(work.preferences(),work.manualStores(),result)&&SupplierRecommendationPolicy.permittedSeller(result.offer().mall(),SupplierRecommendationPolicy.store(work.preferences(),work.manualStores(),result),result)){
             String key=SupplierGroupStockPolicy.key(result.offer());var old=proofs.get(key);
             if(old==null||result.offer().price()!=null&&(old.offer().price()==null||result.offer().price()<old.offer().price()))proofs.put(key,result);
         }
     }
-    private SupplierResult skipped(ProductRefreshService.Work work,Offer offer,Map<String,SupplierResult> proofs){
+    private SupplierResult skipped(SupplierRefreshService.Work work,Offer offer,Map<String,SupplierResult> proofs){
         String key=SupplierGroupStockPolicy.key(offer);var proof=key==null?null:proofs.get(key);
         // Cached responses cost no extra request and retain actual per-listing stock.
         if(proof==null||detailsCache.containsKey(offer.mall()+":"+offer.mallProductId())||offer.price()==null||proof.offer().price()==null||offer.price()<proof.offer().price())return null;
         var candidate=SupplierGroupStockPolicy.skip(offer,proof,work.runId());
         return SupplierRecommendationPolicy.verified(work.preferences(),work.manualStores(),candidate)?candidate:null;
     }
-    private SupplierResult groupedInspect(ProductRefreshService.Work work,Offer offer,BooleanSupplier heartbeat,Map<String,SupplierResult> proofs){
+    private SupplierResult groupedInspect(SupplierRefreshService.Work work,Offer offer,BooleanSupplier heartbeat,Map<String,SupplierResult> proofs){
         var skipped=skipped(work,offer,proofs);if(skipped!=null){if(!heartbeat.getAsBoolean())throw new IllegalStateException("작업 소유권이 변경되었습니다.");return skipped;}
         var result=inspect(work,offer,heartbeat);remember(work,proofs,result);return result;
     }
-    public SupplierResult inspectFresh(ProductRefreshService.Work work,Offer offer){
+    public SupplierResult inspectFresh(SupplierRefreshService.Work work,Offer offer){
         // Manual inspections deliberately bypass the run cache.
         var detail=sources.inspect(offer.mall(),offer.mallProductId(),offer.url());
         return observed(work,offer,detail,time.now());
     }
-    private SupplierResult observed(ProductRefreshService.Work work,Offer offer,SourceDetails detail,java.time.LocalDateTime observedAt){
+    private SupplierResult observed(SupplierRefreshService.Work work,Offer offer,SourceDetails detail,java.time.LocalDateTime observedAt){
         if(offer.mall()==Mall.NAVER_SMART_STORE){offer=offer.withChannel(NaverChannelPolicy.inspected(offer,detail));if(!NaverChannelPolicy.comparable(offer))return new SupplierResult(offer,searchResult(null),"CHANNEL_UNCONFIRMED",List.of(),"판매채널 확인 필요");}
         var branch=SupplierBranch.resolve(offer,detail);String state=detail.options().isEmpty()?"OPTIONS_UNKNOWN":!detail.optionsComplete()?"OPTIONS_PARTIAL":"CONFIRMED";
         var result=new SupplierResult(offer,searchResult(detail.modelCode()),state,detail.options(),state.equals("OPTIONS_PARTIAL")?"일부 옵션만 확인했습니다.":null,detail.title(),detail.modelCode(),detail.brand(),branch);
         boolean verified=SupplierRecommendationPolicy.verified(work.preferences(),work.manualStores(),result)&&branch!=null&&branch.store()!=null&&!"CONFLICT".equals(branch.state());
         return new SupplierResult(offer,result.match(),state,result.options(),result.message(),result.sourceTitle(),result.sourceModelCode(),result.sourceBrand(),branch,new StockEvidence(work.runId(),null,branch==null||branch.store()==null?null:branch.store().references().get("channelId"),observedAt,verified));
     }
-    private void recordDiagnostic(ProductRefreshService.Work work,Offer offer,String kind,String code,Integer httpStatus,boolean restricted){
+    private void recordDiagnostic(SupplierRefreshService.Work work,Offer offer,String kind,String code,Integer httpStatus,boolean restricted){
         var diagnostic=new RecommendationDiagnostic(Long.toString(work.runId()),Long.toString(work.productId()),SupplierStorePolicy.listingKey(offer),offer.mall(),offer.mallProductId(),offer.price(),offer.url(),kind,code,httpStatus,time.now());
         if(diagnostics!=null)diagnostics.record(worker,work,diagnostic,restricted);
         currentDiagnostics.putIfAbsent(diagnostic.listingKey(),diagnostic);
         if(restricted){restrictedMalls.put(offer.mall(),diagnostic);currentDiagnostics.put(diagnostic.listingKey(),diagnostic);}
         log.warn("[RECOMMENDATION_LOOKUP] runId={} productId={} mall={} supplierProductId={} kind={} code={} httpStatus={}",work.runId(),work.productId(),offer.mall(),offer.mallProductId(),kind,code,httpStatus);
     }
-    private SupplierResult inspect(ProductRefreshService.Work work,Offer offer,BooleanSupplier heartbeat){return inspect(work,offer,heartbeat,false);}
-    private SupplierResult inspect(ProductRefreshService.Work work,Offer offer,BooleanSupplier heartbeat,boolean recommendation){
+    private SupplierResult inspect(SupplierRefreshService.Work work,Offer offer,BooleanSupplier heartbeat){return inspect(work,offer,heartbeat,false);}
+    private SupplierResult inspect(SupplierRefreshService.Work work,Offer offer,BooleanSupplier heartbeat,boolean recommendation){
         if(!heartbeat.getAsBoolean())throw new IllegalStateException("작업 소유권이 변경되었습니다.");
         var restriction=restrictedMalls.get(offer.mall());
         if(restriction!=null)throw new SupplierAccessRestricted(offer.mall(),restriction.causeCode(),restriction.httpStatus());
@@ -156,7 +156,7 @@ public class ProductLookupService {
             return new SupplierResult(offer,searchResult(null),"FAILED",List.of(),failure.getMessage(),null,null,null,SupplierBranch.resolve(offer,null));
         }
     }
-    private boolean eligible(ProductRefreshService.Work work,Offer offer) {
+    private boolean eligible(SupplierRefreshService.Work work,Offer offer) {
         if(work.preferences()==null)return true;
         if(!work.preferences().mallAllowed(offer.mall()))return false;
         String manual=work.manualStores().get(SupplierStorePolicy.listingKey(offer));
@@ -174,7 +174,7 @@ public class ProductLookupService {
     public static RefreshResult summarize(List<SupplierResult> results,boolean searchComplete,java.time.LocalDateTime now) {
         var matched=results.stream().filter(s->s.accepted()&&NaverChannelPolicy.comparable(s.offer())).toList();
         var lowest=matched.stream().map(SupplierResult::offer).filter(o->o.price()!=null&&o.price()>0).min(Comparator.comparing(Offer::price).thenComparing(o->Objects.toString(o.naverProductId(),""))).orElse(null);
-        var assessment=ProductStatusPolicy.assess(results,searchComplete);
+        var assessment=SupplierLookupStatusPolicy.assess(results,searchComplete);
         return new RefreshResult(assessment.status(),lowest==null?null:lowest.price(),lowest==null?null:lowest.mallName(),lowest==null?null:lowest.deliveryFee(),List.copyOf(results),now,
             "PARTIAL".equals(assessment.status())?"일부 매입처 또는 가격·옵션·재고 정보의 확인이 필요합니다.":null);
 

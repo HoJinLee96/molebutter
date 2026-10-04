@@ -5,7 +5,7 @@ import java.util.Objects;
 import org.springframework.stereotype.Service;
 import cc.ataglace.molebutter.dto.product.ProductDtos.Mall;
 import cc.ataglace.molebutter.dto.product.SupplierDtos.*;
-import cc.ataglace.molebutter.infra.product.ProductSourceGateway;
+import cc.ataglace.molebutter.infra.product.SupplierProductGateway;
 import cc.ataglace.molebutter.infra.product.NaverChannelPolicy;
 import cc.ataglace.molebutter.dto.product.ProductDtos.*;
 import lombok.RequiredArgsConstructor;
@@ -14,7 +14,7 @@ import lombok.RequiredArgsConstructor;
 @Service @RequiredArgsConstructor
 public class OfficialBrandStoreService {
     private final ProductStore db;
-    private final ProductSourceGateway gateway;
+    private final SupplierProductGateway gateway;
     private final SupplierPreferenceService preferences;
 
     public static String productId(String value){

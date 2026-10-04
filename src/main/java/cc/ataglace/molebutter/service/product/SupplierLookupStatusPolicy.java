@@ -5,8 +5,8 @@ import cc.ataglace.molebutter.dto.product.ProductDtos.*;
 import cc.ataglace.molebutter.dto.product.SupplierDtos.*;
 
 /** Product health is separate from job control and actual option availability. */
-public final class ProductStatusPolicy {
-    private ProductStatusPolicy() {}
+public final class SupplierLookupStatusPolicy {
+    private SupplierLookupStatusPolicy() {}
     public static final int VERSION=2;
     public record Assessment(String status,List<String> reasons) {}
     public static boolean target(SupplierResult s,Preferences p,Map<String,String> manual,SelectionBasis selection){
@@ -33,7 +33,7 @@ public final class ProductStatusPolicy {
             if(s.options().stream().anyMatch(o->!closed(o)&&(o.stock()==null||o.stock()<0||!"AVAILABLE".equals(o.state()))))reasons.add("STOCK_UNCONFIRMED");
         }
         if(!reasons.isEmpty())return new Assessment("PARTIAL",List.copyOf(reasons));
-        if(targets.stream().allMatch(s->!s.skipped()&&!s.options().isEmpty()&&s.options().stream().allMatch(ProductStatusPolicy::closed)))
+        if(targets.stream().allMatch(s->!s.skipped()&&!s.options().isEmpty()&&s.options().stream().allMatch(SupplierLookupStatusPolicy::closed)))
             return new Assessment("SOLD_OUT",List.of("ALL_UNAVAILABLE"));
         // A skipped row is normal only while its positive representative remains in this result.
         boolean positive=targets.stream().filter(s->!s.skipped()).flatMap(s->s.options().stream()).anyMatch(o->"AVAILABLE".equals(o.state())&&o.stock()!=null&&o.stock()>0);

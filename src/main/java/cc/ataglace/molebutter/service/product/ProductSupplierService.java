@@ -98,7 +98,7 @@ public class ProductSupplierService {
     private List<StockLookupJob> stockJobs(long product){
         return db.jdbc.query("SELECT j.*,((SELECT stock_lookup_blocked_job FROM product_settings WHERE id=1)=j.id) blocking FROM supplier_stock_lookup j WHERE j.product_id=? AND (j.id=(SELECT MAX(k.id) FROM supplier_stock_lookup k WHERE k.supplier_id=j.supplier_id) OR j.id=(SELECT stock_lookup_blocked_job FROM product_settings WHERE id=1)) ORDER BY j.id",(r,n)->new StockLookupJob(r.getString("id"),r.getString("product_id"),r.getString("supplier_id"),r.getString("status"),r.getLong("revision"),r.getString("message"),ProductStore.date(r,"created_at"),ProductStore.date(r,"finished_at"),r.getBoolean("blocking")),product);
     }
-    void recordStock(Long actor,ProductRefreshService.Work work,long supplier,SupplierResult result){
+    void recordStock(Long actor,SupplierRefreshService.Work work,long supplier,SupplierResult result){
         var before=db.jdbc.queryForObject("SELECT observation FROM product_supplier WHERE id=?",String.class,supplier);
         var identity=SupplierStorePolicy.identity(result.offer(),result.branch());
         Store auto=identity==null?null:preferences.observed(result.offer().mall(),identity);
@@ -157,7 +157,7 @@ public class ProductSupplierService {
         writeSelection(actor,product,chosen==null?null:chosen.id());history(actor,product,"SELECT",old,chosen);db.jdbc.update("UPDATE catalog_product SET revision=revision+1 WHERE id=?",product);changes.reproject(product);return comparison(product).withChanges(changes.summary(product));}
     private void writeSelection(Long actor,long product,String supplier){db.jdbc.update("DELETE FROM product_supplier_selection WHERE product_id=?",product);if(supplier!=null)db.jdbc.update("INSERT INTO product_supplier_selection(product_id,supplier_id,selected_by,selected_at) VALUES(?,?,?,?)",product,supplier,actor,db.time.now());}
     /** 결과 확정은 사용자 선정·수동 지정 컬럼을 갱신하지 않는다. */
-    void record(ProductRefreshService.Work work,RefreshResult result){
+    void record(SupplierRefreshService.Work work,RefreshResult result){
         String image=null;
         var searchTimes=db.jdbc.queryForList("SELECT c.checked_at FROM product_refresh_search c JOIN product_refresh_entry e ON e.run_id=c.run_id AND c.query_hash=SHA2(e.query,256) WHERE e.run_id=? AND e.product_id=?",java.sql.Timestamp.class,work.runId(),work.productId());
         var priceAt=searchTimes.size()==1?searchTimes.getFirst().toLocalDateTime():result.checkedAt();

@@ -18,7 +18,7 @@ public class SupplierStockLookupService {
     private final RecommendationLookupService recommendationLookups;
     private final ProductSupplierService suppliers;
     private final SupplierPreferenceService preferences;
-    public record Work(long id,long actor,ProductRefreshService.Work product,long supplier,Offer offer,SupplierResult previous) {}
+    public record Work(long id,long actor,SupplierRefreshService.Work product,long supplier,Offer offer,SupplierResult previous) {}
     private OperationFailure stale(){return new OperationFailure("조회 기준이 변경되었습니다. 새로 조회해 주세요.");}
     private Map<String,Object> row(long id){var rows=db.jdbc.queryForList("SELECT * FROM supplier_stock_lookup WHERE id=?",id);if(rows.isEmpty())throw new BusinessException(ErrorCode.NOT_FOUND);return rows.getFirst();}
     private long num(Map<String,Object> r,String key){return ((Number)r.get(key)).longValue();}
@@ -65,7 +65,7 @@ public class SupplierStockLookupService {
             if(recommendationLookups.restricted(num(j,"run_id"),result.offer().mall())){terminal(id,"CANCELLED","해당 작업에서 쇼핑몰 접속 제한이 확인되어 개별 조회를 생략했습니다. 새 최신화에서 다시 확인해 주세요.");continue;}
             db.jdbc.update("UPDATE product_settings SET worker_owner=?,worker_until=? WHERE id=1",owner,db.time.now().plusMinutes(10));
             db.jdbc.update("UPDATE supplier_stock_lookup SET status='RUNNING',started_at=?,message=NULL,revision=revision+1 WHERE id=?",db.time.now(),id);
-            var work=new ProductRefreshService.Work(num(j,"run_id"),product,num(j,"lookup_revision"),"","","","",preferences.snapshot(),suppliers.manualAssignments(product),suppliers.selectionBasis(product));
+            var work=new SupplierRefreshService.Work(num(j,"run_id"),product,num(j,"lookup_revision"),"","","","",preferences.snapshot(),suppliers.manualAssignments(product),suppliers.selectionBasis(product));
             return new Work(id,num(j,"actor_id"),work,num(j,"supplier_id"),result.offer(),result);
         }return null;
     }
@@ -85,8 +85,8 @@ public class SupplierStockLookupService {
         db.jdbc.update("UPDATE product_settings SET stock_lookup_blocked_job=? WHERE id=1",w.id());
         var pending=row(w.id());
         if("RUNNING".equals(pending.get("status"))){
-            if(valid(pending)&&ProductStatusPolicy.target(w.previous(),w.product().preferences(),w.product().manualStores(),w.product().selectionBasis()))
-                db.jdbc.update("UPDATE catalog_product SET latest_status='PARTIAL',latest_result=JSON_SET(latest_result,'$.status','PARTIAL','$.message','개별 재고 조회 접속 제한 · 작업 확인 필요','$.statusPolicyVersion',?,'$.statusReasons',JSON_ARRAY('STOCK_LOOKUP_BLOCKED')),revision=revision+1 WHERE id=? AND lookup_revision=?",ProductStatusPolicy.VERSION,w.product().productId(),w.product().revision());
+            if(valid(pending)&&SupplierLookupStatusPolicy.target(w.previous(),w.product().preferences(),w.product().manualStores(),w.product().selectionBasis()))
+                db.jdbc.update("UPDATE catalog_product SET latest_status='PARTIAL',latest_result=JSON_SET(latest_result,'$.status','PARTIAL','$.message','개별 재고 조회 접속 제한 · 작업 확인 필요','$.statusPolicyVersion',?,'$.statusReasons',JSON_ARRAY('STOCK_LOOKUP_BLOCKED')),revision=revision+1 WHERE id=? AND lookup_revision=?",SupplierLookupStatusPolicy.VERSION,w.product().productId(),w.product().revision());
             terminal(w.id(),"BLOCKED",message);
         }
         release(owner);

@@ -37,7 +37,7 @@ class ProductFlowIT {
     @DynamicPropertySource static void databases(DynamicPropertyRegistry r){AuthenticationFlowIT.databases(r);}
     @TestConfiguration(proxyBeanMethods=false) static class ClockConfig{@Bean @Primary TestTime productTestTime(){return new TestTime();}
         @Bean @Primary BrandGateway brandGateway(){return new BrandGateway();}}
-    static class BrandGateway implements cc.ataglace.molebutter.infra.product.ProductSourceGateway {
+    static class BrandGateway implements cc.ataglace.molebutter.infra.product.SupplierProductGateway {
         String payload="";
         public String validateUrl(Mall mall,String url){return url;}
         public List<SourceOption> options(Mall mall,String id,String url){throw new AssertionError("공식몰 등록은 재고를 조회하지 않는다");}
@@ -49,7 +49,7 @@ class ProductFlowIT {
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired cc.ataglace.molebutter.service.attendance.AttendanceService attendance;
     @Autowired SupplierPreferenceService preferred; @Autowired ProductSupplierService supplierService;
-    @Autowired SharedSettingsService settings; @Autowired ProductService products; @Autowired ProductRefreshService refresh; @Autowired ProductStore store;
+    @Autowired SharedSettingsService settings; @Autowired ProductService products; @Autowired SupplierRefreshService refresh; @Autowired ProductStore store;
     @Autowired UserRepository users; @Autowired PasswordEncoder encoder; @Autowired JdbcTemplate jdbc; @Autowired ObjectMapper json; @Autowired TestTime time; @LocalServerPort int port;
     Long actor;String brand;
     @BeforeEach void reset(){
@@ -237,7 +237,7 @@ class ProductFlowIT {
         assertThat(refresh.status(actor,Long.parseLong(p.id())).status()).isEqualTo("FAILED");assertThat(refresh.status(actor,Long.parseLong(p.id())).active()).isTrue();
     }
     @Autowired ProductSearchStatusRepair statusRepair;
-    ProductRefreshService.Work legacyLimitedResult(CatalogProduct p,boolean stockProblem){
+    SupplierRefreshService.Work legacyLimitedResult(CatalogProduct p,boolean stockProblem){
         start(p);var w=refresh.claim("repair-test");
         refresh.cache(w,new SearchResult(List.of(),false,"최대 3페이지 범위의 검색 결과입니다. 이후 페이지는 확인하지 않았습니다."));
         var listing=listing(Mall.LFMALL,"one",100,"온라인점","CONFIRMED");
@@ -311,7 +311,7 @@ class ProductFlowIT {
         assertThat(statusRepair.preview()).noneMatch(c->c.productId()==Long.parseLong(p.id()));
     }
     @Autowired RecommendationLookupService recommendationJournal;
-    RecommendationDiagnostic recommendationDiagnostic(ProductRefreshService.Work w,Mall mall,String id,String kind){return new RecommendationDiagnostic(Long.toString(w.runId()),Long.toString(w.productId()),mall+":"+id+":nv",mall,id,150190L,"https://www.lotteimall.com/goods/viewGoodsDetail.lotte?goods_no="+id,kind,"HTTP_RESTRICTED",403,time.now());}
+    RecommendationDiagnostic recommendationDiagnostic(SupplierRefreshService.Work w,Mall mall,String id,String kind){return new RecommendationDiagnostic(Long.toString(w.runId()),Long.toString(w.productId()),mall+":"+id+":nv",mall,id,150190L,"https://www.lotteimall.com/goods/viewGoodsDetail.lotte?goods_no="+id,kind,"HTTP_RESTRICTED",403,time.now());}
     @Test void recommendationJournalSurvivesLeaseRecoveryAndRejectsStaleWorkers()throws Exception{
         var p=create("DBBA468BK");start(p);var work=refresh.claim("first");var d=recommendationDiagnostic(work,Mall.LOTTE_IMALL,"42","FAILED");
         var pool=Executors.newFixedThreadPool(2);try{var a=pool.submit(()->recommendationJournal.record("first",work,d,true));var b=pool.submit(()->recommendationJournal.record("first",work,d,true));a.get();b.get();}finally{pool.shutdownNow();}
@@ -331,14 +331,14 @@ class ProductFlowIT {
         var previousOffer=byMall(p,Mall.HI_THEHYUNDAI).result().offer();
         var selected=new Offer(previousOffer.naverProductId(),previousOffer.title(),"더현대Hi",previousOffer.mallProductId(),"https://hi.thehyundai.com/product/"+previousOffer.mallProductId(),166880L,0L,Mall.HI_THEHYUNDAI,null);
         var candidate=new Offer("candidate","가방","롯데홈쇼핑","42","https://www.lotteimall.com/goods/viewGoodsDetail.lotte?goods_no=42",150190L,0L,Mall.LOTTE_IMALL,null);
-        var calls=new ArrayList<String>();var gateway=new cc.ataglace.molebutter.infra.product.ProductSourceGateway(){
+        var calls=new ArrayList<String>();var gateway=new cc.ataglace.molebutter.infra.product.SupplierProductGateway(){
             public String validateUrl(Mall mall,String url){return url;}public List<SourceOption> options(Mall mall,String id,String url){return inspect(mall,id,url).options();}
             public SourceDetails inspect(Mall mall,String id,String url){calls.add(id);if(mall==Mall.LOTTE_IMALL)throw new cc.ataglace.molebutter.infra.product.SupplierAccessRestricted(mall,"HTTP_RESTRICTED",403);return new SourceDetails("商品","","",List.of(new SourceOption("FREE","FREE",50L,"AVAILABLE")),"목동점");}
         };
-        var lookup=new ProductLookupService(gateway,time,recommendationJournal);var result=lookup.lookup(work,new SearchResult(List.of(selected,candidate),true,null),()->refresh.heartbeat("w",work),"w");
+        var lookup=new SupplierLookupService(gateway,time,recommendationJournal);var result=lookup.lookup(work,new SearchResult(List.of(selected,candidate),true,null),()->refresh.heartbeat("w",work),"w");
         // Recover after a process/lease loss before the product result was committed.
         time.value=time.value.plusMinutes(11);var recovered=refresh.claim("recovered");
-        var resumed=new ProductLookupService(gateway,time,recommendationJournal).lookup(recovered,new SearchResult(List.of(selected,candidate),true,null),()->refresh.heartbeat("recovered",recovered),"recovered");
+        var resumed=new SupplierLookupService(gateway,time,recommendationJournal).lookup(recovered,new SearchResult(List.of(selected,candidate),true,null),()->refresh.heartbeat("recovered",recovered),"recovered");
         assertThat(Collections.frequency(calls,"42")).isEqualTo(1);
         refresh.finish("recovered",recovered,resumed);assertThat(refresh.claim("recovered")).isNull();
         assertThat(current(p).latestStatus()).isEqualTo("SUCCESS");assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(166880);
@@ -734,11 +734,11 @@ class ProductFlowIT {
         assertThat(c.selected().priceStatus()).isEqualTo("UNSUPPORTED_CHANNEL");assertThat(c.selected().selectable()).isFalse();assertThat(c.selected().current()).isFalse();
         // A new run must ignore the selected ordinary store and defer recommendations.
         start(p);var w=refresh.claim("channel");var calls=new java.util.concurrent.atomic.AtomicInteger();
-        var gateway=new cc.ataglace.molebutter.infra.product.ProductSourceGateway(){
+        var gateway=new cc.ataglace.molebutter.infra.product.SupplierProductGateway(){
             public String validateUrl(Mall m,String url){return url;}
             public List<SourceOption> options(Mall m,String id,String url){calls.incrementAndGet();throw new AssertionError();}
         };
-        var result=new ProductLookupService(gateway,time).lookup(w,new SearchResult(List.of(json.treeToValue(offer,Offer.class)),true,null),()->true);
+        var result=new SupplierLookupService(gateway,time).lookup(w,new SearchResult(List.of(json.treeToValue(offer,Offer.class)),true,null),()->true);
         refresh.finish("channel",w,result);refresh.claim("channel");
         assertThat(calls.get()).isZero();assertThat(compare(p).recommendationStatus().state()).isEqualTo("PRICE_UNCONFIRMED");
         assertThatThrownBy(()->choose(p,old)).isInstanceOf(IllegalStateException.class);
@@ -756,7 +756,7 @@ class ProductFlowIT {
         var official=officialStores.register(actor,new StoreInput(null,Mall.NAVER_SMART_STORE,"BRAND_STORE","헤지스",null,null,url,preview.channelUid(),preview.preferenceRevision()));
         preferred.saveMall(actor,Mall.NAVER_SMART_STORE,new MallPreferenceInput(preferred.get(actor).revision(),"STORES",List.of(official.id()),List.of(),true));
         var p=create("HIWA6E450BK");var offer=new Offer("NV","HIWA6E450BK","헤지스",id,url,94000L,0L,Mall.NAVER_SMART_STORE,null,new NaverChannel(NaverChannelType.WINDOW,"BRAND_FASHION"));
-        var search=new SearchResult(List.of(offer),true,null);var lookup=new ProductLookupService(brandGateway,time);
+        var search=new SearchResult(List.of(offer),true,null);var lookup=new SupplierLookupService(brandGateway,time);
         start(p);var w=refresh.claim("naver-test");var result=lookup.lookup(w,search,()->true);
         refresh.finish("naver-test",w,result);refresh.claim("naver-test");
         var c=compare(p);assertThat(c.pending()).isEmpty();assertThat(c.groups()).hasSize(1);
@@ -938,7 +938,7 @@ class ProductFlowIT {
     }
 
     SupplierResult listing(Mall mall,String id,long price,String branch,String state){return new SupplierResult(new Offer("NV"+id,"헤지스 ABCD6E123BK",mall.getDisplayName(),id,"https://www.lfmall.co.kr/app/product/"+id,price,0L,mall,null,mall==Mall.NAVER_SMART_STORE?new NaverChannel(NaverChannelType.WINDOW,"DEPARTMENT"):null),new CodeMatch("MATCHED","ABCD6E123BK","ABCD123","6E","BK","시즌 차이"),state,state.equals("FAILED")?List.of():List.of(new SourceOption("ONE","FREE",state.equals("SOLD_OUT")?0L:2L,state.equals("SOLD_OUT")?"SOLD_OUT":"AVAILABLE")),null,null,null,null,new BranchInfo(branch,branch.isBlank()?"UNKNOWN":"CONFIRMED","SEARCH_TITLE",branch));}
-    void finish(CatalogProduct p,List<SupplierResult> results){start(p);var w=refresh.claim("w");refresh.finish("w",w,ProductLookupService.summarize(results,true,time.now()));refresh.claim("w");}
+    void finish(CatalogProduct p,List<SupplierResult> results){start(p);var w=refresh.claim("w");refresh.finish("w",w,SupplierLookupService.summarize(results,true,time.now()));refresh.claim("w");}
     Comparison compare(CatalogProduct p){var c=supplierService.comparison(actor,Long.parseLong(p.id()));assertThat(c.pending()).isEmpty();assertThat(c.excluded()).isEmpty();return c;}
     // Hidden historical records remain inspectable in storage, not in the comparison API.
     List<Listing> storedListings(CatalogProduct p){return jdbc.queryForList("SELECT id FROM product_supplier WHERE product_id=? AND merged_into IS NULL ORDER BY id",Long.class,p.id()).stream().map(id->(Listing)org.springframework.test.util.ReflectionTestUtils.invokeMethod((Object)org.springframework.test.util.AopTestUtils.getUltimateTargetObject(supplierService),"listing",Long.parseLong(p.id()),id)).toList();}
@@ -973,7 +973,7 @@ class ProductFlowIT {
         finish(p,List.of(base,other));var choices=compare(p).groups().getFirst().listings();choose(p,choices.getFirst());
         long run=Long.parseLong(start(p));refresh.control(actor,run,"pause");refresh.control(actor,run,"resume");var work=refresh.claim("snapshot");
         assertThat(work.selectionBasis().supplierId()).isEqualTo(choices.getFirst().id());assertThat(work.preferences().mallAllowed(Mall.HI_THEHYUNDAI)).isFalse();
-        choose(p,choices.getLast());refresh.finish("snapshot",work,ProductLookupService.summarize(List.of(base,other,cheap),true,time.now()));refresh.claim("snapshot");
+        choose(p,choices.getLast());refresh.finish("snapshot",work,SupplierLookupService.summarize(List.of(base,other,cheap),true,time.now()));refresh.claim("snapshot");
         assertThat(compare(p).selected().id()).isEqualTo(choices.getLast().id());assertThat(compare(p).recommendationStatus().state()).isEqualTo("SELECTION_CHANGED");assertThat(compare(p).recommendations()).isEmpty();
         finish(p,List.of(base,other,cheap));assertThat(compare(p).recommendations()).hasSize(1);var candidate=compare(p).recommendations().getFirst().listings().getFirst();assertThat(candidate.inventoryState()).isEqualTo("FAILED");
         preferred.saveMall(actor,Mall.HI_THEHYUNDAI,new MallPreferenceInput(preferred.get(actor).revision(),"ALL",List.of(),List.of(),true));
@@ -1012,8 +1012,8 @@ class ProductFlowIT {
     @Test void unknownStoresStaySeparateAndManualAssignmentSurvivesConflictingRefresh(){var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.HI_THEHYUNDAI,"one",100,"","CONFIRMED"),listing(Mall.HI_THEHYUNDAI,"two",200,"","CONFIRMED")));assertThat(hiddenReview(p)).hasSize(2);assertThat(compare(p).groups()).isEmpty();var first=hiddenReview(p).getFirst();assertThatThrownBy(()->choose(p,first)).hasMessageContaining("선호 매입처 또는 현재 유효한 추천");var branch=preferred.saveStore(actor,null,new StoreInput(null,Mall.HI_THEHYUNDAI,"BRANCH","목동점",null));supplierService.assign(actor,Long.parseLong(p.id()),Long.parseLong(first.id()),new AssignmentInput(first.revision(),branch.id()));choose(p,compare(p).groups().getFirst().listings().getFirst());
         finish(p,List.of(listing(Mall.HI_THEHYUNDAI,"one",300,"천호점","CONFIRMED")));var pinned=current(p).selectedSupplier();assertThat(pinned.store().id()).isEqualTo(branch.id());assertThat(pinned.manual()).isTrue();assertThat(pinned.conflict()).isTrue();assertThat(hiddenReview(p)).hasSize(1);assertThatThrownBy(()->supplierService.assign(actor,Long.parseLong(p.id()),Long.parseLong(first.id()),new AssignmentInput(first.revision(),null))).isInstanceOf(IllegalStateException.class);}
     @Test void stockFailureDoesNotInvalidateFreshPriceAndMissingSearchRetainsReferenceOnly(){var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.LFMALL,"one",94000,"온라인점","CONFIRMED")));choose(p,byMall(p,Mall.LFMALL));time.value=time.value.plusHours(1);finish(p,List.of(listing(Mall.LFMALL,"one",95000,"온라인점","FAILED")));var chosen=current(p).selectedSupplier();assertThat(chosen.referencePrice()).isEqualTo(95000);assertThat(chosen.priceStatus()).isEqualTo("CONFIRMED");assertThat(chosen.inventoryState()).isEqualTo("FAILED");var checked=chosen.priceCheckedAt();time.value=time.value.plusHours(1);finish(p,List.of());chosen=current(p).selectedSupplier();assertThat(chosen.priceStatus()).isEqualTo("MISSING");assertThat(chosen.referencePrice()).isEqualTo(95000);assertThat(chosen.priceCheckedAt()).isEqualTo(checked);assertThat(chosen.current()).isFalse();}
-    @Test void preferenceSnapshotIsStableAndExcludedSelectionDoesNotDisappear(){var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.LFMALL,"one",94000,"온라인점","CONFIRMED")));choose(p,byMall(p,Mall.LFMALL));start(p);var w=refresh.claim("w");var rule=preferred.get(actor).rules().stream().filter(r->r.mall()==Mall.LFMALL).findFirst().orElseThrow();preferred.deleteRule(actor,Long.parseLong(rule.id()),rule.revision());assertThat(w.preferences().mallAllowed(Mall.LFMALL)).isTrue();assertThat(current(p).selectedSupplier().preferred()).isFalse();refresh.finish("w",w,ProductLookupService.summarize(List.of(listing(Mall.LFMALL,"one",96000,"온라인점","CONFIRMED")),true,time.now()));refresh.claim("w");assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(96000);assertThat(current(p).selectedSupplier().preferred()).isFalse();assertThat(compare(p).groups()).isEmpty();assertThat(compare(p).selected()).isNotNull();}
-    @Test void selectionMadeDuringRefreshAndStaleDoubleClickAreSafe()throws Exception {var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.LFMALL,"a",100,"온라인점","CONFIRMED"),listing(Mall.LFMALL,"b",200,"온라인점","CONFIRMED")));var listings=compare(p).groups().getFirst().listings();choose(p,listings.getFirst());start(p);var w=refresh.claim("w");long rev=current(p).revision();choose(p,listings.getLast());assertThatThrownBy(()->supplierService.select(actor,Long.parseLong(p.id()),new SelectionInput(rev,listings.getFirst().id()))).isInstanceOf(IllegalStateException.class);refresh.finish("w",w,ProductLookupService.summarize(List.of(listing(Mall.LFMALL,"a",50,"온라인점","CONFIRMED"),listing(Mall.LFMALL,"b",300,"온라인점","CONFIRMED")),true,time.now()));assertThat(current(p).selectedSupplier().id()).isEqualTo(listings.getLast().id());assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(300);}
+    @Test void preferenceSnapshotIsStableAndExcludedSelectionDoesNotDisappear(){var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.LFMALL,"one",94000,"온라인점","CONFIRMED")));choose(p,byMall(p,Mall.LFMALL));start(p);var w=refresh.claim("w");var rule=preferred.get(actor).rules().stream().filter(r->r.mall()==Mall.LFMALL).findFirst().orElseThrow();preferred.deleteRule(actor,Long.parseLong(rule.id()),rule.revision());assertThat(w.preferences().mallAllowed(Mall.LFMALL)).isTrue();assertThat(current(p).selectedSupplier().preferred()).isFalse();refresh.finish("w",w,SupplierLookupService.summarize(List.of(listing(Mall.LFMALL,"one",96000,"온라인점","CONFIRMED")),true,time.now()));refresh.claim("w");assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(96000);assertThat(current(p).selectedSupplier().preferred()).isFalse();assertThat(compare(p).groups()).isEmpty();assertThat(compare(p).selected()).isNotNull();}
+    @Test void selectionMadeDuringRefreshAndStaleDoubleClickAreSafe()throws Exception {var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.LFMALL,"a",100,"온라인점","CONFIRMED"),listing(Mall.LFMALL,"b",200,"온라인점","CONFIRMED")));var listings=compare(p).groups().getFirst().listings();choose(p,listings.getFirst());start(p);var w=refresh.claim("w");long rev=current(p).revision();choose(p,listings.getLast());assertThatThrownBy(()->supplierService.select(actor,Long.parseLong(p.id()),new SelectionInput(rev,listings.getFirst().id()))).isInstanceOf(IllegalStateException.class);refresh.finish("w",w,SupplierLookupService.summarize(List.of(listing(Mall.LFMALL,"a",50,"온라인점","CONFIRMED"),listing(Mall.LFMALL,"b",300,"온라인점","CONFIRMED")),true,time.now()));assertThat(current(p).selectedSupplier().id()).isEqualTo(listings.getLast().id());assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(300);}
     @Test void branchRenameKeepsIdentityAndPreferencesAndLookupRevision(){var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.HI_THEHYUNDAI,"one",100,"목동점","CONFIRMED")));var source=byMall(p,Mall.HI_THEHYUNDAI);choose(p,source);var branch=source.store();preferred.saveStore(actor,Long.parseLong(branch.id()),new StoreInput(branch.revision(),branch.mall(),branch.kind(),"현대 목동",null));finish(p,List.of(listing(Mall.HI_THEHYUNDAI,"one",100,"목동점","CONFIRMED")));assertThat(current(p).selectedSupplier().store().id()).isEqualTo(branch.id());assertThat(current(p).selectedSupplier().store().name()).isEqualTo("현대 목동");assertThat(current(p).lookupRevision()).isZero();assertThatThrownBy(()->preferred.deleteStore(actor,Long.parseLong(branch.id()),1L)).hasMessageContaining("사용 중");}
     @Test void selectionAndStoreApisEnforcePermissionsCsrfAndOwnership()throws Exception {var p=create("ABCD6F123BK");finish(p,List.of(listing(Mall.LFMALL,"a",100,"온라인점","CONFIRMED")));String route="/api/products/"+p.id()+"/selection";var staff=login(account(UserRole.PRODUCT));var adminUser=account(UserRole.ADMIN);var admin=login(adminUser);var body=Map.of("revision",current(p).revision(),"supplierId",byMall(p,Mall.LFMALL).id());status(new Browser().get("/api/settings/preferred-suppliers"),401);status(login(account(UserRole.VIEWER)).get("/api/settings/preferred-suppliers"),403);status(staff.get("/api/settings/preferred-suppliers"),200);status(staff.post("/api/settings/preferred-suppliers",Map.of("mall","LFMALL")),403);status(staff.send("POST",route,body,null),403);status(staff.post(route,body),200);status(admin.post(route,body),409);var other=create("ABCD6F124BK");status(staff.post("/api/products/"+other.id()+"/selection",Map.of("revision",other.revision(),"supplierId",byMall(p,Mall.LFMALL).id())),404);jdbc.update("UPDATE `user` SET user_status='SUSPENDED',auth_version=auth_version+1 WHERE id=?",adminUser.getId());status(admin.get("/api/settings/preferred-suppliers"),401);assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_supplier_change WHERE change_type='SELECT'",Long.class)).isEqualTo(1);jdbc.update("UPDATE `user` SET user_role='PRODUCT' WHERE id=?",adminUser.getId());}
 
@@ -1087,13 +1087,13 @@ class ProductFlowIT {
             }
         }
         var calls=new ArrayList<Mall>();
-        var gateway=new cc.ataglace.molebutter.infra.product.ProductSourceGateway(){
+        var gateway=new cc.ataglace.molebutter.infra.product.SupplierProductGateway(){
             public String validateUrl(Mall mall,String url){return url;}
             public List<SourceOption> options(Mall mall,String id,String url){throw new AssertionError();}
             public SourceDetails inspect(Mall mall,String id,String url){calls.add(mall);return details.get(id);}
         };
         var p=create("ABCD6F123BK");start(p);var work=refresh.claim("w");
-        var result=new ProductLookupService(gateway,time).lookup(work,new SearchResult(offers,true,null),()->refresh.heartbeat("w",work));
+        var result=new SupplierLookupService(gateway,time).lookup(work,new SearchResult(offers,true,null),()->refresh.heartbeat("w",work));
         refresh.finish("w",work,result);refresh.claim("w");
         assertThat(calls).doesNotContain(Mall.HMALL);
         assertThat(result.suppliers()).hasSize(9).noneMatch(r->"부산점".equals(r.branch().name()));
