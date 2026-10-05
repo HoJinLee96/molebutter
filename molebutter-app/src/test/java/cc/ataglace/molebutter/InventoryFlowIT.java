@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter;
+import cc.ataglace.molebutter.app.internal.ProductHttpDtos.*;
 import cc.ataglace.molebutter.inventory.api.InventoryDtos.*;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
 
@@ -44,12 +45,14 @@ class InventoryFlowIT {
     @Autowired cc.ataglace.molebutter.catalog.api.CatalogConsistencyGuard catalogGuard;
     @Autowired cc.ataglace.molebutter.operations.internal.DefaultNotificationService notifications;
     @Autowired UserRepository users; @Autowired ObjectMapper json; @Autowired DefaultAuthTokenService tokens; @LocalServerPort int port;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+    cc.ataglace.molebutter.procurement.internal.DefaultProcurementLifecycle procurementLifecycle;
     long admin,staff,viewer;String product;
     final LocalDate date=LocalDate.of(2026,10,1);final LocalDateTime at=date.atTime(10,0);
     @BeforeEach void prepare(){
         clearInventory();admin=users.findByEmail("admin@example.com").orElseThrow().getId();
         staff=account(UserRole.PRODUCT);viewer=account(UserRole.VIEWER);
-        product=products.create(admin,new CatalogEdit(null,"","INV-"+UUID.randomUUID(),"구매 상품 검색어")).id();
+        product=products.create(admin,new ProductEditRequest(null,"","INV-"+UUID.randomUUID(),"구매 상품 검색어")).id();
     }
     @AfterEach void cleanup(){clearInventory();}
     void clearInventory(){jdbc.update("UPDATE inventory_movement SET reference_id=NULL,reverses_id=NULL");jdbc.update("DELETE FROM inventory_movement");jdbc.update("DELETE FROM inventory_item");jdbc.update("DELETE FROM inventory_purchase");}
@@ -83,7 +86,7 @@ class InventoryFlowIT {
         assertThat(items).extracting(i->i.get("unitPrice")).containsExactlyInAnyOrder(50_000L,60_000L,null,0L);
         var total=inventory.summaries(staff,List.of(product)).getFirst();balances(total,5,2);
         assertThat(first(o)).doesNotContainKeys("purchasedCode","purchasedName","currentProductCode");
-        var p=products.product(Long.parseLong(product));products.edit(admin,Long.parseLong(product),new CatalogEdit(p.revision(),"","NEW-"+UUID.randomUUID(),"바뀐 검색어"));
+        var p=products.product(Long.parseLong(product));products.edit(admin,Long.parseLong(product),new ProductEditRequest(p.revision(),"","NEW-"+UUID.randomUUID(),"바뀐 검색어"));
         var preserved=current(first(o));assertThat(preserved.get("productCode")).isEqualTo(products.product(Long.parseLong(product)).productCode());assertThat(preserved).doesNotContainKeys("purchasedCode","purchasedName");
         jdbc.update("UPDATE procurement_product SET latest_status='SOLD_OUT',latest_result=JSON_OBJECT('status','SOLD_OUT') WHERE product_id=?",Long.parseLong(product));balances(current(first(o)),2,0);
     }
@@ -105,14 +108,14 @@ class InventoryFlowIT {
     }
     @Test void stockGroupsNormalizeCodesSearchWholeGroupAndPaginateAfterGrouping() {
         String code=products.product(Long.parseLong(product)).productCode();
-        String duplicate=products.create(admin,new CatalogEdit(null,"","DUPE-"+request(),"duplicate-only")).id();
+        String duplicate=products.create(admin,new ProductEditRequest(null,"","DUPE-"+request(),"duplicate-only")).id();
         create(line(product,2,100L,2));create(line(duplicate,3,200L,1));
         jdbc.update("UPDATE catalog_product SET product_code=? WHERE id=?"," "+code.toLowerCase(Locale.ROOT)+" ",duplicate);jdbc.update("UPDATE procurement_product SET search_query='duplicate-only' WHERE product_id=?",duplicate);
         jdbc.update("UPDATE procurement_product SET search_query='unique-lot-match' WHERE product_id=?",duplicate);
         for(String q:List.of("",code,"unique-lot-match")) {var page=inventory.stockProducts(admin,q,"",0,20);assertThat(page.totalElements()).isEqualTo(1);balances(page.items().getFirst(),3,2);assertThat(page.items().getFirst().get("productId")).isEqualTo(product);}
         for(String anchor:List.of(product,duplicate)){balances(inventory.stockProduct(staff,Long.parseLong(anchor)),3,2);assertThat(inventory.items(staff,"","",anchor,"ALL",0,20).items()).hasSize(2);assertThat(inventory.movements(staff,"","",anchor,0,20).items()).hasSize(2);}
         assertThat(inventory.summaries(staff,List.of(product,duplicate))).extracting(r->n(r,"onHand")).containsExactlyInAnyOrder(2L,1L);
-        for(int k=0;k<21;k++){String p=products.create(admin,new CatalogEdit(null,"","PAGE-"+String.format("%02d",k)+"-"+request(),"page")).id();create(line(p,1,null,0));}
+        for(int k=0;k<21;k++){String p=products.create(admin,new ProductEditRequest(null,"","PAGE-"+String.format("%02d",k)+"-"+request(),"page")).id();create(line(p,1,null,0));}
         var page0=inventory.stockProducts(admin,"","",0,20);var page1=inventory.stockProducts(admin,"","",1,20);assertThat(page0.totalElements()).isEqualTo(22);assertThat(page0.totalPages()).isEqualTo(2);assertThat(page0.items()).hasSize(20);assertThat(page1.items()).hasSize(2);
         assertThat(page0.items()).extracting(r->r.get("productCode").toString()).isSorted();assertThat(page1.items()).extracting(r->r.get("productId")).doesNotContainAnyElementsOf(page0.items().stream().map(r->r.get("productId")).toList());
         jdbc.update("UPDATE catalog_product SET product_code='' WHERE id IN (?,?)",product,duplicate);assertThat(inventory.stockProducts(admin,"","",0,100).totalElements()).isEqualTo(23);
@@ -120,7 +123,7 @@ class InventoryFlowIT {
     @Test void brandFiltersAndTotalQuantitiesCoverAllPagesWholeGroupsAndActiveOrders() throws Exception {
         long brandA=ProductStore.id(),brandB=ProductStore.id();
         jdbc.update("INSERT INTO product_brand(id,name,created_at,updated_at) VALUES(?,?,NOW(6),NOW(6)),(?,?,NOW(6),NOW(6))",brandA,"재고 A-"+request(),brandB,"재고 B-"+request());
-        String duplicate=products.create(admin,new CatalogEdit(null,"","DUP-"+request(),"중복 검색어")).id(),other=products.create(admin,new CatalogEdit(null,"","OTHER-"+request(),"다른 브랜드")).id(),unassigned=products.create(admin,new CatalogEdit(null,"","NONE-"+request(),"미지정")).id();
+        String duplicate=products.create(admin,new ProductEditRequest(null,"","DUP-"+request(),"중복 검색어")).id(),other=products.create(admin,new ProductEditRequest(null,"","OTHER-"+request(),"다른 브랜드")).id(),unassigned=products.create(admin,new ProductEditRequest(null,"","NONE-"+request(),"미지정")).id();
         var a=create(line(product,2,100L,2));create(line(duplicate,3,null,1));var b=create(line(other,4,200L,4));create(line(unassigned,2,0L,2));
         jdbc.update("UPDATE catalog_product SET brand_id=? WHERE id=?",brandA,product);jdbc.update("UPDATE catalog_product SET brand_id=? WHERE id IN (?,?)",brandB,duplicate,other);
         jdbc.update("UPDATE catalog_product SET product_code=? WHERE id=?"," "+products.product(Long.parseLong(product)).productCode().toLowerCase(Locale.ROOT)+" ",duplicate);
@@ -129,7 +132,7 @@ class InventoryFlowIT {
         assertThat(inventory.stockTotals(staff,"중복 검색어",duplicate,ba)).containsEntry("totalOnHand","9").containsEntry("filteredOnHand","3");
         assertThat(inventory.stockTotals(staff,"","",bb)).containsEntry("filteredOnHand","4");assertThat(inventory.stockTotals(staff,"","","UNASSIGNED")).containsEntry("filteredOnHand","2");
         assertThat(inventory.purchases(staff,"",bb,0,20).totalElements()).isEqualTo(2);assertThat(inventory.movements(staff,"","","",bb,0,20).totalElements()).isEqualTo(2);
-        for(int k=0;k<21;k++){String p=products.create(admin,new CatalogEdit(null,"","TOTAL-"+k+"-"+request(),"페이지 밖 재고")).id();jdbc.update("UPDATE catalog_product SET brand_id=? WHERE id=?",brandA,p);create(line(p,1,null,1));}
+        for(int k=0;k<21;k++){String p=products.create(admin,new ProductEditRequest(null,"","TOTAL-"+k+"-"+request(),"페이지 밖 재고")).id();jdbc.update("UPDATE catalog_product SET brand_id=? WHERE id=?",brandA,p);create(line(p,1,null,1));}
         assertThat(inventory.stockProducts(staff,"","",ba,0,20).items()).hasSize(20);assertThat(inventory.stockProducts(staff,"","",ba,1,20).items()).hasSize(2);
         assertThat(inventory.stockTotals(staff,"","",ba)).containsEntry("totalOnHand","30").containsEntry("filteredOnHand","24");
         assertThat(inventory.stockTotals(staff,"검색 결과 없음","",ba)).containsEntry("totalOnHand","30").containsEntry("filteredOnHand","0");
@@ -154,9 +157,9 @@ class InventoryFlowIT {
     }
     @Test void stockGroupsFollowCodeChangesMergeAndDeletedProductsWithoutChangingLots() {
         var a=create(line(product,1,0L,1));var item=first(a);String original=item.get("productCode").toString();
-        var p=products.product(Long.parseLong(product));products.edit(admin,Long.parseLong(product),new CatalogEdit(p.revision(),"","UPDATED-"+request(),"new"));
+        var p=products.product(Long.parseLong(product));products.edit(admin,Long.parseLong(product),new ProductEditRequest(p.revision(),"","UPDATED-"+request(),"new"));
         assertThat(inventory.stockProduct(admin,Long.parseLong(product)).get("productCode")).isNotEqualTo(original);assertThat(current(item).get("productCode")).isEqualTo(products.product(Long.parseLong(product)).productCode());
-        String duplicate=products.create(admin,new CatalogEdit(null,"","MERGE-"+request(),"merge")).id();create(line(duplicate,2,100L,1));
+        String duplicate=products.create(admin,new ProductEditRequest(null,"","MERGE-"+request(),"merge")).id();create(line(duplicate,2,100L,1));
         String code=products.product(Long.parseLong(product)).productCode();jdbc.update("UPDATE catalog_product SET product_code=? WHERE id=?",code,duplicate);
         jdbc.update("UPDATE inventory_item SET product_id=? WHERE product_id=?",product,duplicate);jdbc.update("UPDATE catalog_product SET merged_into=? WHERE id=?",product,duplicate);
         balances(inventory.stockProduct(admin,Long.parseLong(duplicate)),2,1);assertThat(inventory.items(admin,"","",duplicate,"ALL",0,20).items()).hasSize(2);
@@ -274,7 +277,7 @@ class InventoryFlowIT {
         assertThat(inventory.create(admin,req,input).get("id")).isEqualTo(order.get("id"));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='inventory_item' AND column_name IN ('purchased_code','purchased_name')",Long.class)).isZero();
         assertThat(item).doesNotContainKeys("purchasedCode","purchasedName");
-        var changed=products.edit(admin,Long.parseLong(product),new CatalogEdit(products.product(Long.parseLong(product)).revision(),"","CURRENT-CODE","current search"));
+        var changed=products.edit(admin,Long.parseLong(product),new ProductEditRequest(products.product(Long.parseLong(product)).revision(),"","CURRENT-CODE","current search"));
         item=inventory.editItem(admin,id(item),new ItemEdit(n(item,"revision"),"IGNORED-CODE","IGNORED-NAME","","",null,"","",10L,100L));
         assertThat(item).containsEntry("productCode",changed.productCode());
         item=move(item,Kind.RECEIPT,1,null);
@@ -322,9 +325,10 @@ class InventoryFlowIT {
         var beforeHistory=jdbc.queryForList("SELECT * FROM product_lookup_history ORDER BY id");
         var beforeInventory=jdbc.queryForList("SELECT * FROM inventory_item ORDER BY id");
         var representative=products.product(target);
-        var invalid=new MergeInput(List.of(new VersionedId(representative.id(),representative.revision()),new VersionedId(source.id(),source.revision())),"",source.productCode(),source.searchQuery(),true,"999999","MANUAL","GENERAL",null);
-        // Brand resolution happens after reference/history moves, so this rejection exercises outer rollback.
-        assertThatThrownBy(()->products.merge(staff,target,invalid)).hasMessageContaining("브랜드");
+        var input=new MergeInput(List.of(new VersionedId(representative.id(),representative.revision()),new VersionedId(source.id(),source.revision())),"",source.productCode(),source.searchQuery(),true,"","MANUAL","GENERAL",null);
+        // Fail after catalog/ref/history/quantity changes have all participated in the outer transaction.
+        org.mockito.Mockito.doAnswer(call->{call.callRealMethod();throw new IllegalStateException("late participant failure");}).when(org.springframework.test.util.AopTestUtils.<cc.ataglace.molebutter.procurement.internal.DefaultProcurementLifecycle>getUltimateTargetObject(procurementLifecycle)).managed(target,true);
+        assertThatThrownBy(()->products.merge(staff,target,input)).hasMessageContaining("late participant failure");
         assertThat(jdbc.queryForList("SELECT * FROM catalog_product ORDER BY id")).isEqualTo(beforeCatalog);
         assertThat(jdbc.queryForList("SELECT * FROM procurement_product ORDER BY product_id")).isEqualTo(beforeProcurement);
         assertThat(jdbc.queryForList("SELECT * FROM product_lookup_history ORDER BY id")).isEqualTo(beforeHistory);
@@ -369,12 +373,12 @@ class InventoryFlowIT {
     }
     @Test void invalidLinesRollbackWholeOrderAndSupplierMustBelongToProduct(){
         assertThatThrownBy(()->create(line(product,1,100L,1),line("999",1,null,0))).hasMessageContaining("상품");assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM inventory_purchase",Long.class)).isZero();
-        String other=products.create(admin,new CatalogEdit(null,"","OTHER-"+UUID.randomUUID(),"other")).id();long source=ProductStore.id();jdbc.update("INSERT INTO product_supplier(id,product_id,mall,mall_product_id,naver_product_id,url) VALUES(?,?,'LFMALL','one','one','https://supplier.test/one')",source,Long.parseLong(other));
+        String other=products.create(admin,new ProductEditRequest(null,"","OTHER-"+UUID.randomUUID(),"other")).id();long source=ProductStore.id();jdbc.update("INSERT INTO product_supplier(id,product_id,mall,mall_product_id,naver_product_id,url) VALUES(?,?,'LFMALL','one','one','https://supplier.test/one')",source,Long.parseLong(other));
         var invalid=new ItemInput(product,Long.toString(source),null,null,null,null,null,null,1L,null,null,null,0L,null);
         assertThatThrownBy(()->create(invalid)).hasMessageContaining("매입처");assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM inventory_item",Long.class)).isZero();
     }
     @Test void deletingOrderCancelsAllPendingPreservesLedgerAndReplaysWithoutRestoringStock() {
-        String other=products.create(admin,new CatalogEdit(null,"","DELETE-"+request(),"별도 상품")).id();
+        String other=products.create(admin,new ProductEditRequest(null,"","DELETE-"+request(),"별도 상품")).id();
         var o=create(line(product,3,100L,0),line(other,2,null,0));String req=request();var input=deletion(o);
         var deleted=inventory.deletePurchase(admin,id(o),req,input);assertThat(deleted.get("deletedAt")).isNotNull();balances(deleted,0,0);
         assertThat(inventory.deletePurchase(admin,id(o),req,input).get("deletedAt")).isEqualTo(deleted.get("deletedAt"));
@@ -493,7 +497,7 @@ class InventoryFlowIT {
             try {
                 assertThat(held.await(5,TimeUnit.SECONDS)).isTrue();
                 balances(pool.submit(()->move(second,Kind.RECEIPT,1,null)).get(5,TimeUnit.SECONDS),1,0);
-                var catalog=pool.submit(()->{var p=products.product(Long.parseLong(product));return products.edit(admin,Long.parseLong(product),new CatalogEdit(p.revision(),"","RENAMED-"+request(),p.searchQuery()));});
+                var catalog=pool.submit(()->{var p=products.product(Long.parseLong(product));return products.edit(admin,Long.parseLong(product),new ProductEditRequest(p.revision(),"","RENAMED-"+request(),p.searchQuery()));});
                 assertThatThrownBy(()->catalog.get(200,TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
                 release.countDown();blocker.get(5,TimeUnit.SECONDS);catalog.get(5,TimeUnit.SECONDS);
             } finally {release.countDown();}

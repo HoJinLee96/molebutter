@@ -1,17 +1,8 @@
 package cc.ataglace.molebutter.procurement.internal;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
 import cc.ataglace.molebutter.procurement.api.SupplierDtos.*;
-import cc.ataglace.molebutter.procurement.internal.SearchCompletion;
-import cc.ataglace.molebutter.procurement.internal.DefaultSupplierPreferenceService;
-import cc.ataglace.molebutter.procurement.internal.ProductStore;
-import cc.ataglace.molebutter.procurement.internal.DefaultSupplierRefreshService;
-import cc.ataglace.molebutter.procurement.internal.SupplierStorePolicy;
-import cc.ataglace.molebutter.procurement.internal.SupplierRecommendationPolicy;
-import cc.ataglace.molebutter.procurement.internal.DefaultProductChangeService;
-import cc.ataglace.molebutter.procurement.internal.SupplierGroupStockPolicy;
 
 import java.util.*;
-import cc.ataglace.molebutter.procurement.internal.NaverChannelPolicy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
 
@@ -196,7 +187,9 @@ public class DefaultProductSupplierService implements cc.ataglace.molebutter.pro
     Map<String,String> manualAssignments(long product){var map=new HashMap<String,String>();db.jdbc.query("SELECT mall,mall_product_id,naver_product_id,manual_store_id FROM product_supplier WHERE product_id=? AND manual_store_id IS NOT NULL",r->{map.put(r.getString("mall")+":"+r.getString("mall_product_id")+":"+r.getString("naver_product_id"),r.getString("manual_store_id"));},product);return map;}
     /** 병합 전에 사용자가 유지할 선정을 결정한다. 선택하지 않은 판매글과 변경 이력도 보존한다. */
     public String mergeChoice(List<Long> products,String requested){var rows=db.jdbc.queryForList("SELECT CAST(supplier_id AS CHAR) FROM product_supplier_selection WHERE product_id IN ("+String.join(",",Collections.nCopies(products.size(),"?"))+")",String.class,products.toArray());if(rows.size()>1&&(requested==null||!rows.contains(requested)))throw new OperationFailure("선정 매입처가 서로 다릅니다. 통합 후 유지할 판매글을 선택해 주세요.");if(requested!=null&&!rows.contains(requested))throw new InputValidationFailure("통합 대상의 선정 판매글 중에서 선택해 주세요.");return requested!=null?requested:rows.isEmpty()?null:rows.getFirst();}
+    @Transactional(propagation=Propagation.MANDATORY)
     public String moveListings(long target,long source,String chosen){
+        db.requireExclusive();
         var duplicates=db.jdbc.queryForList("SELECT s.id source_id,t.id target_id FROM product_supplier s JOIN product_supplier t ON t.product_id=? AND t.merged_into IS NULL AND t.mall=s.mall AND t.mall_product_id=s.mall_product_id AND t.naver_product_id=s.naver_product_id WHERE s.product_id=? AND s.merged_into IS NULL",target,source);
         for(var row:duplicates){String old=row.get("source_id").toString(),canonical=row.get("target_id").toString();
             if(old.equals(chosen)){db.jdbc.update("UPDATE product_supplier t JOIN product_supplier s ON s.id=? SET t.manual_store_id=s.manual_store_id,t.assignment_revision=t.assignment_revision+1 WHERE t.id=?",old,canonical);chosen=canonical;}
@@ -204,5 +197,6 @@ public class DefaultProductSupplierService implements cc.ataglace.molebutter.pro
         }
         db.jdbc.update("UPDATE product_supplier SET product_id=? WHERE product_id=? AND merged_into IS NULL",target,source);return chosen;
     }
-    public void mergeSelections(Long actor,long target,List<Long> ids,String chosen){var before=ids.stream().map(this::comparison).toList();for(long id:ids)db.jdbc.update("DELETE FROM product_supplier_selection WHERE product_id=?",id);writeSelection(actor,target,chosen);history(actor,target,"MERGE_SELECTION",before,chosen);}
+    @Transactional(propagation=Propagation.MANDATORY)
+    public void mergeSelections(Long actor,long target,List<Long> ids,String chosen){db.requireExclusive();var before=ids.stream().map(this::comparison).toList();for(long id:ids)db.jdbc.update("DELETE FROM product_supplier_selection WHERE product_id=?",id);writeSelection(actor,target,chosen);history(actor,target,"MERGE_SELECTION",before,chosen);}
 }

@@ -2,14 +2,6 @@ package cc.ataglace.molebutter.procurement.internal;
 import cc.ataglace.molebutter.procurement.api.ChangeDtos.*;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
 import cc.ataglace.molebutter.procurement.api.SupplierDtos.*;
-import cc.ataglace.molebutter.procurement.internal.SearchCompletion;
-import cc.ataglace.molebutter.procurement.internal.DefaultProductSupplierService;
-import cc.ataglace.molebutter.procurement.internal.DefaultSupplierPreferenceService;
-import cc.ataglace.molebutter.procurement.internal.ProductStore;
-import cc.ataglace.molebutter.procurement.internal.DefaultSupplierRefreshService;
-import cc.ataglace.molebutter.procurement.internal.SupplierStorePolicy;
-import cc.ataglace.molebutter.procurement.internal.SupplierRecommendationPolicy;
-import cc.ataglace.molebutter.procurement.internal.ProductChangePolicy;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -412,11 +404,15 @@ public class DefaultProductChangeService implements cc.ataglace.molebutter.procu
             reproject(id);
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
     public void reset(long product) {
+        db.requireExclusive();
         db.jdbc.update("DELETE FROM product_change_summary WHERE product_id=?", product);
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
     public void merge(long target, long source) {
+        db.requireExclusive();
         db.jdbc.update("UPDATE product_value_observation SET product_id=? WHERE product_id=?", target, source);
         db.jdbc.update("UPDATE product_change_review SET product_id=? WHERE product_id=?", target, source);
         reset(source);

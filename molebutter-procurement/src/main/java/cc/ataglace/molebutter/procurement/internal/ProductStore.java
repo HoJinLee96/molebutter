@@ -37,11 +37,12 @@ public class ProductStore {
     public ScheduleSettings schedule(boolean lock){if(lock)guard.exclusive();return jdbc.queryForObject("SELECT * FROM procurement_settings WHERE id=1"+(lock?" FOR UPDATE":""),(r,n)->new ScheduleSettings(r.getLong("revision"),r.getBoolean("schedule_enabled"),r.getString("schedule_time")));}
     // 상품 변경과 실행 결과 확정은 같은 잠금 순서를 사용한다.
     public void lock(){guard.exclusive();}
+    public void requireExclusive(){guard.requireExclusive();}
     public void authorize(Long actor,boolean adminOnly) {
         access.productActor(actor,adminOnly);
     }
     static LocalDateTime date(ResultSet r,String name)throws SQLException{var t=r.getTimestamp(name);return t==null?null:t.toLocalDateTime();}
     public static void revision(long current,Long requested){cc.ataglace.molebutter.common.api.BusinessRevision.check(current,requested);}
-    static String text(String value,int max,boolean required){String s=value==null?"":value.trim();if(s.length()>max||required&&s.isEmpty())throw new InputValidationFailure("필수 입력값과 입력 길이를 확인해 주세요.");return s;}
+    static String text(String value,int max,boolean required){return cc.ataglace.molebutter.common.api.BusinessText.checked(value,max,required,"필수 입력값과 입력 길이를 확인해 주세요.");}
     public static List<Long> ids(List<String> ids) { return cc.ataglace.molebutter.common.api.BusinessIds.parseList(ids); }
 }

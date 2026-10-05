@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter;
+import cc.ataglace.molebutter.app.internal.ProductHttpDtos.*;
 import cc.ataglace.molebutter.common.fixture.WorkbookFixture;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
 import cc.ataglace.molebutter.procurement.api.SupplierDtos.*;
@@ -104,6 +105,91 @@ class ProductFlowIT {
             } finally {release.countDown();}
         }
     }
+    @Autowired cc.ataglace.molebutter.catalog.api.CatalogCommands catalogCommands;
+    @Autowired cc.ataglace.molebutter.procurement.api.ProcurementLifecycle procurementLifecycle;
+    @Autowired cc.ataglace.molebutter.inventory.api.InventoryLinkService inventoryLinks;
+
+    void exclusiveTransaction(Runnable work) {
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->{catalogGuard.exclusive();work.run();});
+    }
+    @Test void directCatalogContractsRejectInvalidProductsAndKeepRejectedEditsUnchanged() {
+        var product=create("ABCD6F123BK");var other=create("ABCD6F124BK");
+        var input=new cc.ataglace.molebutter.catalog.api.CatalogCommands.ProductInput(
+                new cc.ataglace.molebutter.catalog.api.CatalogCommands.BrandSelection("",null),product.productCode(),List.of());
+        assertThatThrownBy(()->exclusiveTransaction(()->catalogCommands.create(ProductStore.id(),input,time.now()))).hasMessageContaining("이미 등록");
+        for(String invalid:List.of("", "X".repeat(101))) {
+            var bad=new cc.ataglace.molebutter.catalog.api.CatalogCommands.ProductInput(input.brand(),invalid,List.of());
+            assertThatThrownBy(()->exclusiveTransaction(()->catalogCommands.create(ProductStore.id(),bad,time.now()))).hasMessageContaining("필수 입력값");
+        }
+        var badBrand=new cc.ataglace.molebutter.catalog.api.CatalogCommands.ProductInput(
+                new cc.ataglace.molebutter.catalog.api.CatalogCommands.BrandSelection("999999",null),product.productCode(),null);
+        assertThatThrownBy(()->exclusiveTransaction(()->catalogCommands.edit(Long.parseLong(product.id()),product.revision(),badBrand,time.now()))).hasMessageContaining("브랜드");
+        var duplicate=new cc.ataglace.molebutter.catalog.api.CatalogCommands.ProductInput(input.brand(),other.productCode(),null);
+        assertThatThrownBy(()->exclusiveTransaction(()->catalogCommands.edit(Long.parseLong(product.id()),product.revision(),duplicate,time.now()))).hasMessageContaining("이미 등록");
+        assertThatThrownBy(()->exclusiveTransaction(()->catalogCommands.validateMerge(Long.parseLong(product.id()),List.of(Long.parseLong(product.id()),Long.parseLong(other.id())),product.productCode()))).hasMessageContaining("동일한 전체 상품코드");
+        var valid=new cc.ataglace.molebutter.catalog.api.CatalogCommands.ProductInput(input.brand(),product.productCode(),null);
+        assertThatThrownBy(()->exclusiveTransaction(()->catalogCommands.edit(Long.parseLong(product.id()),99L,valid,time.now()))).hasMessageContaining("다른 작업");
+        assertThatThrownBy(()->exclusiveTransaction(()->catalogCommands.bump(999999L))).isInstanceOf(cc.ataglace.molebutter.common.api.BusinessException.class);
+        assertThat(current(product).revision()).isEqualTo(product.revision());
+        exclusiveTransaction(()->{catalogCommands.appendRegistrationNames(Long.parseLong(product.id()),List.of("헤지스 가방"));catalogCommands.appendRegistrationNames(Long.parseLong(product.id()),List.of("헤지스 가방"));});
+        assertThat(jdbc.queryForObject("SELECT registration_names FROM catalog_product WHERE id=?",String.class,product.id())).isEqualTo("[\"헤지스 가방\"]");
+    }
+    @Test void directAndOfflineMutationsRequireTheActualWritableTransactionAndExclusiveGuard() {
+        var product=create("ABCD6F123BK");long id=Long.parseLong(product.id());
+        var rawGuard=cc.ataglace.molebutter.catalog.api.CatalogMaintenance.guard(jdbc);
+        var rawCommands=cc.ataglace.molebutter.catalog.api.CatalogMaintenance.commands(jdbc);
+        assertThatThrownBy(rawGuard::exclusive).hasMessageContaining("actual transaction");
+        assertThatThrownBy(()->rawCommands.bump(id)).hasMessageContaining("actual transaction");
+        var tx=new org.springframework.transaction.support.TransactionTemplate(transactions);
+        tx.executeWithoutResult(status->{
+            assertThatThrownBy(()->rawCommands.bump(id)).hasMessageContaining("guard required");
+            assertThatThrownBy(()->procurementLifecycle.managed(id,true)).hasMessageContaining("guard required");
+            assertThatThrownBy(()->inventoryLinks.assertDeletable(List.of(id))).hasMessageContaining("guard required");
+            status.setRollbackOnly();
+        });
+        tx.setReadOnly(true);
+        assertThatThrownBy(()->tx.executeWithoutResult(status->rawCommands.bump(id))).hasMessageContaining("writable transaction");
+        assertThat(current(product).revision()).isEqualTo(product.revision());
+    }
+    @Test void sharedGuardsCannotUpgradeAndExclusiveStateDoesNotLeakAcrossTransactions() {
+        var raw=cc.ataglace.molebutter.catalog.api.CatalogMaintenance.guard(jdbc);
+        var tx=new org.springframework.transaction.support.TransactionTemplate(transactions);
+        tx.executeWithoutResult(status->{raw.shared();raw.shared();raw.requireShared();
+            assertThatThrownBy(raw::exclusive).hasMessageContaining("before any shared");
+            assertThatThrownBy(raw::requireExclusive).hasMessageContaining("guard required");
+        });
+        tx.executeWithoutResult(status->{raw.exclusive();raw.exclusive();raw.shared();raw.requireShared();raw.requireExclusive();
+            var child=new org.springframework.transaction.support.TransactionTemplate(transactions);
+            child.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            child.executeWithoutResult(inner->{assertThatThrownBy(raw::requireExclusive).hasMessageContaining("guard required");});
+            raw.requireExclusive();status.setRollbackOnly();
+        });
+        tx.executeWithoutResult(status->{assertThatThrownBy(raw::requireExclusive).hasMessageContaining("guard required");raw.exclusive();});
+        tx.executeWithoutResult(status->{assertThatThrownBy(raw::requireShared).hasMessageContaining("guard required");});
+    }
+    @Test void missingGuardRowsAndUnmanagedDataSourcesFailInsteadOfAllowingUnlockedWrites() {
+        var tx=new org.springframework.transaction.support.TransactionTemplate(transactions);
+        var raw=cc.ataglace.molebutter.catalog.api.CatalogMaintenance.guard(jdbc);
+        assertThatThrownBy(()->tx.executeWithoutResult(status->{jdbc.update("DELETE FROM catalog_consistency_guard WHERE id=1");raw.exclusive();})).hasMessageContaining("Missing catalog");
+        assertThatThrownBy(()->tx.executeWithoutResult(status->{jdbc.update("DELETE FROM catalog_consistency_guard WHERE id=1");raw.shared();})).hasMessageContaining("Missing catalog");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM catalog_consistency_guard WHERE id=1",Long.class)).isEqualTo(1);
+        var wrong=new org.springframework.jdbc.core.JdbcTemplate(new org.springframework.jdbc.datasource.DelegatingDataSource(jdbc.getDataSource()));
+        var unmanaged=cc.ataglace.molebutter.catalog.api.CatalogMaintenance.guard(wrong);
+        assertThatThrownBy(()->tx.executeWithoutResult(status->unmanaged.exclusive())).hasMessageContaining("transaction's DataSource");
+    }
+    @Test void brandInferencePreservesHistoricalCodeAndLookupCriteria() {
+        var product=products.create(actor,new ProductEditRequest(null,"","BRAND-LEGACY","내 검색어"));
+        jdbc.update("UPDATE catalog_product SET product_code=?,registration_names=? WHERE id=?","  brand-legacy  ","[\"헤지스 가방\"]",product.id());
+        var before=current(product);
+        var result=products.inferBrands(actor,new BrandInferenceInput(List.of(new VersionedId(before.id(),before.revision()))));
+        var after=current(product);
+        assertThat(result.assigned()).isEqualTo(1);
+        assertThat(after.productCode()).isEqualTo(before.productCode());
+        assertThat(after.searchQuery()).isEqualTo(before.searchQuery());
+        assertThat(after.lookupRevision()).isEqualTo(before.lookupRevision());
+        assertThat(after.revision()).isEqualTo(before.revision()+1);
+        assertThat(after.brandId()).isEqualTo(brand);
+    }
     @BeforeEach void reset(){
         jdbc.update("UPDATE inventory_movement SET reference_id=NULL,reverses_id=NULL");
         jdbc.update("DELETE FROM inventory_movement");jdbc.update("DELETE FROM inventory_item");jdbc.update("DELETE FROM inventory_purchase");
@@ -117,7 +203,7 @@ class ProductFlowIT {
         for(var mall:ProcurementMall.values())preferred.saveRule(actor,null,new RuleInput(null,mall,null));
     }
     @Test void hundredProductPageUsesBoundedQueriesAndDatabasePagination() {
-        for(int n=0;n<105;n++)products.create(actor,new CatalogEdit(null,"","BATCH-"+n,"page-search"));
+        for(int n=0;n<105;n++)products.create(actor,new ProductEditRequest(null,"","BATCH-"+n,"page-search"));
         var source=jdbc.getDataSource();var statements=new java.util.concurrent.atomic.AtomicInteger();
         jdbc.setDataSource(new org.springframework.jdbc.datasource.DelegatingDataSource(source) {
             @Override public java.sql.Connection getConnection() throws java.sql.SQLException {return counted(super.getConnection());}
@@ -136,7 +222,7 @@ class ProductFlowIT {
             assertThat(large.totalElements()).isEqualTo(105);assertThat(large.totalPages()).isEqualTo(2);
             assertThat(largeQueries).isEqualTo(smallQueries).isLessThan(10);
             var last=products.list(actor,"page-search","ALL","",1,100);assertThat(last.items()).hasSize(5);assertThat(last.totalElements()).isEqualTo(105);
-            assertThat(last.items()).extracting(CatalogProduct::id).doesNotContainAnyElementsOf(large.items().stream().map(CatalogProduct::id).toList());
+            assertThat(last.items()).extracting(ProcurementProductView::id).doesNotContainAnyElementsOf(large.items().stream().map(ProcurementProductView::id).toList());
         } finally {jdbc.setDataSource(source);}
     }
     @Autowired DefaultProductChangeService changeService;
@@ -144,7 +230,7 @@ class ProductFlowIT {
         var x=listing(ProcurementMall.LFMALL,"delta",price,"온라인점","CONFIRMED");
         return new SupplierResult(x.offer(),x.match(),stock==null?"OPTIONS_UNKNOWN":"CONFIRMED",stock==null?List.of():List.of(new SourceOption("black","블랙",stock,stock==0?"SOLD_OUT":"AVAILABLE")),null,null,null,null,x.branch());
     }
-    void deltaFinish(CatalogProduct p,SupplierResult... results){
+    void deltaFinish(ProcurementProductView p,SupplierResult... results){
         time.value=time.value.plusMinutes(1);start(current(p));var w=refresh.claim("delta");
         var offers=Arrays.stream(results).map(SupplierResult::offer).toList();
         var keys=offers.stream().map(SupplierStorePolicy::listingKey).toList();
@@ -221,7 +307,7 @@ class ProductFlowIT {
         var p=create("DCWA279BK");deltaFinish(p,deltaListing(156450,100L));long id=Long.parseLong(p.id());var previous=changeService.summary(id);
         start(current(p));assertThatThrownBy(()->changeService.review(actor,id,new cc.ataglace.molebutter.procurement.api.ChangeDtos.ReviewInput(previous.version()))).hasMessageContaining("변경");
         long run=jdbc.queryForObject("SELECT MAX(id) FROM product_refresh_run",Long.class);refresh.control(actor,run,"cancel");
-        var current=current(p);products.edit(actor,id,new CatalogEdit(current.revision(),null,p.productCode(),"새 검색어",p.brandId(),null,null));
+        var current=current(p);products.edit(actor,id,new ProductEditRequest(current.revision(),null,p.productCode(),"새 검색어",p.brandId(),null,null));
         assertThat(changeService.summary(id).version()).isZero();assertThat(changeService.history(actor,id,"","ALL",0).items()).isNotEmpty();
         deltaFinish(p,deltaListing(100000,20L));assertThat(changeService.summary(id).anyChanged()).isFalse();
         assertThat(changeService.summary(id).version()).isGreaterThan(previous.version());
@@ -323,7 +409,7 @@ class ProductFlowIT {
         assertThat(refresh.status(actor,Long.parseLong(p.id())).status()).isEqualTo("FAILED");assertThat(refresh.status(actor,Long.parseLong(p.id())).active()).isTrue();
     }
     @Autowired ProductSearchStatusRepair statusRepair;
-    DefaultSupplierRefreshService.Work legacyLimitedResult(CatalogProduct p,boolean stockProblem){
+    DefaultSupplierRefreshService.Work legacyLimitedResult(ProcurementProductView p,boolean stockProblem){
         start(p);var w=refresh.claim("repair-test");
         refresh.cache(w,new SearchResult(List.of(),false,"최대 3페이지 범위의 검색 결과입니다. 이후 페이지는 확인하지 않았습니다."));
         var listing=listing(ProcurementMall.LFMALL,"one",100,"온라인점","CONFIRMED");
@@ -449,9 +535,9 @@ class ProductFlowIT {
         var evidence=new StoreEvidence("BRANCH","현대백화점","목동점","NAVER_DEPARTMENT","10001/10001004",Map.of("channelId","1000008804"));
         return new SupplierResult(offer,new CodeMatch("SEARCH_RESULT",null,null,null,null,null),skipped?"SKIPPED_SAME_STORE":"CONFIRMED",skipped?List.of():List.of(new SourceOption("FREE","FREE",quantity,"AVAILABLE")),null,null,null,null,new BranchInfo("목동점","CONFIRMED",skipped?"SAME_CHANNEL":"API",null,evidence),new StockEvidence(run,skipped?"NAVER_SMART_STORE:13656623827:nv13656623827":null,"1000008804",skipped?null:time.now(),!skipped));
     }
-    CatalogProduct stockProduct(){var p=create("HIBA113K2");finish(p,List.of(stockListing("13656623827",25,false,1),stockListing("6617877030",0,true,1)));return p;}
-    Listing skipped(CatalogProduct p){return compare(p).groups().stream().flatMap(g->g.listings().stream()).filter(l->l.result().skipped()).findFirst().orElseThrow();}
-    StockLookupJob enqueueStock(CatalogProduct p){var l=skipped(p);return stockQueue.enqueue(actor,Long.parseLong(p.id()),Long.parseLong(l.id()),new StockLookupInput(current(p).revision(),l.revision()));}
+    ProcurementProductView stockProduct(){var p=create("HIBA113K2");finish(p,List.of(stockListing("13656623827",25,false,1),stockListing("6617877030",0,true,1)));return p;}
+    Listing skipped(ProcurementProductView p){return compare(p).groups().stream().flatMap(g->g.listings().stream()).filter(l->l.result().skipped()).findFirst().orElseThrow();}
+    StockLookupJob enqueueStock(ProcurementProductView p){var l=skipped(p);return stockQueue.enqueue(actor,Long.parseLong(p.id()),Long.parseLong(l.id()),new StockLookupInput(current(p).revision(),l.revision()));}
     StockLookupJob stockJob(StockLookupJob j){return stockQueue.get(actor,Long.parseLong(j.productId()),Long.parseLong(j.supplierId()),Long.parseLong(j.id()));}
     @Test void stockQueueDeduplicatesAndPreservesSearchPriceTimeAndImmutableHistory()throws Exception{
         var p=stockProduct();var l=skipped(p);assertThat(l.selectable()).isFalse();assertThatThrownBy(()->choose(p,l)).hasMessageContaining("재고 조회");
@@ -513,12 +599,12 @@ class ProductFlowIT {
         assertThat(compare(p).groups().stream().flatMap(g->g.listings().stream()).noneMatch(v->"GROUP_UNCONFIRMED".equals(v.result().state()))).isTrue();
         long run=Long.parseLong(start(p));refresh.control(actor,run,"pause");jdbc.update("UPDATE product_refresh_entry SET selection_snapshot=JSON_REMOVE(selection_snapshot,'$.stockPolicy') WHERE run_id=?",run);assertThatThrownBy(()->refresh.control(actor,run,"resume")).hasMessageContaining("이전 방식");
     }
-    CatalogProduct create(String code){return products.create(actor,new CatalogEdit(null,null,code,ProductCodePolicy.suggested("LF_ACCESSORY",code),brand,null,null));}
-    CatalogProduct current(CatalogProduct p){return products.product(Long.parseLong(p.id()));}
-    VersionedId version(CatalogProduct p){p=current(p);return new VersionedId(p.id(),p.revision());}
-    String start(CatalogProduct p){return refresh.start(actor,new RefreshInput("SELECTED",List.of(p.id())));}
+    ProcurementProductView create(String code){return products.create(actor,new ProductEditRequest(null,null,code,ProductCodePolicy.suggested("LF_ACCESSORY",code),brand,null,null));}
+    ProcurementProductView current(ProcurementProductView p){return products.product(Long.parseLong(p.id()));}
+    VersionedId version(ProcurementProductView p){p=current(p);return new VersionedId(p.id(),p.revision());}
+    String start(ProcurementProductView p){return refresh.start(actor,new RefreshInput("SELECTED",List.of(p.id())));}
     RefreshResult result(){return new RefreshResult("SUCCESS",10000L,"헤지스",0L,List.of(new SupplierResult(new Offer("nv","헤지스 ABCD6E123BK","헤지스","ABCD6E123BK","https://www.hazzys.com/product.do?PROD_CD=ABCD6E123BK",10000L,0L,ProcurementMall.HAZZYS,null),new CodeMatch("MATCHED","ABCD6E123BK","ABCD123","6E","BK","시즌 차이"),"CONFIRMED",List.of(new SourceOption("FREE","블랙 / FREE",2L,"AVAILABLE")),null)),time.now(),null);}
-    void finish(CatalogProduct p){start(p);var w=refresh.claim("worker");assertThat(w).isNotNull();refresh.finish("worker",w,result());assertThat(refresh.claim("worker")).isNull();}
+    void finish(ProcurementProductView p){start(p);var w=refresh.claim("worker");assertThat(w).isNotNull();refresh.finish("worker",w,result());assertThat(refresh.claim("worker")).isNull();}
     RefreshRunPage history(String from,String to,String status,boolean failed,int page,Long run){return refresh.runs(actor,new RefreshRunQuery(from,to,status,failed,page,20,run));}
     Map<String,Object> latestRun(){return history("","","",false,0,null).items().getFirst();}
     List<String> historyIds(RefreshRunPage page){return page.items().stream().map(r->r.get("id").toString()).toList();}
@@ -730,9 +816,9 @@ class ProductFlowIT {
         var browser=login(account(UserRole.PRODUCT));
         status(browser.post("/api/products",Map.of("brandId",brand,"productCode","WCBA5F052BK","searchQuery","   ")),400);
         status(browser.post("/api/products",Map.of("brandId","999999999","productCode","WCBA5F052BK","searchQuery","WCBA052")),400);
-        var p=products.create(actor,new CatalogEdit(null,null," wcba5f052bk ","  닥스 가방 WCBA052  ",brand,"AUTO","LF_ACCESSORY"));
+        var p=products.create(actor,new ProductEditRequest(null,null," wcba5f052bk ","  닥스 가방 WCBA052  ",brand,"AUTO","LF_ACCESSORY"));
         assertThat(p.productCode()).isEqualTo("WCBA5F052BK");assertThat(p.searchQuery()).isEqualTo("닥스 가방 WCBA052");
-        var edited=products.edit(actor,Long.parseLong(p.id()),new CatalogEdit(p.revision(),null,"WCBA6F052BK",p.searchQuery(),"","AUTO","LF_ACCESSORY"));
+        var edited=products.edit(actor,Long.parseLong(p.id()),new ProductEditRequest(p.revision(),null,"WCBA6F052BK",p.searchQuery(),"","AUTO","LF_ACCESSORY"));
         assertThat(edited.searchQuery()).isEqualTo(p.searchQuery());assertThat(edited.brandId()).isNull();assertThat(edited.lookupRevision()).isEqualTo(p.lookupRevision()+1);
         products.bulk(actor,new BulkEdit(List.of(version(edited)),null,null,brand));assertThat(current(p).searchQuery()).isEqualTo(p.searchQuery());assertThat(current(p).lookupRevision()).isEqualTo(edited.lookupRevision());
         status(browser.post("/api/products/"+p.id(),Map.of("revision",p.revision(),"brandId",brand,"productCode",p.productCode(),"searchQuery","stale")),409);
@@ -741,7 +827,7 @@ class ProductFlowIT {
         assertThat(products.list(actor,"닥스 가방","ALL","",0).totalElements()).isEqualTo(1);
     }
     @Test void excelInitialQueryOnlyChangesNewProductsAndInferencePreservesExistingAutoQuery(){
-        var old=products.create(actor,new CatalogEdit(null,null,"ABCD6F123BK","내 검색어","",null,null));
+        var old=products.create(actor,new ProductEditRequest(null,null,"ABCD6F123BK","내 검색어","",null,null));
         jdbc.update("UPDATE procurement_product SET search_mode='AUTO' WHERE product_id=?",old.id());
         var imported=products.upload(actor,"query.xlsx",WorkbookFixture.create(3,Map.of("F4","ABCD6F123BK","H4","헤지스 가방","F5","ABCD6F124BK","H5","헤지스 가방","F6","SHIRT-1","H6","헤지스 셔츠")));
         assertThat(imported.created()).isEqualTo(2);assertThat(current(old).brandId()).isEqualTo(brand);assertThat(current(old).searchQuery()).isEqualTo("내 검색어");
@@ -753,7 +839,7 @@ class ProductFlowIT {
     @Test void queryEditPreservesSelectionAndPreventsOldWorkOverwritingNewCriteria(){
         var p=create("ABCD6F123BK");finish(p);choose(p,byMall(p,ProcurementMall.HAZZYS));var selected=current(p).selectedSupplier();
         start(current(p));var work=refresh.claim("query-worker");var before=current(p);
-        products.edit(actor,Long.parseLong(p.id()),new CatalogEdit(before.revision(),null,p.productCode(),"변경된 검색어",brand,null,null));
+        products.edit(actor,Long.parseLong(p.id()),new ProductEditRequest(before.revision(),null,p.productCode(),"변경된 검색어",brand,null,null));
         refresh.finish("query-worker",work,result());
         assertThat(current(p).latestResult()).isNull();assertThat(current(p).selectedSupplier().id()).isEqualTo(selected.id());assertThat(current(p).selectedSupplier().priceStatus()).isEqualTo("STALE");
         assertThat(products.history(actor,Long.parseLong(p.id()),0).totalElements()).isEqualTo(2);
@@ -971,14 +1057,14 @@ class ProductFlowIT {
     @Test void deprecatedFieldsNeverOverwriteExplicitQuery(){
         var p=create("ABCD6F123BK");assertThat(p.searchQuery()).isEqualTo("ABCD123");assertThat(p.searchQuery()).isEqualTo("ABCD123");
         settings.saveBrand(actor,Long.valueOf(brand),new NamedSettingInput("이름 변경",0L));assertThat(current(p).brandKey()).isEqualTo("HAZZYS");assertThat(current(p).lookupRevision()).isEqualTo(p.lookupRevision());
-        p=current(p);var edited=products.edit(actor,Long.parseLong(p.id()),new CatalogEdit(p.revision(),null,p.productCode(),p.searchQuery(),brand,"AUTO","GENERAL"));assertThat(edited.comparisonCode()).isEmpty();assertThat(edited.searchQuery()).isEqualTo("ABCD123");
+        p=current(p);var edited=products.edit(actor,Long.parseLong(p.id()),new ProductEditRequest(p.revision(),null,p.productCode(),p.searchQuery(),brand,"AUTO","GENERAL"));assertThat(edited.comparisonCode()).isEmpty();assertThat(edited.searchQuery()).isEqualTo("ABCD123");
         products.bulk(actor,new BulkEdit(List.of(version(edited)),null,null,brand));assertThat(current(edited).codeType()).isEqualTo("GENERAL");assertThat(current(edited).comparisonCode()).isEmpty();
     }
     @Test void registrationReadsOnlyCodesGroupsRowsAndRetainsManualSettings(){
         var bytes=WorkbookFixture.create(5,Map.of("F4","ABCD6F123BK","F5","ABCD6F123BK","F6","ABCD6E123BK","F7","ABCD6F124Y2","H4","헤지스 가방","H5","헤지스 가방","H6","헤지스 가방","P4","100","C4",""));
         var r=products.upload(actor,"sample.xlsx",bytes);assertThat(r.created()).isEqualTo(3);assertThat(r.duplicates()).isEqualTo(1);assertThat(r.excluded()).isEqualTo(1);assertThat(r.brandsAssigned()).isEqualTo(2);
         var p=products.list(actor,"ABCD6F123BK","ALL","",0).items().getFirst();assertThat(p.searchQuery()).isEqualTo("ABCD123");
-        products.edit(actor,Long.parseLong(p.id()),new CatalogEdit(p.revision(),null,p.productCode(),"직접 검색어",brand,"MANUAL","LF_ACCESSORY"));
+        products.edit(actor,Long.parseLong(p.id()),new ProductEditRequest(p.revision(),null,p.productCode(),"직접 검색어",brand,"MANUAL","LF_ACCESSORY"));
         var again=products.upload(actor,"again.xlsx",bytes);assertThat(again.created()).isZero();assertThat(again.existing()).isEqualTo(3);assertThat(current(p).searchQuery()).isEqualTo("직접 검색어");
         assertThat(products.list(actor,"","ALL","",0).totalElements()).isEqualTo(3);
     }
@@ -997,12 +1083,12 @@ class ProductFlowIT {
         var progress=refresh.status(actor,id);assertThat(progress.status()).isEqualTo("SUCCESS");assertThat(progress.runStatus()).isEqualTo("RUNNING");
         assertThat(json.readTree(staff.get(path).body()).path("data").path("productId").asText()).isEqualTo(p.id());
         assertThat(jdbc.queryForObject("SELECT latest_result FROM catalog_product JOIN procurement_product ON procurement_product.product_id=catalog_product.id WHERE id=?",String.class,id)).doesNotContain("itemPrice","additionalPrice","total");
-        products.edit(actor,id,new CatalogEdit(current(p).revision(),null,"ABCD6F125BK",p.searchQuery(),brand,"AUTO",null));assertThat(refresh.status(actor,id).status()).isEqualTo("NOT_CHECKED");
+        products.edit(actor,id,new ProductEditRequest(current(p).revision(),null,"ABCD6F125BK",p.searchQuery(),brand,"AUTO",null));assertThat(refresh.status(actor,id).status()).isEqualTo("NOT_CHECKED");
         status(staff.get("/api/products/1/refresh-status"),404);
         status(new Browser().get(path),401);status(login(account(UserRole.VIEWER)).get(path),403);
     }
     @Test void managementAndBrandRenameDoNotInvalidatePricesAndSelectedRefreshIsAllowed(){var p=create("ABCD6F123BK");finish(p);products.bulk(actor,new BulkEdit(List.of(version(p)),null,false,null));settings.saveBrand(actor,Long.valueOf(brand),new NamedSettingInput("새 이름",0L));assertThat(current(p).latestResult()).isNotNull();assertThat(current(p).lookupRevision()).isEqualTo(p.lookupRevision());assertThatThrownBy(()->refresh.start(actor,new RefreshInput("ALL_MANAGED",List.of()))).hasMessageContaining("최신화할 상품");assertThat(start(current(p))).isNotBlank();}
-    @Test void staleIdentityRejectsOldResultWithoutOverwritingCurrentState(){var p=create("ABCD6F123BK");start(p);var w=refresh.claim("w");products.edit(actor,Long.parseLong(p.id()),new CatalogEdit(p.revision(),null,"ABCD6F124Y2",p.searchQuery(),brand,"AUTO",null));refresh.finish("w",w,result());assertThat(current(p).latestStatus()).isEqualTo("NOT_CHECKED");assertThat(current(p).latestResult()).isNull();assertThat(jdbc.queryForObject("SELECT status FROM product_refresh_entry",String.class)).isEqualTo("STALE");}
+    @Test void staleIdentityRejectsOldResultWithoutOverwritingCurrentState(){var p=create("ABCD6F123BK");start(p);var w=refresh.claim("w");products.edit(actor,Long.parseLong(p.id()),new ProductEditRequest(p.revision(),null,"ABCD6F124Y2",p.searchQuery(),brand,"AUTO",null));refresh.finish("w",w,result());assertThat(current(p).latestStatus()).isEqualTo("NOT_CHECKED");assertThat(current(p).latestResult()).isNull();assertThat(jdbc.queryForObject("SELECT status FROM product_refresh_entry",String.class)).isEqualTo("STALE");}
     @Test void sameSearchIsCachedByRunAndLeaseTakeoverFencesOldWorker(){var p=create("ABCD6F123BK");var p2=create("ABCD6E123BK");refresh.start(actor,new RefreshInput("SELECTED",List.of(p.id(),p2.id())));var w=refresh.claim("old");assertThat(refresh.claim("new")).isNull();refresh.cache(w,new SearchResult(List.of(),true,null));time.value=time.value.plusMinutes(11);var replacement=refresh.claim("new");assertThat(replacement).isEqualTo(w);refresh.finish("old",w,result());assertThat(current(p).latestResult()).isNull();assertThat(refresh.cached(replacement)).isNotNull();refresh.finish("new",replacement,result());var next=refresh.claim("new");assertThat(next.query()).isEqualTo(w.query());assertThat(refresh.cached(next)).isNotNull();}
     @Test void pauseBlockResumeCancelAndRetryPreserveHistory(){var p=create("ABCD6F123BK");long id=Long.parseLong(start(p));var w=refresh.claim("w");refresh.blocked("w",w,"접속 제한");assertThat(refresh.claim("w")).isNull();refresh.control(actor,id,"resume");w=refresh.claim("w");refresh.control(actor,id,"pause");refresh.finish("w",w,result());assertThat(refresh.claim("w")).isNull();refresh.control(actor,id,"resume");assertThat(refresh.claim("w")).isNull();long next=Long.parseLong(start(p));refresh.control(actor,next,"cancel");assertThat(current(p).latestResult()).isNull();assertThat(products.detail(actor,Long.parseLong(p.id())).get("lastGoodResult")).isNotNull();assertThat(refresh.retry(actor,next)).isNotBlank();}
     @Test void concurrentStartsAndStaleWritesAreRejected()throws Exception {var p=create("ABCD6F123BK");try(var pool=Executors.newFixedThreadPool(2)){var gate=new CountDownLatch(1);var tasks=new ArrayList<Future<Boolean>>();for(int i=0;i<2;i++)tasks.add(pool.submit(()->{gate.await();try{start(p);return true;}catch(IllegalStateException e){return false;}}));gate.countDown();assertThat(tasks.get(0).get()^tasks.get(1).get()).isTrue();}products.bulk(actor,new BulkEdit(List.of(version(p)),null,false,null));assertThatThrownBy(()->products.bulk(actor,new BulkEdit(List.of(new VersionedId(p.id(),p.revision())),null,true,null))).isInstanceOf(IllegalStateException.class);}
@@ -1024,13 +1110,13 @@ class ProductFlowIT {
     }
 
     SupplierResult listing(ProcurementMall mall,String id,long price,String branch,String state){return new SupplierResult(new Offer("NV"+id,"헤지스 ABCD6E123BK",mall.getDisplayName(),id,"https://www.lfmall.co.kr/app/product/"+id,price,0L,mall,null,mall==ProcurementMall.NAVER_SMART_STORE?new NaverChannel(NaverChannelType.WINDOW,"DEPARTMENT"):null),new CodeMatch("MATCHED","ABCD6E123BK","ABCD123","6E","BK","시즌 차이"),state,state.equals("FAILED")?List.of():List.of(new SourceOption("ONE","FREE",state.equals("SOLD_OUT")?0L:2L,state.equals("SOLD_OUT")?"SOLD_OUT":"AVAILABLE")),null,null,null,null,new BranchInfo(branch,branch.isBlank()?"UNKNOWN":"CONFIRMED","SEARCH_TITLE",branch));}
-    void finish(CatalogProduct p,List<SupplierResult> results){start(p);var w=refresh.claim("w");refresh.finish("w",w,SupplierLookupService.summarize(results,true,time.now()));refresh.claim("w");}
-    Comparison compare(CatalogProduct p){var c=supplierService.comparison(actor,Long.parseLong(p.id()));assertThat(c.pending()).isEmpty();assertThat(c.excluded()).isEmpty();return c;}
+    void finish(ProcurementProductView p,List<SupplierResult> results){start(p);var w=refresh.claim("w");refresh.finish("w",w,SupplierLookupService.summarize(results,true,time.now()));refresh.claim("w");}
+    Comparison compare(ProcurementProductView p){var c=supplierService.comparison(actor,Long.parseLong(p.id()));assertThat(c.pending()).isEmpty();assertThat(c.excluded()).isEmpty();return c;}
     // Hidden historical records remain inspectable in storage, not in the comparison API.
-    List<Listing> storedListings(CatalogProduct p){return jdbc.queryForList("SELECT id FROM product_supplier WHERE product_id=? AND merged_into IS NULL ORDER BY id",Long.class,p.id()).stream().map(id->(Listing)org.springframework.test.util.ReflectionTestUtils.invokeMethod((Object)org.springframework.test.util.AopTestUtils.getUltimateTargetObject(supplierService),"listing",Long.parseLong(p.id()),id)).toList();}
-    List<Listing> hiddenReview(CatalogProduct p){return storedListings(p).stream().filter(Listing::requiresReview).toList();}
-    Listing byMall(CatalogProduct p,ProcurementMall mall){var c=compare(p);return java.util.stream.Stream.concat(c.groups().stream().flatMap(g->g.listings().stream()),c.pending().stream()).filter(l->l.mall()==mall).findFirst().orElseThrow();}
-    void choose(CatalogProduct p,Listing l){supplierService.select(actor,Long.parseLong(p.id()),new SelectionInput(current(p).revision(),l.id()));}
+    List<Listing> storedListings(ProcurementProductView p){return jdbc.queryForList("SELECT id FROM product_supplier WHERE product_id=? AND merged_into IS NULL ORDER BY id",Long.class,p.id()).stream().map(id->(Listing)org.springframework.test.util.ReflectionTestUtils.invokeMethod((Object)org.springframework.test.util.AopTestUtils.getUltimateTargetObject(supplierService),"listing",Long.parseLong(p.id()),id)).toList();}
+    List<Listing> hiddenReview(ProcurementProductView p){return storedListings(p).stream().filter(Listing::requiresReview).toList();}
+    Listing byMall(ProcurementProductView p,ProcurementMall mall){var c=compare(p);return java.util.stream.Stream.concat(c.groups().stream().flatMap(g->g.listings().stream()),c.pending().stream()).filter(l->l.mall()==mall).findFirst().orElseThrow();}
+    void choose(ProcurementProductView p,Listing l){supplierService.select(actor,Long.parseLong(p.id()),new SelectionInput(current(p).revision(),l.id()));}
     @Test void recommendationsAreNonPreferredExactThresholdAndOneOffSelection()throws Exception {
         preferred.deleteMall(actor,ProcurementMall.HI_THEHYUNDAI,preferred.get(actor).revision());
         var p=create("ABCD6F123BK");var base=listing(ProcurementMall.LFMALL,"base",94000,"","CONFIRMED");
@@ -1100,7 +1186,7 @@ class ProductFlowIT {
         assertThat(shownPrices(pending)).containsExactly(100L,200L,250L,300L);
     }
     SupplierResult pictured(SupplierResult s,String image){var o=s.offer();return new SupplierResult(new Offer(o.naverProductId(),o.title(),o.mallName(),o.mallProductId(),o.url(),o.price(),o.deliveryFee(),o.mall(),image,o.naverChannel(),o.searchStore()),s.match(),s.state(),s.options(),s.message(),s.sourceTitle(),s.sourceModelCode(),s.sourceBrand(),s.branch(),s.stockEvidence());}
-    String listedImage(CatalogProduct p){return products.list(actor,"","ALL","",0).items().stream().filter(v->v.id().equals(p.id())).findFirst().orElseThrow().imageUrl();}
+    String listedImage(ProcurementProductView p){return products.list(actor,"","ALL","",0).items().stream().filter(v->v.id().equals(p.id())).findFirst().orElseThrow().imageUrl();}
     @Test void representativeImageFollowsSelectedListingOtherwiseFirstSearchResult(){
         var p=create("ABCD6F123BK");String a="https://img.test/a.jpg",b="https://img.test/b.jpg";
         var results=List.of(pictured(listing(ProcurementMall.LFMALL,"a",100,"온라인점","CONFIRMED"),a),pictured(listing(ProcurementMall.LFMALL,"b",200,"온라인점","CONFIRMED"),b));
@@ -1373,7 +1459,7 @@ class ProductFlowIT {
     }
     @Test void mutationFailureIsSavedAfterRollbackButValidationAndNotificationErrorsAreNot()throws Exception {
         var staff=notificationUser(UserRole.PRODUCT);var browser=login(staff);var p=create("ABCD6F123BK");browser.operationId=UUID.randomUUID().toString();
-        var invalid=new CatalogEdit(999L,null,p.productCode(),null,brand,"AUTO",null);
+        var invalid=new ProductEditRequest(999L,null,p.productCode(),null,brand,"AUTO",null);
         status(browser.post("/api/products/"+p.id(),invalid),409);status(browser.post("/api/products/"+p.id(),invalid),409);
         assertThat(notifications.summary(staff.getId()).count()).isEqualTo(1);assertThat(current(p).revision()).isEqualTo(p.revision());
         status(browser.get("/api/notifications?size=0"),400);status(browser.post("/api/products",Map.of("productCode","")),400);
