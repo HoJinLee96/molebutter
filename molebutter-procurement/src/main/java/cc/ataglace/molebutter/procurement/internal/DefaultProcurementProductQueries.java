@@ -1,10 +1,6 @@
 package cc.ataglace.molebutter.procurement.internal;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
 import cc.ataglace.molebutter.procurement.api.ProductCodePolicy;
-import cc.ataglace.molebutter.procurement.internal.SupplierLookupStatusPolicy;
-import cc.ataglace.molebutter.procurement.internal.DefaultProductSupplierService;
-import cc.ataglace.molebutter.procurement.internal.ProductStore;
-import cc.ataglace.molebutter.procurement.internal.DefaultProductChangeService;
 
 import java.util.*;
 import org.springframework.stereotype.Service;
@@ -36,15 +32,15 @@ public class DefaultProcurementProductQueries implements cc.ataglace.molebutter.
             LEFT JOIN product_supplier_selection sel ON sel.product_id=p.id LEFT JOIN product_supplier ss ON ss.id=sel.supplier_id
             """;
 
-    public PageResponse<CatalogProduct> list(Long actor, String q, String mode, String status, int page) {
+    public PageResponse<ProcurementProductView> list(Long actor, String q, String mode, String status, int page) {
         return list(actor, q, mode, status, page, 20);
     }
 
-    public PageResponse<CatalogProduct> list(Long actor, String q, String mode, String status, int page, int size) {
+    public PageResponse<ProcurementProductView> list(Long actor, String q, String mode, String status, int page, int size) {
         return list(actor, q, mode, status, page, size, "ALL");
     }
 
-    public PageResponse<CatalogProduct> list(Long actor, String q, String mode, String status, int page, int size,
+    public PageResponse<ProcurementProductView> list(Long actor, String q, String mode, String status, int page, int size,
             String change) {
         if (!List.of("ALL", "SELECTED", "ANY").contains(change))
             throw new InputValidationFailure("변동 필터를 확인해 주세요.");
@@ -86,8 +82,8 @@ public class DefaultProcurementProductQueries implements cc.ataglace.molebutter.
                 ((Number) row.get("selected_count")).longValue(), ((Number) row.get("all_count")).longValue());
     }
 
-    private List<CatalogProduct> catalogs(String sql, Object... args) {
-        var rows = db.jdbc.query(sql, (r, n) -> new CatalogProduct(r.getString("id"), r.getString("brand_name"),
+    private List<ProcurementProductView> catalogs(String sql, Object... args) {
+        var rows = db.jdbc.query(sql, (r, n) -> new ProcurementProductView(r.getString("id"), r.getString("brand_name"),
                 r.getString("brand_id"), r.getString("product_code"), r.getString("comparison_code"),
                 r.getString("code_type"), r.getString("brand_key"), r.getString("search_query"),
                 r.getString("search_mode"),
@@ -96,13 +92,13 @@ public class DefaultProcurementProductQueries implements cc.ataglace.molebutter.
                 r.getLong("duplicate_count"), SupplierLookupStatusPolicy.display(r.getString("latest_status"), null),
                 ProductStore.date(r, "latest_at"), db.decode(r.getString("latest_result"), RefreshResult.class), null),
                 args);
-        var ids = rows.stream().map(CatalogProduct::id).toList();
+        var ids = rows.stream().map(ProcurementProductView::id).toList();
         var selections = suppliers.selected(ids);
         var delta = changes.summaries(ids);
         return rows.stream().map(p -> p.withSelection(selections.get(p.id())).withChanges(delta.get(p.id()))).toList();
     }
 
-    public CatalogProduct product(long id) {
+    public ProcurementProductView product(long id) {
         return catalogs(SELECT + " WHERE p.id=? AND p.merged_into IS NULL AND p.deleted_at IS NULL", id).stream()
                 .findFirst().orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
     }
@@ -150,7 +146,7 @@ public class DefaultProcurementProductQueries implements cc.ataglace.molebutter.
         return db.jdbc.queryForList("SELECT name FROM product_brand ORDER BY name,id", String.class);
     }
 
-    public List<CatalogProduct> duplicates(Long actor, long id) {
+    public List<ProcurementProductView> duplicates(Long actor, long id) {
         db.authorize(actor, false);
         var p = product(id);
         return p.productCode().isBlank() ? List.of()

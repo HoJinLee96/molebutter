@@ -33,7 +33,7 @@ abstract class InventorySupport {
     }
     protected <T> T required(T value,String message) {if(value==null)throw new InputValidationFailure(message);return value;}
     protected static String text(String value,int max) {
-        String s=value==null?"":value.trim();if(s.length()>max)throw new InputValidationFailure("입력 길이를 확인해 주세요.");return s;
+        return cc.ataglace.molebutter.common.api.BusinessText.checked(value,max,false,"입력 길이를 확인해 주세요.");
     }
     protected static Long id(String value) {
         if(value==null||value.isBlank())return null;

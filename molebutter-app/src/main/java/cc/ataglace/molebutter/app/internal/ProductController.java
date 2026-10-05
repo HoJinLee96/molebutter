@@ -1,4 +1,5 @@
 package cc.ataglace.molebutter.app.internal;
+import cc.ataglace.molebutter.app.internal.ProductHttpDtos.*;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
 
 
@@ -8,13 +9,10 @@ import org.springframework.http.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import cc.ataglace.molebutter.app.internal.ApiResponse;
 import cc.ataglace.molebutter.common.api.PageResponse;
 
 
-import cc.ataglace.molebutter.app.internal.OperationAudit;
 import cc.ataglace.molebutter.identity.api.UserPrincipal;
-import cc.ataglace.molebutter.app.internal.ProductService;
 import cc.ataglace.molebutter.procurement.api.SupplierRefreshService;
 import cc.ataglace.molebutter.procurement.api.ProductChangeService;
 import lombok.RequiredArgsConstructor;
@@ -53,7 +51,7 @@ public class ProductController {
     }
 
     @GetMapping("/api/products")
-    public ApiResponse<PageResponse<CatalogProduct>> list(@AuthenticationPrincipal UserPrincipal u,
+    public ApiResponse<PageResponse<ProcurementProductView>> list(@AuthenticationPrincipal UserPrincipal u,
             @RequestParam(defaultValue = "") String q, @RequestParam(defaultValue = "ALL") String mode,
             @RequestParam(defaultValue = "") String status, @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size, @RequestParam(defaultValue = "ALL") String change) {
@@ -72,8 +70,8 @@ public class ProductController {
 
     @PostMapping("/api/products/{id}")
     @OperationAudit(value = "PRODUCT_EDIT", targetType = "PRODUCT", targetIdPathVariable = "id")
-    public ApiResponse<CatalogProduct> edit(@AuthenticationPrincipal UserPrincipal u, @PathVariable long id,
-            @RequestBody CatalogEdit input) {
+    public ApiResponse<ProcurementProductView> edit(@AuthenticationPrincipal UserPrincipal u, @PathVariable long id,
+            @RequestBody ProductEditRequest input) {
         return ApiResponse.success(products.edit(u.userId(), id, input));
     }
 
@@ -97,14 +95,14 @@ public class ProductController {
 
     @PostMapping("/api/products/code-preview")
     public ApiResponse<Map<String, String>> codePreview(@AuthenticationPrincipal UserPrincipal u,
-            @RequestBody CatalogEdit input) {
+            @RequestBody ProductEditRequest input) {
         return ApiResponse.success(products.codePreview(u.userId(), input));
     }
 
     @PostMapping("/api/products")
     @OperationAudit(value = "PRODUCT_CREATE", targetType = "PRODUCT")
-    public ApiResponse<CatalogProduct> create(@AuthenticationPrincipal UserPrincipal u,
-            @RequestBody CatalogEdit input) {
+    public ApiResponse<ProcurementProductView> create(@AuthenticationPrincipal UserPrincipal u,
+            @RequestBody ProductEditRequest input) {
         return ApiResponse.success(products.create(u.userId(), input));
     }
 
@@ -130,14 +128,14 @@ public class ProductController {
     }
 
     @GetMapping("/api/products/{id}/duplicates")
-    public ApiResponse<List<CatalogProduct>> duplicates(@AuthenticationPrincipal UserPrincipal u,
+    public ApiResponse<List<ProcurementProductView>> duplicates(@AuthenticationPrincipal UserPrincipal u,
             @PathVariable long id) {
         return ApiResponse.success(products.duplicates(u.userId(), id));
     }
 
     @PostMapping("/api/products/{id}/merge")
     @OperationAudit(value = "PRODUCT_MERGE", targetType = "PRODUCT", targetIdPathVariable = "id")
-    public ApiResponse<CatalogProduct> merge(@AuthenticationPrincipal UserPrincipal u, @PathVariable long id,
+    public ApiResponse<ProcurementProductView> merge(@AuthenticationPrincipal UserPrincipal u, @PathVariable long id,
             @RequestBody MergeInput input) {
         return ApiResponse.success(products.merge(u.userId(), id, input));
     }

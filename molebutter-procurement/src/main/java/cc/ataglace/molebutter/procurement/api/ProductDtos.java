@@ -1,6 +1,4 @@
 package cc.ataglace.molebutter.procurement.api;
-import cc.ataglace.molebutter.procurement.api.SupplierDtos;
-import cc.ataglace.molebutter.procurement.api.ChangeDtos;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -24,36 +22,12 @@ public final class ProductDtos {
         }
     }
 
-    public record VersionedId(String id, Long revision) {
-    }
-
-    public record CatalogEdit(Long revision, String brand, String productCode, String searchQuery, String brandId,
-            String searchMode, String codeType) {
-        public CatalogEdit(Long revision, String brand, String code, String query) {
-            this(revision, brand, code, query, null, null, null);
-        }
-    }
-
-    public record BulkEdit(List<VersionedId> products, String brand, Boolean managed, String brandId) {
-    }
-
-    public record DeleteProducts(List<VersionedId> products) {
-    }
-
-    public record MergeInput(List<VersionedId> products, String brand, String productCode, String searchQuery,
-            Boolean managed, String brandId, String searchMode, String codeType, String selectedSupplierId) {
-        public MergeInput(List<VersionedId> products, String brand, String code, String query, Boolean managed,
-                String brandId, String mode, String type) {
-            this(products, brand, code, query, managed, brandId, mode, type, null);
-        }
-    }
-
-    public record CatalogProduct(String id, String brand, String brandId, String productCode, String comparisonCode,
+    public record ProcurementProductView(String id, String brand, String brandId, String productCode, String comparisonCode,
             String codeType, String brandKey, String searchQuery, String searchMode, String suggestedQuery,
             boolean managed, long revision, long lookupRevision, String imageUrl, long duplicateCount,
             String latestStatus, LocalDateTime latestAt, RefreshResult latestResult,
             SupplierDtos.Listing selectedSupplier, ChangeDtos.Summary changes) {
-        public CatalogProduct(String id, String brand, String brandId, String productCode, String comparisonCode,
+        public ProcurementProductView(String id, String brand, String brandId, String productCode, String comparisonCode,
                 String codeType, String brandKey, String searchQuery, String searchMode, String suggestedQuery,
                 boolean managed, long revision, long lookupRevision, String imageUrl, long duplicateCount,
                 String latestStatus, LocalDateTime latestAt, RefreshResult latestResult,
@@ -63,14 +37,14 @@ public final class ProductDtos {
                     latestResult, selectedSupplier, null);
         }
 
-        public CatalogProduct withChanges(ChangeDtos.Summary value) {
-            return new CatalogProduct(id, brand, brandId, productCode, comparisonCode, codeType, brandKey, searchQuery,
+        public ProcurementProductView withChanges(ChangeDtos.Summary value) {
+            return new ProcurementProductView(id, brand, brandId, productCode, comparisonCode, codeType, brandKey, searchQuery,
                     searchMode, suggestedQuery, managed, revision, lookupRevision, imageUrl, duplicateCount,
                     latestStatus, latestAt, latestResult, selectedSupplier, value);
         }
 
-        public CatalogProduct withSelection(SupplierDtos.Listing selected) {
-            return new CatalogProduct(id, brand, brandId, productCode, comparisonCode, codeType, brandKey, searchQuery,
+        public ProcurementProductView withSelection(SupplierDtos.Listing selected) {
+            return new ProcurementProductView(id, brand, brandId, productCode, comparisonCode, codeType, brandKey, searchQuery,
                     searchMode, suggestedQuery, managed, revision, lookupRevision, imageUrl, duplicateCount,
                     latestStatus, latestAt, latestResult, selected);
         }
@@ -333,13 +307,4 @@ public final class ProductDtos {
         }
     }
 
-    public record BrandInferenceInput(List<VersionedId> products) {
-    }
-
-    public record BrandInferenceResult(int assigned, int preserved, int unresolved) {
-    }
-
-    public record ImportResult(int totalRows, int created, int existing, int duplicates, int excluded,
-            int brandsAssigned, List<String> warnings) {
-    }
 }
