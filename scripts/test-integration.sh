@@ -52,3 +52,8 @@ if [ "${MOLEBUTTER_TEST_MAVEN_OFFLINE:-true}" = false ]; then
 else
   ./mvnw -o -Dmolebutter.build-directory=target/verification -Pintegration-tests clean test "$@"
 fi
+
+# Optional packaged smoke uses only the isolated services above, and is cleaned up by the same trap.
+if [ "${MOLEBUTTER_TEST_PACKAGE_SMOKE:-false}" = true ]; then
+  python3 scripts/test-packaged-app.py "${MOLEBUTTER_TEST_JAR:-molebutter-app/target/molebutter-0.0.1-SNAPSHOT.jar}"
+fi

@@ -1,6 +1,6 @@
 // 실제 Thymeleaf 화면 + 격리된 모의 API. 실제 DB나 외부 쇼핑몰에 연결하지 않는다.
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
-const root=path.resolve(__dirname,'../src/main/resources');
+const root=path.resolve(__dirname,'../molebutter-app/src/main/resources');
 const stamp='2026-09-26T18:00:00';
 const notices=[];
 const malls={LFMALL:'LF몰',HAZZYS:'헤지스',NAVER_SMART_STORE:'네이버 쇼핑윈도',LOTTE_ON:'롯데온',LOTTE_IMALL:'롯데홈쇼핑',HI_THEHYUNDAI:'더현대Hi',HMALL:'현대Hmall'};
@@ -30,7 +30,7 @@ function comparison(p){
 const withSelection=p=>({...p,selectedSupplier:comparison(p).selected});
 const detail=p=>({product:withSelection(p),comparison:comparison(p),suppliers:[],lastGoodResult:p.latestResult,history:paged(p.latestResult?[{id:'1',createdAt:stamp,legacy:false,payload:p.latestResult}]:[])});
 
-function html(page,role){const file=path.resolve(__dirname,`../target/ui-fixtures/${page}-${role}.html`);if(!fs.existsSync(file))throw Error('LayoutViewTest를 먼저 실행하세요.');return fs.readFileSync(file,'utf8');}
+function html(page,role){const file=path.resolve(__dirname,`../molebutter-app/target/ui-fixtures/${page}-${role}.html`);if(!fs.existsSync(file))throw Error('LayoutViewTest를 먼저 실행하세요.');return fs.readFileSync(file,'utf8');}
 const server=http.createServer(async(req,res)=>{try{
  const u=new URL(req.url,'http://localhost'),url=u.pathname;res.setHeader('Cache-Control','no-store');
  if(['/','/products','/product-refresh','/settings','/attendance','/attendance-manage'].includes(url)){const role=u.searchParams.get('role')||(/fixtureRole=(ADMIN|PRODUCT)/.exec(req.headers.cookie||'')?.[1]??'ADMIN');res.setHeader('Set-Cookie',`fixtureRole=${role}; Path=/; SameSite=Lax`);res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(html(url==='/'?'home':url.slice(1),role));}

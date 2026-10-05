@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const vm = require('node:vm');
-const source = readFileSync('src/main/resources/static/js/api.js', 'utf8');
+const source = readFileSync('molebutter-app/src/main/resources/static/js/api.js', 'utf8');
 const reply = (status, code, data = null) => new Response(JSON.stringify({ code, data }), {
     status, headers: { 'Content-Type': 'application/json' },
 });

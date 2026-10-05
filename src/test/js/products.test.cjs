@@ -2,8 +2,8 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {readFileSync}=require('node:fs');
 const vm=require('node:vm');
-const template=readFileSync('src/main/resources/templates/products.html','utf8');
-const source=readFileSync('src/main/resources/static/js/products.js','utf8');
+const template=readFileSync('molebutter-app/src/main/resources/templates/products.html','utf8');
+const source=readFileSync('molebutter-app/src/main/resources/static/js/products.js','utf8');
 const product={id:'42',brand:'헤지스',brandId:'1',brandKey:'HAZZYS',productCode:'ABCD6F123BK',comparisonCode:'ABCD123',searchQuery:'ABCD123',searchMode:'AUTO',suggestedQuery:'ABCD123',codeType:'LF_ACCESSORY',managed:true,revision:0,lookupRevision:0,latestStatus:'NOT_CHECKED',latestResult:null};
 const pageOf=(items=[product],page=0)=>({items,page,totalElements:41,totalPages:3});
 const settle=async()=>{for(let i=0;i<4;i++)await new Promise(r=>setImmediate(r));};
@@ -18,7 +18,7 @@ function fixture({load=async()=>pageOf(),post=async()=>null,brandFailure=false,l
  AppUI:{$,escape:v=>String(v??''),stamp:v=>v,pager(id,data,change,options){pagers[id]={data,change,options};}},ProductSourceSearch:{webUrl:()=>''},
  setError(id,message){if($(id)){$(id).textContent=message||'';$(id).hidden=!message;}},
  apiGet:async url=>{calls.push(url);if(url.startsWith('/api/products/change-counts'))return {selected:0,all:0};if(url==='/api/settings/brands'){if(brandFailure)throw Error('설정 조회 실패');return [{id:'1',name:'헤지스'}];}return load(url);},
- apiPost:async(url,body)=>{posts.push({url,body});return post(url,body);}});vm.runInContext(readFileSync('src/main/resources/static/js/product-refresh-watch.js','utf8'),ctx);vm.runInContext(readFileSync('src/main/resources/static/js/mall-tag.js','utf8'),ctx);vm.runInContext(source,ctx);
+ apiPost:async(url,body)=>{posts.push({url,body});return post(url,body);}});vm.runInContext(readFileSync('molebutter-app/src/main/resources/static/js/product-refresh-watch.js','utf8'),ctx);vm.runInContext(readFileSync('molebutter-app/src/main/resources/static/js/mall-tag.js','utf8'),ctx);vm.runInContext(source,ctx);
  return {$,calls,posts,pagers,events,timers,async tick(){const next=timers.entries().next().value;if(next){timers.delete(next[0]);next[1]();}await settle();},submit(id='product-filter'){return $(id).listeners.submit({preventDefault(){},submitter:node()});},click(id){return $(id).listeners.click({currentTarget:$(id)});},select(){ $('product-rows').listeners.change({target:{dataset:{select:'42'},checked:true}}); },mode(mode){const b=tabs.find(t=>t.dataset.mode===mode);$('management-tabs').listeners.click({target:{closest:()=>b}});},row(dataset){$('product-rows').listeners.click({target:{closest:()=>({...node(),dataset})}});}};
 }
 test('entry and back navigation reset filters and load immediately without settings dependency',async()=>{const f=fixture({brandFailure:true});await settle();assert.equal(f.calls[0],'/api/products?q=&mode=ALL&status=&page=0&size=100&change=ALL');assert.match(f.$('product-rows').innerHTML,/ABCD6F123BK/);f.mode('MANUAL');await settle();f.$('product-q').value='X';f.events.pageshow({persisted:true});await settle();assert.equal(f.calls.filter(u=>u.startsWith('/api/products?')).at(-1),f.calls[0]);});
