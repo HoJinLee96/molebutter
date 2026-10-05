@@ -19,7 +19,7 @@
 
 ## 워커·저장
 
-`V18__supplier_stock_lookups.sql`의 MySQL 대기열과 기존 `product_settings` 워커 임대를 함께 사용한다. 현재 상품 처리 완료 후 개별 조회를 FIFO로 우선 처리하고 자동 최신화를 계속한다. 개별 조회는 검색을 실행하거나 검색 완료 후 30초 대기를 갱신하지 않는다.
+`V18__supplier_stock_lookups.sql`의 MySQL 대기열과 `procurement_runtime` 워커 임대를 함께 사용한다. 현재 상품 처리 완료 후 개별 조회를 FIFO로 우선 처리하고 자동 최신화를 계속한다. 개별 조회는 검색을 실행하거나 검색 완료 후 30초 대기를 갱신하지 않는다.
 
 트랜잭션은 READ COMMITTED로 실행하고 기존 공통 잠금 이후 대기열을 읽는다. MySQL 기본 반복 읽기의 과거 스냅샷 때문에 동시 접수에서 기존 작업을 놓치지 않도록 한다. 활성 판매글 고유 제약도 적용한다. HTTP 통신은 트랜잭션 밖에서 수행하고, 완료 시 소유권·대상 버전·선정 기준·선호/매장 변경·권한을 다시 확인한다. 임대 만료 후 재처리는 가능하지만 늦게 도착한 이전 워커 결과와 중복 이력 저장은 차단한다.
 
@@ -31,7 +31,7 @@
 
 서버 적용 전 기존 진행·중단 작업은 완료 또는 취소한다. 이전 `stockPolicy`가 없는 작업은 자동 실행/수동 재개를 거부한다. 과거 선정·선호·가격·조회 이력은 유지한다.
 
-- 실제 목동점 두 응답을 정제한 자료: `src/test/resources/product/supplier-group`.
+- 실제 목동점 두 응답을 정제한 자료: `test-fixtures/product/supplier-group`.
 - `SupplierGroupStockTest`: 2→1 요청, 실제 25/13개 수량, 선정 글과 저렴한 대안, 실패/품절/누락·채널 충돌, 상품 간 분리, 추천 상한.
 - `ProductFlowIT`의 `stockQueue*`: 임시 MySQL 동시 접수·점유 회복·취소·기준 변경·전역 차단·권한·CSRF·JSON/이력 보존.
 - `MigrationUpgradeIT`: 빈 DB 및 기존 DB의 V18 전환.

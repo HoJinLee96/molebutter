@@ -14,6 +14,7 @@
 | 검색·재고 조회 복구 | [검색 재시도](naver-search-retry.md), [재고 조회 큐](supplier-stock-queue.md) |
 | 알림 | [알림](notifications.md) |
 | 실행·검증 | [테스트](testing.md) |
+| 모듈·DB 책임·전환 | [모듈 구조와 적용 절차](modular-architecture.md), [전환 검증](modular-transition-verification.md) |
 
 ## 과거 조사 기록
 

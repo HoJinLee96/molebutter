@@ -27,7 +27,7 @@
 
 별도 시제품 실행기는 테스트 정리 시 제거했다. 현재 회귀 검증은 `SupplierGroupStockTest`와 `NaverSearchChannelTest`를 사용한다.
 
-입력: `src/test/resources/product/supplier-group/`의 정제된 실제 응답. 회귀 검증은 네트워크를 사용하지 않는다.
+입력: `test-fixtures/product/supplier-group/`의 정제된 실제 응답. 회귀 검증은 네트워크를 사용하지 않는다.
 
 ## 적용할 때 필요한 변경
 

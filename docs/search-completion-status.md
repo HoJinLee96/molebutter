@@ -19,11 +19,17 @@
 ## 기존 현재 상태 보정
 
 `SearchStatusRepairCommand`는 스케줄러나 검색을 실행하지 않는 JDBC 유지보수
-명령이다. 애플리케이션 클래스와 의존성이 포함된 클래스패스로 다음 순서로 실행한다.
+명령이다. app 실행 JAR의 모듈·의존성을 이용해 다음 순서로 실행한다. 비밀 설정 파일은 JAR 외부에 둔다.
 
 ```sh
-java -cp "$APP_CLASSPATH" cc.ataglace.molebutter.service.product.SearchStatusRepairCommand preview src/main/resources/application.properties src/main/resources/application-secret/db.properties
-java -cp "$APP_CLASSPATH" cc.ataglace.molebutter.service.product.SearchStatusRepairCommand apply src/main/resources/application.properties src/main/resources/application-secret/db.properties
+java -Dloader.main=cc.ataglace.molebutter.procurement.internal.SearchStatusRepairCommand \
+  -cp molebutter-app/target/molebutter-0.0.1-SNAPSHOT.jar \
+  org.springframework.boot.loader.launch.PropertiesLauncher preview \
+  molebutter-app/src/main/resources/application.properties application-secret/db.properties
+java -Dloader.main=cc.ataglace.molebutter.procurement.internal.SearchStatusRepairCommand \
+  -cp molebutter-app/target/molebutter-0.0.1-SNAPSHOT.jar \
+  org.springframework.boot.loader.launch.PropertiesLauncher apply \
+  molebutter-app/src/main/resources/application.properties application-secret/db.properties
 ```
 
 미리보기는 쓰기를 하지 않는다. 적용은 각 상품의 작업·검색어·코드·조회 버전·확인
