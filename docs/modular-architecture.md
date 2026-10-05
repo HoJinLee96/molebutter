@@ -1,5 +1,7 @@
 # 업무 모듈과 DB 책임
 
+> 문서 유형: 현재 구현 안내. 2026-10-05 로컬 코드와 대조했다. 날짜가 붙은 적용·검증 문단은 당시 기록이며 현재 정책과 구분한다.
+
 하나의 Spring Boot 앱·DataSource·트랜잭션 관리자·MySQL·Redis를 유지한다. 루트 Maven 프로젝트는 부모와 집계 역할을 하며, 배포할 실행 JAR은 `molebutter-app/target/molebutter-0.0.1-SNAPSHOT.jar` 하나다. 외부 판매 마켓 연동은 아직 포함하지 않는다.
 
 ## 모듈 경계
@@ -23,7 +25,7 @@
 
 ### 변경 계약과 잠금의 실행 조건
 
-기준 상품의 코드·브랜드 검증, 중복 확인, 등록명 결합, 브랜드 추론과 수정 버전 검사는 catalog가 소유한다. `CatalogCommands.ProductInput`·`BrandSelection`·`VersionedProduct`로 전달하며 app이 JSON이나 기준 상품 SQL을 직접 작성하지 않는다. 검색어 검증과 신규 상품의 초기 검색어 선정은 procurement가 담당한다. app은 권한 확인, HTTP 입력 변환과 모듈 간 트랜잭션 연결을 담당한다.
+기준 상품의 코드·브랜드 검증, 중복 확인, 등록명 결합, 브랜드 추론과 수정 버전 검사는 catalog가 소유한다. `CatalogCommands.ProductInput`·`BrandSelection`·`VersionedProduct`로 전달하며 상품 등록·수정용 저장 JSON과 기준 상품 변경 SQL은 catalog가 작성한다. app은 감사 기록용 변경 전후 스냅샷 JSON을 조합할 수 있으며, 이를 catalog 저장 책임과 구분한다. 검색어 검증과 신규 상품의 초기 검색어 선정은 procurement가 담당한다. app은 권한 확인, HTTP 입력 변환과 모듈 간 트랜잭션 연결을 담당한다.
 
 브랜드 일괄 지정·해제는 `CatalogCommands.editBrand`로 처리한다. 브랜드·버전·배타 가드를 검증하면서 과거 상품코드 원문과 procurement의 검색어·조회 기준·결과를 보존한다. 상품코드를 직접 수정하는 `edit`의 정규화·중복 검사는 유지한다.
 

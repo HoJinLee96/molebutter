@@ -61,6 +61,7 @@
     $('stock-dialog').addEventListener('close',()=>{++stockSequence;currentStock=null;stockMovementRows=[];});
     async function load() {
         const seq=++loadSequence;message('inventory-error',null);const size=$('inventory-size').value,q=$('inventory-q').value,brandId=$('inventory-brand').value;
+        $('inventory-query-label').textContent=tab==='items'?'상품코드·브랜드·검색어':tab==='purchases'?(admin?'구매처·주문번호':'구매처'):'검색어 검색 미지원';
         $('inventory-q').disabled=tab==='movements';$('inventory-clear-product').hidden=!productId;
         $('inventory-context').textContent=productId&&tab!=='purchases'?`연결 상품 ${productId}의 재고·이력`:'';$('inventory-context').hidden=!$('inventory-context').textContent;
         const query=new URLSearchParams({page,size,brandId});let path;
