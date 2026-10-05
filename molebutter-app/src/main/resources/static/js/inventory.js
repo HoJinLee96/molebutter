@@ -217,7 +217,7 @@
         try {await postOnce(form,`/api/inventory/purchases/${order.id}/delete`,{revision:order.revision,deleteToken:order.deleteToken});}
         catch(err){if(err.status===409){deletingOrder=null;requestKeys.delete(form);$('purchase-delete-dialog').close();await showOrder(order.id);message('purchase-view-error',err.message+' 최신 주문을 확인한 뒤 다시 진행해 주세요.');return;}throw err;}
         deletingOrder=null;currentOrder=null;editingItemId=null;receiptOrder=null;++receiptSequence;
-        document.querySelectorAll('dialog[open]').forEach(d=>d.close());
+        document.querySelectorAll('[data-inventory-dialogs] dialog[open]').forEach(d=>d.close());
         await load();message('inventory-success','구매 주문을 삭제했습니다. 남은 미입고 수량을 취소하고 기존 이력을 보존했습니다.');
     });});
     let receiptOrder=null,receiptSequence=0;
