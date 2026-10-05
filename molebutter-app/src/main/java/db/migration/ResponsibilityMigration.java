@@ -1,6 +1,6 @@
 package db.migration;
 
-
+import cc.ataglace.molebutter.common.api.BusinessTime;
 import java.sql.*;
 import java.util.*;
 
@@ -16,7 +16,14 @@ final class ResponsibilityMigration {
         require(count(c,"SELECT COUNT(*) FROM product_refresh_run WHERE status IN ('RUNNING','PAUSED','BLOCKED','RETRY_WAIT')")==0,"Complete or explicitly cancel active refresh runs before migration");
         require(count(c,"SELECT COUNT(*) FROM supplier_stock_lookup WHERE status IN ('PENDING','RUNNING','BLOCKED')")==0,"Complete or explicitly cancel supplier stock jobs before migration");
         require(count(c,"SELECT COUNT(*) FROM product_settings WHERE id=1")==1,"Missing singleton product settings");
-        require(count(c,"SELECT COUNT(*) FROM product_settings WHERE worker_owner IS NOT NULL AND worker_until>CURRENT_TIMESTAMP(6)")==0,"Stop workers and wait for their lease to expire before migration");
+        // DATETIME leases store Korea local time, independently of the DB session time zone.
+        try (var statement=c.prepareStatement("SELECT COUNT(*) FROM product_settings WHERE worker_owner IS NOT NULL AND worker_until>?")) {
+            statement.setObject(1,BusinessTime.koreaNow());
+            try (var result=statement.executeQuery()) {
+                result.next();
+                require(result.getLong(1)==0,"Stop workers and wait for their lease to expire before migration");
+            }
+        }
     }
     static void copy(Connection c,String target,String source,String key,List<String> columns) throws SQLException {
         String cols=String.join(",",columns);

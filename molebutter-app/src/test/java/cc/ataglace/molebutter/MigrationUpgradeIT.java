@@ -3,6 +3,8 @@ package cc.ataglace.molebutter;
 import static org.assertj.core.api.Assertions.*;
 
 import java.sql.DriverManager;
+import java.time.LocalDateTime;
+import cc.ataglace.molebutter.common.api.BusinessTime;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
@@ -284,7 +286,7 @@ class MigrationUpgradeIT {
             try(var r=st.executeQuery("SELECT on_hand,pending,unit_price FROM inventory_item WHERE id=100")){r.next();assertThat(r.getLong(1)).isEqualTo(2);assertThat(r.getLong(2)).isEqualTo(1);assertThat(r.getLong(3)).isEqualTo(12345);}
         }
         // The V28 fixture is an existing installation; only explicit cancellation clears active work.
-        var split=Flyway.configure().dataSource(url,user,password).target("29").load();
+        var split=Flyway.configure().dataSource(url,user,password).initSql("SET SESSION time_zone='+00:00'").target("29").load();
         try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
             st.executeUpdate("UPDATE product_refresh_run SET status='CANCELLED' WHERE status IN ('RUNNING','PAUSED','BLOCKED','RETRY_WAIT')");
             st.executeUpdate("UPDATE supplier_stock_lookup SET status='CANCELLED' WHERE status IN ('PENDING','RUNNING','BLOCKED')");
@@ -298,9 +300,22 @@ class MigrationUpgradeIT {
             try(var r=st.executeQuery("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='procurement_product'")){r.next();assertThat(r.getInt(1)).isZero();}
             st.executeUpdate("UPDATE product_refresh_run SET status='CANCELLED' WHERE id=9876");
         }
+        // A UTC migration session must reject live Korea-time leases, but allow expired ones.
+        setWorkerLease(url,user,password,BusinessTime.koreaNow().plusMinutes(10),false);
+        split.repair();
+        assertThatThrownBy(split::migrate).hasStackTraceContaining("wait for their lease to expire");
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
+            try(var r=st.executeQuery("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='procurement_product'")){r.next();assertThat(r.getInt(1)).isZero();}
+        }
+        setWorkerLease(url,user,password,BusinessTime.koreaNow().minusMinutes(5),false);
         split.repair();assertThat(split.migrate().migrationsExecuted).isEqualTo(1);split.validate();
         // Verification refuses destructive cleanup if even one migrated value was changed.
-        var remove=Flyway.configure().dataSource(url,user,password).target("30").load();
+        var remove=Flyway.configure().dataSource(url,user,password).initSql("SET SESSION time_zone='+00:00'").target("30").load();
+        setWorkerLease(url,user,password,BusinessTime.koreaNow().plusMinutes(10),true);
+        assertThatThrownBy(remove::migrate).hasStackTraceContaining("wait for their lease to expire");
+        LocalDateTime expiredLease=BusinessTime.koreaNow().minusMinutes(5);
+        setWorkerLease(url,user,password,expiredLease,true);
+        remove.repair();
         try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()){st.executeUpdate("UPDATE procurement_product SET lookup_revision=42 WHERE product_id=1");}
         assertThatThrownBy(remove::migrate).hasStackTraceContaining("Value/reference mismatch");
         try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()) {
@@ -316,8 +331,20 @@ class MigrationUpgradeIT {
             }
             try(var r=st.executeQuery("SELECT revision,preference_revision FROM procurement_settings WHERE id=1")){r.next();assertThat(r.getLong(1)).isEqualTo(17);assertThat(r.getLong(2)).isEqualTo(23);}
             try(var r=st.executeQuery("SELECT search_gate_version,next_search_at FROM procurement_runtime WHERE id=1")){r.next();assertThat(r.getLong(1)).isEqualTo(31);assertThat(r.getTimestamp(2).toLocalDateTime()).isEqualTo(java.time.LocalDateTime.parse("2026-10-01T11:22:33.123456"));}
+            try(var r=st.executeQuery("SELECT worker_owner,worker_until FROM procurement_runtime WHERE id=1")){r.next();assertThat(r.getString(1)).isEqualTo("stopped-worker");assertThat(r.getObject(2,LocalDateTime.class)).isEqualTo(expiredLease);}
             try(var r=st.executeQuery("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='catalog_product' AND column_name IN ('search_query','lookup_revision','latest_result','image_url')")){r.next();assertThat(r.getInt(1)).isZero();}
             try(var r=st.executeQuery("SELECT on_hand,pending,unit_price FROM inventory_item WHERE id=100")){r.next();assertThat(r.getLong(1)).isEqualTo(2);assertThat(r.getLong(2)).isEqualTo(1);assertThat(r.getLong(3)).isEqualTo(12345);}
+        }
+    }
+
+    private static void setWorkerLease(String url,String user,String password,LocalDateTime until,boolean copied) throws Exception {
+        try(var connection=DriverManager.getConnection(url,user,password)) {
+            for(String table:copied ? java.util.List.of("product_settings","procurement_runtime") : java.util.List.of("product_settings")) {
+                try(var statement=connection.prepareStatement("UPDATE "+table+" SET worker_owner='stopped-worker',worker_until=? WHERE id=1")) {
+                    statement.setObject(1,until);
+                    assertThat(statement.executeUpdate()).isEqualTo(1);
+                }
+            }
         }
     }
 }
