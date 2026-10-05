@@ -21,6 +21,18 @@
 
 상품 변경은 app의 `ProductService`가 기존 순서대로 동기 연결한다. 같은 JPA/JDBC 트랜잭션에 참여하므로 중간 실패 시 전체가 롤백된다. 재고의 선택적 판매글 검증은 `SupplierReferencePort`를 app에서 procurement 조회 계약에 연결한다. 알림 대상 확인도 `NotificationTargets` 포트를 app에서 연결한다. 조회 계약과 변경 계약을 나눠 Bean 순환을 피한다. 근태의 사용자 잠금은 `IdentityAccounts.lockUser`로 바깥 트랜잭션에 참여한다.
 
+### 변경 계약과 잠금의 실행 조건
+
+기준 상품의 코드·브랜드 검증, 중복 확인, 등록명 결합, 브랜드 추론과 수정 버전 검사는 catalog가 소유한다. `CatalogCommands.ProductInput`·`BrandSelection`·`VersionedProduct`로 전달하며 app이 JSON이나 기준 상품 SQL을 직접 작성하지 않는다. 검색어 검증과 신규 상품의 초기 검색어 선정은 procurement가 담당한다. app은 권한 확인, HTTP 입력 변환과 모듈 간 트랜잭션 연결을 담당한다.
+
+상품 변경의 호출자는 같은 DataSource의 실제 쓰기 트랜잭션에서 배타 가드를 먼저 획득해야 한다. catalog 변경과 procurement·inventory의 통합/삭제 참여 계약은 이를 실행 중 검사한다. 트랜잭션 없음, 읽기 전용 변경, 가드 미획득, 고정 가드 행 누락, 트랜잭션에 참여하지 않는 DataSource를 거절한다. 존재하지 않거나 삭제·통합된 기준 상품과 수정 결과도 확인한다. 변경할 행이 없어도 정상 완료한 것처럼 처리하지 않는다. 다만 등록명 동일 값 저장이나 이동할 이력이 없는 경우 같은 합법적인 무변경은 허용한다.
+
+잠금 획득 상태는 현재 트랜잭션의 synchronization에 보관한다. `REQUIRES_NEW`는 별도 상태를 사용하고, 바깥 트랜잭션 재개 시 원래 상태를 사용한다. 종료·롤백 이후에는 재사용하지 않는다. 배타 획득 뒤 공유 획득은 허용하지만 공유에서 배타로의 암묵적 승격은 거절한다. 잠금 범위와 기존 업무별 잠금 순서는 유지한다. Spring 프록시를 사용하지 않는 복구 명령의 직접 생성 계약도 같은 검사를 받는다.
+
+상품 HTTP 전용 요청·결과는 app의 `ProductHttpDtos`에 둔다. procurement 조회 조합은 `ProcurementProductView`로 이름을 명확히 하되 기존 JSON 필드는 유지한다. 공통 문자열 길이·필수값 검증은 `BusinessText`를 사용하며 각 호출부의 오류 문구와 업무별 의미는 유지한다.
+
+`ModuleArchitectureTest`는 알려지지 않은 업무 패키지, 실제 Maven 모듈과 패키지 소유자의 불일치, 공개 계약의 제네릭·배열·레코드 등에 노출된 내부 타입까지 검사한다. 잘못된 테스트 전용 계약으로 규칙이 실제로 실패하는지도 확인한다. SQL 쓰기 소유권 검토는 여전히 별도로 수행한다.
+
 ## 저장 책임과 SQL 쓰기 검토 목록
 
 | 소유자 | 변경 가능한 테이블 |

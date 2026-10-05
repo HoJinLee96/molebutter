@@ -49,3 +49,9 @@ NODE_PATH=/path/to/node_modules node scripts/test-notifications-ui.cjs
 최종 JAR을 먼저 `./mvnw -DskipTests package`로 생성한 후 `MOLEBUTTER_TEST_PACKAGE_SMOKE=true bash scripts/test-integration.sh`를 실행하면 같은 임시 DB·Redis에서 실행 JAR의 HTTP 기동·자원·마이그레이션 로딩과 두 상태 복구 명령의 미리보기까지 검증한다. 비밀 설정·테스트 자료·테스트 JAR·ArchUnit이 배포 JAR에 포함되지 않았는지도 확인한다. 초기화·예약 워커와 외부 메일 발송은 실행하지 않는다.
 
 전환 전후의 실제 실행 결과와 자료 대조는 [다중 모듈 전환 검증](modular-transition-verification.md)에 기록했다.
+
+## 모듈 경계 보강 검증
+
+`ProductFlowIT`는 공개 catalog 계약을 직접 호출해 코드·브랜드·중복·버전·통합 대상 검증을 확인한다. 잠금 없는 호출, 읽기 전용 변경, 공유→배타 승격, 가드 행 누락과 잘못된 DataSource를 거절하고 `REQUIRES_NEW`·롤백 후 상태가 섞이지 않는지도 확인한다. 브랜드만 추론할 때 과거 상품코드와 조회 기준은 유지한다. `InventoryFlowIT`는 상품 통합의 마지막 참여 단계에서 실패해도 상품·매입처·재고·이력이 모두 복원되는지 확인한다. `ModuleArchitectureTest`는 알 수 없는 패키지·모듈 소유 불일치·제네릭 내부 타입 노출을 탐지하는 음성 사례를 포함한다.
+
+보강 전후 실행 결과와 유지 범위는 [모듈 경계 보강 검증](module-boundary-reinforcement.md)에 기록한다.
