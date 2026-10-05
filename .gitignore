@@ -144,10 +144,10 @@ notes/
 # Local image resources
 /src/main/resources/image/
 
-# Product search browser login state (never commit cookies)
-/data/product-search-browser/
-/data/product-search-guest/
-/data/product-search-guest.backup-20260930
+# Product search browser state in root or module working directories (never commit cookies)
+**/data/product-search-browser/
+**/data/product-search-guest/
+**/data/product-search-guest.backup-*/
 
 # Module-local secrets and generated output
 **/src/main/resources/application-secret/

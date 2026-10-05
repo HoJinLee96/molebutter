@@ -169,10 +169,22 @@ public final class ProductDtos {
 
     @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public record SourceOption(String id, String label, Long stock, String state,
-            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) String stockScope) {
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) String stockScope,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY) List<SimpleChoice> simpleChoices) {
+        public SourceOption {
+            simpleChoices = simpleChoices == null ? List.of() : List.copyOf(simpleChoices);
+        }
+
+        public SourceOption(String id, String label, Long stock, String state, String stockScope) {
+            this(id, label, stock, state, stockScope, List.of());
+        }
+
         public SourceOption(String id, String label, Long stock, String state) {
             this(id, label, stock, state, null);
         }
+    }
+
+    public record SimpleChoice(String id, String groupName, String name) {
     }
 
     public record StoreEvidence(String kind, String retailer, String name, String namespace, String externalId,

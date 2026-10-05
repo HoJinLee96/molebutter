@@ -4,6 +4,7 @@ import cc.ataglace.molebutter.procurement.internal.SupplierMetadataParser;
 import java.util.*;
 import tools.jackson.databind.JsonNode;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.SourceOption;
+import cc.ataglace.molebutter.procurement.api.ProductDtos.SimpleChoice;
 import static cc.ataglace.molebutter.procurement.internal.NaverSearchPayload.*;
 
 /** 본상품의 명시된 조합만 읽는다. 상품 합계 재고를 옵션에 배분하지 않는다. */
@@ -44,7 +45,7 @@ final class NaverProductInventory {
         if (usable.isBoolean() && usable.asBoolean() && simpleOnly(body, info)) {
             var total = option(id, "상품 전체", body, body, external);
             return new Result(
-                    List.of(new SourceOption(total.id(), total.label(), total.stock(), total.state(), "PRODUCT")),
+                    List.of(new SourceOption(total.id(), total.label(), total.stock(), total.state(), "PRODUCT", simpleChoices(body, info))),
                     true);
         }
         if (!rows.isArray() || rows.isEmpty())
@@ -102,6 +103,14 @@ final class NaverProductInventory {
             groups.add(group);
         }
         return groups.size();
+    }
+
+    private static List<SimpleChoice> simpleChoices(JsonNode body, JsonNode info) {
+        var choices = body.path("options").isMissingNode() ? info.path("options") : body.path("options");
+        var result = new ArrayList<SimpleChoice>();
+        for (var choice : choices)
+            result.add(new SimpleChoice(text(choice, "id"), text(choice, "groupName"), text(choice, "name")));
+        return List.copyOf(result);
     }
 
     private static boolean simpleOnly(JsonNode body, JsonNode info) {

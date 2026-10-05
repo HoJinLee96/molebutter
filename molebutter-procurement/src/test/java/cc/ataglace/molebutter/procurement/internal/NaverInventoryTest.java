@@ -22,11 +22,25 @@ class NaverInventoryTest {
     @Test void simpleGiftChoicesShareOneProductStockAndPreserveStore()throws Exception{
         var data=parser.details(ProcurementMall.NAVER_SMART_STORE,fixture("10481417934"),"10481417934");
         assertThat(data.storeEvidence().retailer()).isEqualTo("롯데백화점");assertThat(data.storeEvidence().name()).isEqualTo("잠실점");
-        assertThat(data.options()).containsExactly(new SourceOption("10481417934","상품 전체",50L,"AVAILABLE","PRODUCT"));
+        assertThat(data.options()).containsExactly(new SourceOption("10481417934","상품 전체",50L,"AVAILABLE","PRODUCT",List.of(new SimpleChoice("10862805346","선물 포장","O"),new SimpleChoice("10862805347","선물 포장","X"))));
         assertThat(data.optionsComplete()).isTrue();
         var supplier=new SupplierResult(new Offer("nv","","", "10481417934","https://shopping.naver.com/window-products/department/10481417934",1000L,0L,ProcurementMall.NAVER_SMART_STORE,null),new CodeMatch("SEARCH_RESULT",null,null,null,null,null),"CONFIRMED",data.options(),null);
         assertThat(SupplierRecommendationPolicy.soldOut(supplier)).isFalse();
         assertThat(SupplierLookupService.summarize(List.of(supplier),true,java.time.LocalDateTime.now()).status()).isEqualTo("SUCCESS");
+    }
+    @Test void actualBlackChoicePreservesProductStockWithoutInventingOptionStock()throws Exception{
+        var data=parser.details(ProcurementMall.NAVER_SMART_STORE,fixture("13771629148"),"13771629148");
+        assertThat(data.optionsComplete()).isTrue();
+        assertThat(data.options()).containsExactly(new SourceOption("13771629148","상품 전체",9L,"AVAILABLE","PRODUCT",
+            List.of(new SimpleChoice("11904636444","컬러","블랙"))));
+        var multiple=parse("\"productStatusType\":\"SALE\",\"stockQuantity\":9,\"optionUsable\":true,\"options\":[{\"id\":1,\"optionType\":\"SIMPLE\",\"groupName\":\"컬러\",\"name\":\"블랙\"},{\"id\":2,\"optionType\":\"SIMPLE\",\"groupName\":\"컬러\",\"name\":\"화이트\"}]");
+        assertThat(multiple.options()).hasSize(1);
+        assertThat(multiple.options().getFirst().stock()).isEqualTo(9L);
+        assertThat(multiple.options().getFirst().simpleChoices()).containsExactly(new SimpleChoice("1","컬러","블랙"),new SimpleChoice("2","컬러","화이트"));
+        var json=new ObjectMapper();
+        var option=data.options().getFirst();
+        assertThat(json.readValue(json.writeValueAsString(option),SourceOption.class)).isEqualTo(option);
+        assertThat(json.writeValueAsString(new SourceOption("old","FREE",3L,"AVAILABLE"))).doesNotContain("simpleChoices");
     }
     @Test void simpleStockKeepsZeroUnknownAndUnavailableDistinct()throws Exception{
         var json=new ObjectMapper();

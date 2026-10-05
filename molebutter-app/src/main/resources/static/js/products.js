@@ -1,6 +1,6 @@
 (() => {
     const { $, escape: e, stamp, pager } = AppUI;
-    document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => $(button.dataset.close).close()));
+    document.querySelectorAll('[data-close]:not([data-inventory-dialogs] [data-close])').forEach(button => button.addEventListener('click', () => $(button.dataset.close).close()));
     if (document.body.dataset.productView !== 'lookup-v11') { setError('page-error','서버를 다시 실행한 뒤 새로고침해 주세요.'); return; }
     const page = document.body.dataset.page, catalog = page === 'products';
     const money = v => v == null ? '미확인' : Number(v).toLocaleString('ko-KR')+'원';
@@ -8,7 +8,7 @@
     const resultMessage = message => (message||'').split(' · ').filter(part=>!/^매입처(?:·코드)? 미확인(?:으로 제외)? \d+건$/.test(part.trim())&&!/^최대 (?:3|5)페이지 (?:조회|범위의 검색 결과입니다\. 이후 페이지는 확인하지 않았습니다\.)$/.test(part.trim())).join(' · ');
     const names = {SKIPPED_SAME_STORE:'재고 미조회',GROUP_UNCONFIRMED:'매장 재확인 필요',SUCCEEDED:'조회 완료',NOT_CHECKED:'미조회',PENDING:'대기',CHECKING:'조회 중',SUCCESS:'조회 완료',PARTIAL:'일부 확인 필요',SOLD_OUT:'품절',UNCONFIRMED:'확인 필요',NO_MATCH:'비교 결과 없음',FAILED:'조회 실패',BLOCKED:'접속 제한',STALE:'재조회 필요',CANCELLED:'취소',RUNNING:'진행 중',PAUSED:'중단',RETRY_WAIT:'자동 재개 대기',COMPLETED:'완료',AVAILABLE:'구매 가능',UNAVAILABLE:'구매 불가',STOCK_UNKNOWN:'재고 미확인',REVIEW:'확인 필요',OPTIONS_PARTIAL:'일부 옵션만 확인',OPTIONS_UNKNOWN:'옵션 미확인',CONFIRMED:'옵션 확인',DEFERRED:'재고 확인 보류',CODE_REVIEW:'이전 결과 · 재조회 필요'};
     const label = v => names[v] ?? v ?? '미조회';
-    const badge = v => `<span class="product-badge ${['SUCCESS','MATCHED','AVAILABLE','COMPLETED'].includes(v)?'good':['FAILED','BLOCKED'].includes(v)?'bad':'warn'}">${e(label(v))}</span>`;
+    const badge = v => `<span class="product-badge ${['SUCCESS','MATCHED','AVAILABLE','COMPLETED'].includes(v)?'good':['FAILED','BLOCKED','SOLD_OUT'].includes(v)?'bad':'warn'}${v==='SOLD_OUT'?' stock-soldout':''}">${e(label(v))}</span>`;
     const safe = ProductSourceSearch.webUrl;
     const link = (url,text) => safe(url)?`<a href="${e(safe(url))}" target="_blank" rel="noopener noreferrer">${e(text)} ↗</a>`:e(text);
     const diagnosticSummary = diagnostics => {
@@ -16,6 +16,9 @@
         return [failed?`추천 조회 실패 ${failed}건`:'',skipped?`추천 조회 생략 ${skipped}건`:''].filter(Boolean).join(' · ');
     };
     const diagnosticRows = diagnostics => !(diagnostics||[]).length?'':`<details class="recommendation-diagnostics"><summary>${e(diagnosticSummary(diagnostics))}</summary><p class="field-hint">추천 실패만 있는 조회 완료 상품은 ‘대상 재조회’에 포함되지 않습니다. 판매글을 확인하고 필요하면 새 최신화를 실행해 주세요.</p><ul>${diagnostics.map(d=>`<li><strong>${e(({LOTTE_IMALL:'롯데홈쇼핑',LOTTE_ON:'롯데ON',NAVER_SMART_STORE:'네이버 쇼핑윈도',LFMALL:'LF몰',HAZZYS:'헤지스',HI_THEHYUNDAI:'더현대Hi',HMALL:'현대Hmall'})[d.mall]||d.mall)}</strong> · ${e(money(d.searchPrice))} · ${d.kind==='SKIPPED'?'추천 조회 생략':'추천 조회 실패'}<br>${e(d.message||d.causeCode)} · ${e(stamp(d.createdAt))} · ${link(d.url,'판매글 확인')}</li>`).join('')}</ul></details>`;
+    const naverSearchButton = query => query?.trim()
+        ? `<a class="btn small naver-search" href="https://search.shopping.naver.com/search/all?${e(new URLSearchParams({adQuery:query,origQuery:query,pagingIndex:'1',pagingSize:'80',productSet:'total',query,sort:'price_asc',timestamp:'',viewType:'list'}).toString())}" target="_blank" rel="noopener noreferrer" aria-label="네이버 검색 (새 탭)">네이버</a>`
+        : '<button type="button" class="btn small naver-search" disabled title="상품 검색어를 입력해 주세요.">네이버</button>';
     const photo = (url,name='상품') => {
         const src=safe(url);
         if(!src.startsWith('https:'))return '<span class="product-photo"><span class="product-photo-empty">사진 없음</span></span>';
@@ -59,8 +62,7 @@
     }
     function selectedBrand(id){if(!brandsLoaded)throw Error('브랜드 목록을 불러오지 못했습니다. 화면을 새로고침해 주세요.');return $(id).value;}
     function inventoryLinks(p) {
-        const base='/inventory?product='+encodeURIComponent(p.id);
-        return `<div class="product-inventory"><span data-inventory-summary="${e(p.id)}">보유 재고 조회 중…</span><a class="btn small" href="${base}">재고 조회</a></div>`;
+        return `<div class="product-inventory"><span data-inventory-summary="${e(p.id)}">보유 재고 조회 중…</span><button type="button" class="btn small" data-stock-product="${e(p.id)}">재고 조회</button></div>`;
     }
     async function loadProducts() {
         if(!catalog)return;const seq=++listSequence;$('product-query').disabled=true;$('products-panel').setAttribute('aria-busy','true');
@@ -71,7 +73,7 @@
             visible=data.items;total=data.totalElements;
             const counts=await apiGet('/api/products/change-counts?'+new URLSearchParams({q:$('product-q').value,mode,status:$('product-status').value}));if(seq!==listSequence)return;
             if($('selected-change-count'))$('selected-change-count').textContent=counts.selected||0;if($('all-change-count'))$('all-change-count').textContent=counts.all||0;
-            $('product-rows').innerHTML=visible.map(p=>`<tr class="${p.changes?.anyChanged?'value-changed':''}"><td><input type="checkbox" data-select="${e(p.id)}" aria-label="${e(p.productCode)} 선택" ${selected.has(p.id)?'checked':''}></td><td class="product-description"><div class="product-identity">${photo(p.imageUrl,p.productCode)}<div><span class="product-meta">${e(p.brand||'브랜드 미지정')}</span><button type="button" class="product-name" data-detail="${e(p.id)}">${e(p.productCode||'코드 보완 필요')}</button>${p.duplicateCount?`<span class="product-warning">동일 전체 코드 ${p.duplicateCount}개 · 통합 후보</span>`:''}${inventoryLinks(p)}</div></div></td><td>${selectedSummary(p.selectedSupplier,p.id||p.productId,{compact:true,latestAt:p.latestAt,changes:p.changes})}</td><td>${badge(p.latestStatus)}<span class="product-meta">${p.latestAt?e(stamp(p.latestAt)):'조회 이력 없음'}</span></td><td><button class="managed-switch" type="button" role="switch" aria-checked="${p.managed}" aria-label="${e(p.productCode)} 자동관리" data-managed="${e(p.id)}"><span></span><span>${p.managed?'켜짐':'꺼짐'}</span></button></td><td><div class="product-row-actions"><button type="button" class="btn small" data-detail="${e(p.id)}">매입처 비교</button><button type="button" class="btn small" data-refresh="${e(p.id)}" ${p.searchQuery&&p.productCode?'':'disabled'}>최신화</button><button type="button" class="btn small danger" data-delete="${e(p.id)}">삭제</button></div></td></tr>`).join('')||'<tr><td colspan="6" class="empty">상품이 없습니다. 직접 등록하거나 엑셀로 일괄등록하세요.</td></tr>';
+            $('product-rows').innerHTML=visible.map(p=>`<tr class="${p.changes?.anyChanged?'value-changed':''}"><td><input type="checkbox" data-select="${e(p.id)}" aria-label="${e(p.productCode)} 선택" ${selected.has(p.id)?'checked':''}></td><td class="product-description"><div class="product-identity">${photo(p.imageUrl,p.productCode)}<div class="product-code-inventory"><div class="product-code-info"><span class="product-meta">${e(p.brand||'브랜드 미지정')}</span><button type="button" class="product-name" data-detail="${e(p.id)}">${e(p.productCode||'코드 보완 필요')}</button>${p.duplicateCount?`<span class="product-warning">동일 전체 코드 ${p.duplicateCount}개 · 통합 후보</span>`:''}</div>${inventoryLinks(p)}</div></div></td><td><div class="product-market-cell">${selectedSummary(p.selectedSupplier,p.id||p.productId,{compact:true,latestAt:p.latestAt,changes:p.changes})}</div></td><td>${badge(p.latestStatus)}<span class="product-meta">${p.latestAt?e(stamp(p.latestAt)):'조회 이력 없음'}</span></td><td><button class="managed-switch" type="button" role="switch" aria-checked="${p.managed}" aria-label="${e(p.productCode)} 자동관리" data-managed="${e(p.id)}"><span></span><span>${p.managed?'켜짐':'꺼짐'}</span></button></td><td><div class="product-row-actions">${naverSearchButton(p.searchQuery)}<button type="button" class="btn small primary" data-refresh="${e(p.id)}" ${p.searchQuery&&p.productCode?'':'disabled'}>최신화</button><button type="button" class="btn small danger" data-delete="${e(p.id)}">삭제</button></div></td></tr>`).join('')||'<tr><td colspan="6" class="empty">상품이 없습니다. 직접 등록하거나 엑셀로 일괄등록하세요.</td></tr>';
             pager('product-pager',data,p=>{currentPage=p;loadProducts().catch(error);},{numbered:true});selection();
         }catch(err){if(seq===listSequence)error(err);}
         finally {if(seq===listSequence){$('product-query').disabled=false;$('products-panel').setAttribute('aria-busy','false');}}
@@ -82,19 +84,33 @@
     const storeName=s=>[s?.retailer,s?.name].filter(Boolean).join(' · ');
     const priceState={UNSUPPORTED_CHANNEL:'현재 조회 지원 대상 아님',CONFIRMED:'',MISSING:'이번 검색에서 미확인',FAILED:'최신 가격 확인 실패',STALE:'조회 기준 변경 · 재조회 필요',CHECKING:'조회 중',UNCONFIRMED:'최신 가격 미확인'};
     // 이번 조회분이 아니면 가격·재고 모두 이전 값이다. 재고 옆에 따로 적지 않고 상태 뒤에 한 번만 알린다.
-    const staleNote=l=>l.selectedMissing?'선정 판매글 미발견 · 이전 확인값 · 이전 가격 및 재고':`${priceState[l.priceStatus]||'이전 조회 결과'} - 이전 가격 및 재고`;
+    const staleNote=l=>l.selectedMissing?'선정 판매글 미발견':`${priceState[l.priceStatus]||'이전 조회 결과'} - 이전 가격 및 재고`;
+    function productStockChoice(option) {
+        const choices = option.simpleChoices || [];
+        return option.stockScope === 'PRODUCT' && choices.length === 1 && String(choices[0].name || '').trim()
+            ? choices[0].name : null;
+    }
+    function giftWrappingOnly(option) {
+        const choices = option.simpleChoices || [];
+        return choices.length === 2 && choices.every(choice => String(choice.groupName || '').replace(/\s/g, '') === '선물포장')
+            && new Set(choices.map(choice => String(choice.name || '').trim().toUpperCase())).size === 2
+            && choices.every(choice => ['O', 'X'].includes(String(choice.name || '').trim().toUpperCase()));
+    }
+    const stockTitle = option => option.stockScope === 'PRODUCT'
+        ? (productStockChoice(option) || giftWrappingOnly(option) ? '재고' : '상품 전체 재고') : '재고';
     function listInventory(l,productId,options,single,inventory){
         const quantity=single&&Number.isFinite(options[0].stock)&&options[0].stock>=0;
-        let text=quantity?`<strong class="supplier-list-quantity">${options[0].stockScope==='PRODUCT'?'상품 전체 재고':'재고'} ${Number(options[0].stock).toLocaleString('ko-KR')}개</strong>`:
-            options.length>1?`<button class="product-name" type="button" data-detail="${e(productId)}">${e(inventory)}</button>`:
-            e(inventory.replace(/ · (구매 가능|구매 불가|품절)$/, '').replace(/^(구매 가능|구매 불가|품절)$/, ''));
         const confirmed=l.current&&!l.selectedMissing&&l.result?.state==='CONFIRMED'&&['SEARCH_RESULT','MATCHED'].includes(l.result?.match?.state)&&options.length>0;
         let status='';
         if(confirmed&&options.every(o=>o.stock===0))status='품절';
         else if(confirmed&&options.every(o=>['SOLD_OUT','UNAVAILABLE'].includes(o.state)))status='구매 불가능';
-        // A quantity is separate from lookup health; keep partial/failed information visible.
-        if(quantity&&['OPTIONS_PARTIAL','FAILED','STOCK_UNKNOWN','UNCONFIRMED','CODE_REVIEW'].includes(l.inventoryState)&&l.current)text+=` <span>${e(l.inventoryState==='FAILED'?'재고 조회 실패':label(l.inventoryState))}</span>`;
-        return {text,status:status?`<span class="product-badge bad">${status}</span>`:''};
+        const optionDetail=options.length>1||['OPTIONS_PARTIAL','OPTIONS_UNKNOWN','MULTIPLE'].includes(l.inventoryState);
+        let text=quantity?`<strong class="supplier-list-quantity${status?' is-unavailable':''}">${e(stockTitle(options[0]))} ${Number(options[0].stock).toLocaleString('ko-KR')}개</strong>`:
+            optionDetail?`<button class="product-name" type="button" data-detail="${e(productId)}">재고 상세</button>`:
+            e(inventory.replace(/ · (구매 가능|구매 불가|품절)$/, '').replace(/^(구매 가능|구매 불가|품절)$/, ''));
+        // 실제 실패·미확인은 남기되 옵션 구성 설명은 상세에서만 표시한다.
+        const warning=(quantity||optionDetail)&&['FAILED','STOCK_UNKNOWN','UNCONFIRMED','CODE_REVIEW'].includes(l.inventoryState)&&l.current?`<span>${e(l.inventoryState==='FAILED'?'재고 조회 실패':label(l.inventoryState))}</span>`:'';
+        return {text,warning,status:status&&!quantity?`<span class="product-badge bad">${status}</span>`:''};
     }
     function selectedSummary(l,productId=null,view={}){
         if(!l)return '<span class="product-meta">매입처 미선정</span>';
@@ -104,25 +120,22 @@
         const priceDelta=delta?.metric(change,l.id,'PRICE')||'',feeDelta=delta?.metric(change,l.id,'DELIVERY')||'';
         const state=priceState[l.priceStatus]??'이전 가격 · 참고용';let inventory=l.inventoryState==='OPTIONS_PARTIAL'?'일부 옵션만 확인':l.inventoryState==='MULTIPLE'?'옵션별 재고 확인':l.inventoryState==='FAILED'?'재고 조회 실패':l.current?label(l.inventoryState):'최신 재고 미확인';
         const options=l.result?.options||[],single=['SEARCH_RESULT','MATCHED'].includes(l.result?.match?.state)&&options.length===1;
-        const quantity=o=>(o.stockScope==='PRODUCT'?'상품 전체 재고 ':'재고 ')+(o.stock==null?'수량 미제공':Number(o.stock).toLocaleString('ko-KR')+'개');
+        const quantity=o=>stockTitle(o)+' '+(o.stock==null?'수량 미제공':Number(o.stock).toLocaleString('ko-KR')+'개');
         // 이번 조회분이 아니어도 이전 재고 수치를 보여 주고, 이전 값이라는 안내는 경고 줄(staleNote)에 둔다.
         if(l.current&&single)inventory=quantity(options[0])+' · '+inventory;else if(!l.current&&options.length)inventory=single?quantity(options[0]):'옵션별 재고 확인';
         if(view.compact){
             const supplier=listingMall(l)+(l.branchRequired===false?'':' · '+(storeName(l.store)||'지점 확인 필요'));
             const stock=listInventory(l,productId,options,single,inventory);
             const missingButton=l.selectedMissing?`<button type="button" class="product-badge bad selected-missing-button" data-detail="${e(productId)}" aria-label="선정 판매글 미발견 · 상품 상세 보기">선정 판매글 미발견</button>`:'';
-            const checked=l.priceCheckedAt?stamp(l.priceCheckedAt):null;
-            const separateTime=checked&&checked!==stamp(view.latestAt);
-            const warnings=[!l.current?(l.selectedMissing?'이전 확인값 · 이전 가격 및 재고':staleNote(l)):state?state+(l.referencePrice!=null?' · 마지막 가격 참고용':''):'',
-                l.branchRequired!==false&&l.storeStatus==='HISTORICAL'?'이전 매장 정보 · 이번 업체·지점 미확인':'',
+            const warnings=[!l.current?(l.selectedMissing?'':staleNote(l)):state?state+(l.referencePrice!=null?' · 마지막 가격 참고용':''):'',
                 !l.preferred?'선호 목록에서 제외됨':'',l.branchRequired!==false&&l.conflict?'자동 지점 판별과 수동 지정이 다릅니다.':''].filter(Boolean);
             return `<div class="supplier-compact">
-                <div class="supplier-compact-line"><strong class="supplier-list-price">${money(l.referencePrice)}</strong>${priceDelta}<span class="supplier-compact-delivery">배송비 ${money(l.deliveryFee)} ${feeDelta}</span><span class="supplier-compact-stock">${stock.text} ${stockDelta} ${stock.status} ${missingButton}</span></div>
-                <div class="supplier-compact-line supplier-compact-source">${safe(l.url)?link(l.url,supplier):`<span>${e(supplier)}</span>`}${separateTime?`<span class="supplier-compact-time">가격 확인 ${e(checked)}</span>`:!checked?'<span class="supplier-compact-time">가격 확인 이력 없음</span>':''}</div>
+                <div class="supplier-compact-line supplier-compact-main"><span class="supplier-compact-price"><strong class="supplier-list-price">${money(l.referencePrice)}</strong><span class="supplier-price-change">${priceDelta}</span></span><span class="supplier-compact-delivery${l.deliveryFee!=null&&Number(l.deliveryFee)!==0?' supplier-delivery-paid':''}">배송비 ${money(l.deliveryFee)} ${feeDelta}</span><span class="supplier-compact-stock"><span class="supplier-stock-value">${stock.text}</span><span class="supplier-stock-notices">${stock.warning} ${stockDelta} ${stock.status} ${missingButton}</span></span>
+                <span class="supplier-compact-source">${safe(l.url)?`<a class="supplier-list-source" href="${e(safe(l.url))}" target="_blank" rel="noopener noreferrer">${e(supplier)}</a>`:`<span class="supplier-list-source">${e(supplier)}</span>`}</span></div>
                 ${warnings.length?`<div class="supplier-compact-warnings product-warning">${warnings.map(e).join(' · ')}</div>`:''}
             </div>`;
         }
-        const warnings=[!l.current?staleNote(l):state?state+(l.referencePrice!=null?' · 마지막 가격 참고용':''):'',
+        const warnings=[!l.current?(l.selectedMissing?'':staleNote(l)):state?state+(l.referencePrice!=null?' · 마지막 가격 참고용':''):'',
             l.branchRequired!==false&&l.storeStatus==='HISTORICAL'?'이전 매장 정보 · 이번 업체·지점 미확인':'',
             !l.preferred?'선호 목록에서 제외됨':'',l.branchRequired!==false&&l.conflict?'자동 지점 판별과 수동 지정이 다릅니다.':''].filter(Boolean);
         const stock=l.inventoryState==='MULTIPLE'?`<a href="${l.preferred?'#supplier-results':'#selected-supplier-results'}">${e(inventory)}</a>`:e(inventory);
@@ -235,6 +248,15 @@
         const messages={PRICE_UNCONFIRMED:'선정 매입처 가격 미확인으로 추천 보류',REFRESH_REQUIRED:'최신화 후 추천을 확인할 수 있습니다.',SELECTION_CHANGED:'선정 기준이 변경되었습니다. 최신화 후 추천을 확인해 주세요.',PARTIAL:'추천 일부 조회 · 추가 조회 한도에 도달했습니다.'};
         $('recommendation-results').innerHTML=(messages[status.state]?`<p class="field-hint">${e(messages[status.state])}</p>`:'')+(supplierGroups(recommendations,'rec')||(['READY','PARTIAL'].includes(status.state)?'<p class="field-hint">추천 조건에 맞는 비선호 매입처가 없습니다.</p>':''));return true;
     }
+    function simpleChoiceDescription(option) {
+        if (option.stockScope !== 'PRODUCT' || productStockChoice(option)) return '';
+        const groups = new Map();
+        for (const choice of option.simpleChoices || []) {
+            if (!groups.has(choice.groupName)) groups.set(choice.groupName, []);
+            groups.get(choice.groupName).push(choice.name);
+        }
+        return [...groups].map(([group, names]) => `<div class="lookup-option-name">${e(group)}: ${names.map(e).join(' / ')}</div>`).join('');
+    }
     function supplierCards(list,actions='',{mallTag=false}={}) {
         return list.map(s=>{
             const o=s.offer, branch=s.branch;
@@ -249,7 +271,7 @@
                     ${(s.sourceModelCode||s.match?.originalCode)?`<div class="lookup-code-line"><span>${e(s.sourceModelCode||s.match.originalCode)}</span></div>`:''}
                 </div>
                 <div class="lookup-search-price"><div class="lookup-price-line"><strong>${money(o.price)}</strong>${delta?.metric(s.delta,s.listingId,'PRICE')||''}<span class="product-meta">배송비 ${money(o.deliveryFee)} ${delta?.metric(s.delta,s.listingId,'DELIVERY')||''}</span></div>
-                    ${options.length?`<ul class="lookup-options" aria-label="옵션별 재고와 구매 가능 여부">${options.map(v=>`<li class="lookup-option-row${s.reference?' is-reference':''}">${v.stockScope==='PRODUCT'?'':`<span class="lookup-option-name">옵션 ${e(v.label)}</span>`}<span class="lookup-stock ${v.stock===0?'empty-stock':''}">${v.stockScope==='PRODUCT'?'상품 전체 재고':'재고'} <strong>${v.stock==null?'수량 미제공':Number(v.stock).toLocaleString('ko-KR')+'개'}</strong></span>${delta?.option(s.delta,s.listingId,v)||''}${s.reference?`<span class="product-badge">${e(v.state==='SOLD_OUT'?'품절':label(v.state))}</span>`:v.state==='SOLD_OUT'?'<span class="product-badge bad">구매 불가 · 품절</span>':badge(v.state)}</li>`).join('')}</ul>`:`<p class="lookup-stock-note">${badge(s.state)}${['DEFERRED','SKIPPED_SAME_STORE'].includes(s.state)?'':' · 구매 가능 여부와 재고 미확인'}</p>`}
+                    ${options.map(simpleChoiceDescription).join('')}${options.length?`<ul class="lookup-options" aria-label="옵션별 재고와 구매 가능 여부">${options.map(v=>`<li class="lookup-option-row${s.reference?' is-reference':''}">${v.stockScope==='PRODUCT'&&!productStockChoice(v)?'':`<span class="lookup-option-name">옵션 ${e(productStockChoice(v)||v.label)}</span>`}<span class="lookup-stock ${v.stock===0?'empty-stock':''}">${e(stockTitle(v))} <strong>${v.stock==null?'수량 미제공':Number(v.stock).toLocaleString('ko-KR')+'개'}</strong></span>${delta?.option(s.delta,s.listingId,v)||''}${s.reference?`<span class="product-badge">${e(v.state==='SOLD_OUT'?'품절':label(v.state))}</span>`:v.state==='SOLD_OUT'?'<span class="product-badge bad">구매 불가 · 품절</span>':badge(v.state)}</li>`).join('')}</ul>`:`<p class="lookup-stock-note">${badge(s.state)}${['DEFERRED','SKIPPED_SAME_STORE'].includes(s.state)?'':' · 구매 가능 여부와 재고 미확인'}</p>`}
                     ${s.message?`<p class="field-hint">${e(s.message)}</p>`:''}${!options.length&&change?.lastStockAt?`<p class="field-hint">마지막 재고 확인 ${e(stamp(change.lastStockAt))}</p>`:''}${(change?.deltas||[]).filter(d=>d.kind==='OPTION_MISSING').map(d=>`<span class="product-meta">옵션 ${e(d.optionLabel)} · 이번 응답에서 미확인</span>`).join('')}
                     ${delta?.alternative(s.delta,s.listingId)?`<span class="change-cheaper">선정가보다 ${money(delta.alternative(s.delta,s.listingId).saving)} 저렴 · 구매 가능 확인</span>`:''}${change?.comparisonNote&&!change.fresh?`<p class="field-hint">${e(change.comparisonNote)}</p>`:''}${actions}
                 </div></div></article>`;
@@ -276,6 +298,7 @@
         const p=detail.product,r=p.latestResult,items=r?.suppliers||[];
         const message=resultMessage(r?.message);
         $('detail-summary').innerHTML=`<div class="detail-overview"><div class="product-identity product-detail-identity">${photo(p.imageUrl,p.productCode)}<div><span class="product-meta">${e(p.brand||'브랜드 미지정')}</span><strong>${e(p.productCode||'코드 보완 필요')}</strong><p class="detail-search-query"><span>네이버 검색어</span> ${e(p.searchQuery||'미입력')}</p>${inventoryLinks(p)}</div></div><section class="detail-selection"><div class="detail-selection-heading"><span>선정 매입처 · 사입 기준가</span>${p.selectedSupplier?'<button type="button" class="btn small" data-clear-selection>선정 해제</button>':''}</div>${selectedSummary(p.selectedSupplier,p.id,{latestAt:p.latestAt,changes:detail.changes,mallTag:true})}</section></div>`;
+        $('detail-naver-search').innerHTML=naverSearchButton(p.searchQuery);
         $('detail-status').innerHTML=`<div class="detail-status-line">${badge(p.latestStatus)}<span>${p.latestAt?'최신화 '+e(stamp(p.latestAt)):'조회 이력 없음'}</span></div>${message?`<p class="detail-status-message">${e(message)}</p>`:''}`;
         if(detail.assessmentSettingsChanged)$('detail-status').insertAdjacentHTML('beforeend','<p class="detail-status-message">선호 설정이 변경되었습니다. 조회 상태는 마지막 최신화 기준이며, 변경한 매입처는 다음 최신화에서 확인합니다.</p>');
         const diagnostics=r?.recommendationDiagnostics||[];
@@ -391,8 +414,8 @@
     $('product-delete-form').addEventListener('submit',ev=>{ev.preventDefault();if(!$('product-delete-dialog').open||!deleteTargets.length)return;action(ev.submitter,async()=>{await apiPost('/api/products/delete',{products:deleteTargets});selected.clear();deleteTargets=[];$('product-delete-dialog').close();await loadProducts();},'product-delete-error');});
     $('create-form').addEventListener('submit',ev=>{ev.preventDefault();action(ev.submitter,async()=>{const p=await apiPost('/api/products',fields('create'));$('create-dialog').close();await loadProducts();await loadDetail(p.id);},'create-error');});
     $('brand-form').addEventListener('submit',ev=>{ev.preventDefault();action(ev.submitter,async()=>{await apiPost('/api/products/bulk',{products:[...selected.values()].map(p=>({id:p.id,revision:p.revision})),brandId:selectedBrand('bulk-brand-name')});selected.clear();$('brand-dialog').close();await loadProducts();},'brand-error');});
-    document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>{if(!busy){if(b.dataset.close==='product-dialog'){detailSequence++;watcher.stop();progress('');}$(b.dataset.close).close();}}));
-    document.querySelectorAll('dialog').forEach(d=>d.addEventListener('cancel',ev=>{if(busy)ev.preventDefault();else if(d.id==='product-dialog'){detailSequence++;watcher.stop();progress('');}}));
+    document.querySelectorAll('[data-close]:not([data-inventory-dialogs] [data-close])').forEach(b=>b.addEventListener('click',()=>{if(!busy){if(b.dataset.close==='product-dialog'){detailSequence++;watcher.stop();progress('');}$(b.dataset.close).close();}}));
+    document.querySelectorAll('dialog:not([data-inventory-dialogs] dialog)').forEach(d=>d.addEventListener('cancel',ev=>{if(busy)ev.preventDefault();else if(d.id==='product-dialog'){detailSequence++;watcher.stop();progress('');}}));
     $('product-dialog').addEventListener('close',()=>{detailSequence++;watcher.stop();progress('');});
     const imageDialog=$('product-image-dialog'),fullImage=$('product-image-full'),imageStatus=$('product-image-status');
     function openImage(button){

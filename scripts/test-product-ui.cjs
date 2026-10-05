@@ -15,6 +15,21 @@ const assert=require('node:assert/strict'),fs=require('node:fs');
    await page.waitForFunction(id=>document.querySelector(`[data-inventory-summary="${id}"]`)?.textContent.includes('보유 5개'),first);
    await page.locator('#product-q').fill('HIBA');await page.locator('#product-query').click();
    await page.waitForFunction(()=>document.querySelectorAll('#product-rows tr').length===1);
+   // Open the shared inventory dialog without navigating away from products.
+   await page.route('**/api/inventory/stock-products/*',route=>route.fulfill({json:{code:'OK',data:{productId:first,productCode:'HIBA6F311N2',brand:'헤지스',onHand:5,pending:2,remainingAmount:null,options:[{color:'블랙',size:'FREE',onHand:5,pending:2}]}}}));
+   await page.route('**/api/inventory/items?*',route=>route.fulfill({json:{code:'OK',data:{items:[],page:0,totalPages:0,totalElements:0}}}));
+   await page.route('**/api/inventory/movements?*',route=>route.fulfill({json:{code:'OK',data:{items:[],page:0,totalPages:0,totalElements:0}}}));
+   const stockButton=page.locator(`[data-stock-product="${first}"]`).first();
+   const stockBox=await stockButton.boundingBox(),xBefore=stockBox.x;
+   const marketBox=await page.locator('#product-rows .product-market-cell').first().boundingBox();
+   assert(marketBox.x-(stockBox.x+stockBox.width)>=16,'inventory button must be separated from supplier information');
+   assert.equal(await page.locator(`[data-inventory-summary="${first}"] .has-stock`).count(),2);
+   assert.equal(await page.locator(`[data-inventory-summary="${first}"] .has-stock`).first().evaluate(el=>getComputedStyle(el).fontWeight),'700');
+   await page.locator(`[data-inventory-summary="${first}"]`).first().evaluate(el=>el.querySelectorAll('.has-stock').forEach(n=>n.classList.remove('has-stock')));
+   assert.equal((await stockButton.boundingBox()).x,xBefore);
+   await stockButton.click();await page.locator('#stock-options').getByText('블랙',{exact:true}).waitFor();
+   assert.equal(new URL(page.url()).pathname,'/products');assert.equal(await page.locator('#stock-dialog').evaluate(el=>el.open),true);
+   await page.locator('[data-close="stock-dialog"]').click();
    await page.locator(`[data-detail="${first}"]`).first().click();
    await page.locator('[data-clear-selection]').click();
    await page.locator('#supplier-results [data-pick="L0"]').click();
@@ -23,6 +38,33 @@ const assert=require('node:assert/strict'),fs=require('node:fs');
    await page.locator('#detail-refresh').click();await page.locator('#detail-spinner').waitFor({state:'visible'});
    await page.locator('#detail-spinner').waitFor({state:'hidden'});
    assert.equal(await page.locator('#edit-query').inputValue(),'저장 전 검색어');
+   // Deleting a pending purchase closes inventory dialogs without discarding the product draft.
+   let purchaseDeleted=false,deleteCalls=0;
+   const purchaseItem={id:'901',purchaseId:'900',productId:first,productCode:'HIBA6F311N2',brand:'헤지스',purchasedOn:'2026-10-05',revision:0,orderedQuantity:1,receivedQuantity:0,cancelledQuantity:0,onHand:0,pending:1,color:'블랙',size:'FREE',unitPrice:null};
+   const purchase={id:'900',revision:0,purchasedOn:'2026-10-05',paidOn:'2026-10-05',supplierName:'검증 구매처',orderedQuantity:1,receivedQuantity:0,cancelledQuantity:0,onHand:0,pending:1,purchaseAmount:null,deleteToken:'pending-purchase-token',deleteBlockedReason:null,items:[purchaseItem]};
+   await page.route('**/api/inventory/items?*',route=>route.fulfill({json:{code:'OK',data:{items:purchaseDeleted?[]:[purchaseItem],page:0,totalPages:purchaseDeleted?0:1,totalElements:purchaseDeleted?0:1}}}));
+   await page.route('**/api/inventory/items/901',route=>route.fulfill({json:{code:'OK',data:purchaseItem}}));
+   await page.route('**/api/inventory/purchases/900',route=>route.fulfill({json:{code:'OK',data:purchase}}));
+   await page.route('**/api/inventory/summaries?*',route=>{
+    const ids=(new URL(route.request().url()).searchParams.get('productIds')||'').split(',');
+    return route.fulfill({json:{code:'OK',data:ids.map(productId=>({productId,onHand:productId===first?5:0,pending:productId===first?(purchaseDeleted?1:2):0}))}});
+   });
+   await page.route('**/api/inventory/purchases/900/delete',route=>{
+    assert.equal(route.request().method(),'POST');assert.deepEqual(route.request().postDataJSON(),{revision:0,deleteToken:purchase.deleteToken});
+    assert(route.request().headers()['x-operation-id']);deleteCalls++;purchaseDeleted=true;
+    return route.fulfill({json:{code:'OK',data:null}});
+   });
+   await page.locator('#detail-summary [data-stock-product]').click();
+   await page.locator('#stock-items [data-item="901"]').click();
+   await page.locator('#purchase-delete').click();
+   await page.locator('#purchase-delete-form [type="submit"]').click();
+   await page.locator('#purchase-delete-dialog').waitFor({state:'hidden'});
+   await page.waitForFunction(()=>document.querySelector('#detail-summary [data-inventory-summary]').textContent.includes('미입고 1개'));
+   assert.equal(deleteCalls,1);
+   assert.equal(await page.locator('[data-inventory-dialogs] dialog[open]').count(),0);
+   assert.equal(await page.locator('#product-dialog').evaluate(el=>el.open),true);
+   assert.equal(await page.locator('#edit-query').inputValue(),'저장 전 검색어');
+   assert.equal(new URL(page.url()).pathname,'/products');
    await page.locator('[data-close="product-dialog"]').click();
 
    // Create and edit through the form, then confirm deletion through the UI.

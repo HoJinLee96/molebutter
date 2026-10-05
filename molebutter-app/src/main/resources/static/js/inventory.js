@@ -1,6 +1,7 @@
 (() => {
     'use strict';
-    const $ = id => document.getElementById(id), admin = document.body.dataset.inventoryAdmin === 'true';
+    const $ = id => document.getElementById(id), embedded = !document.getElementById('inventory-filter'),
+        admin = (document.body.dataset.inventoryAdmin ?? document.body.dataset.productAdmin) === 'true';
     const escape = AppUI.escape;
     const labels = {RECEIPT:'입고',CANCEL_PENDING:'미입고 취소',SALE_OUT:'판매 출고',SUPPLIER_RETURN:'매입 반품',CUSTOMER_RETURN:'고객 반품 입고',DISPOSE:'폐기',ADJUST_IN:'실사 정정 +',ADJUST_OUT:'실사 정정 −',REVERSE:'기록 취소',ORDER_INCREASE:'주문 수량 증가',ORDER_DECREASE:'주문 수량 감소',NONE:'기록 없음',PENDING:'환불 대기',COMPLETED:'환불 완료'};
     const money = v => v == null ? '미확인' : BigInt(v).toLocaleString('ko-KR') + '원';
@@ -11,7 +12,7 @@
     let orderEditing=false,editingItemId=null,orderSequence=0;
     const itemHistories=new Map(),historyPages=new Map(),historySequences=new Map();
     let currentStock=null,stockItemPage=0,stockMovementPage=0,stockMovementRows=[],stockSequence=0;
-    function message(id,value) { const el=$(id); if(el){el.textContent=value||'';el.hidden=!value;} }
+    function message(id,value) { const el=$(id)||(embedded?$(id.endsWith('error')?'stock-error':'stock-message'):null); if(el){el.textContent=value||'';el.hidden=!value;} }
     function field(form,name){return form.elements.namedItem(name);}
     function value(form,name){const el=field(form,name),note=el&&noteValues.get(el);return note&&!note.edited?note.original:el?.value.trim()||'';}
     function values(form,names){return Object.fromEntries(names.map(n=>[n,value(form,n)]));}
@@ -21,7 +22,7 @@
     function facts(row,keys) { return '<dl class="inventory-facts">'+keys.filter(([key])=>Object.hasOwn(row,key)&&(key!=='paymentAmount'||row[key]!=null)).map(([key,label])=>`<div><dt>${label}</dt><dd>${['unitPrice','remainingAmount','refundAmount','paymentAmount','purchaseAmount'].includes(key)?money(row[key]):escape(row[key]??'미입력')}</dd></div>`).join('')+'</dl>'; }
     function pager(id,data,go) {const el=$(id);el.innerHTML=`<span>${data.totalElements}건 · ${data.page+1} / ${Math.max(1,data.totalPages)}</span> <button class="btn small" type="button" data-prev ${data.page===0?'disabled':''}>이전</button> <button class="btn small" type="button" data-next ${data.page+1>=data.totalPages?'disabled':''}>다음</button>`;el.querySelector('[data-prev]').onclick=()=>go(data.page-1);el.querySelector('[data-next]').onclick=()=>go(data.page+1);}
     async function run(form,errorId,fn) {
-        if(busy)return;busy=true;message(errorId,null);const controls=[...document.querySelectorAll('dialog button, dialog input, dialog select, dialog textarea')];const old=controls.map(e=>e.disabled);
+        if(busy)return;busy=true;message(errorId,null);const controls=[...document.querySelectorAll('[data-inventory-dialogs] button, [data-inventory-dialogs] input, [data-inventory-dialogs] select, [data-inventory-dialogs] textarea')];const old=controls.map(e=>e.disabled);
         try { // Collect values before disabling controls, then keep dialogs open during the write.
             const work=fn();controls.forEach(e=>e.disabled=true);await work;
         } catch(err){message(errorId,err.message);}
@@ -33,8 +34,8 @@
         const result=await apiRequest(url,{method:'POST',headers:{'Content-Type':'application/json','X-Operation-Id':key},body:JSON.stringify(body)});
         requestKeys.delete(form);return result;
     }
-    document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>{if(!busy)$(b.dataset.close).close();}));
-    document.querySelectorAll('dialog').forEach(d=>d.addEventListener('cancel',e=>{if(busy)e.preventDefault();}));
+    document.querySelectorAll('[data-inventory-dialogs] [data-close]').forEach(b=>b.addEventListener('click',()=>{if(!busy)$(b.dataset.close).close();}));
+    document.querySelectorAll('[data-inventory-dialogs] dialog').forEach(d=>d.addEventListener('cancel',e=>{if(busy)e.preventDefault();}));
     function itemTable(rows,inOrder=false,inStock=false) {
         const headings=['구매 상품 / 옵션','매입일 / 구매처','보유','미입고',...(inStock?['상품 메모']:[]),...(admin?['단가 / 잔여 금액']:[]),'작업'];
         return '<table class="data"><thead><tr>'+headings.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>'+ (rows.map(i=>`<tr><td><strong>${escape(i.productCode)}</strong><div>${escape([i.color,i.size,i.optionLabel].filter(Boolean).join(' · '))}</div>${i.productDeleted?'<small>관리 목록에서 삭제된 상품</small>':''}</td><td>${escape(i.purchasedOn)}<div>${escape(i.supplierName)}</div></td><td>${i.onHand}개</td><td>${i.pending}개</td>${inStock?`<td class="inventory-note">${escape(i.publicNote)}</td>`:''}${admin?`<td>${money(i.unitPrice)}<div>${money(i.remainingAmount)}</div></td>`:''}<td><div class="inventory-actions"><button class="btn small" type="button" data-item="${escape(i.id)}">주문에서 보기</button>${inOrder&&!i.purchaseDeleted&&i.pending>0?`<button type="button" class="btn small" data-receive="${escape(i.id)}">입고</button>${admin?`<button type="button" class="btn small" data-cancel-pending="${escape(i.id)}">미입고 취소</button>`:''}`:''}</div></td></tr>`).join('')||`<tr><td colspan="${headings.length}" class="empty">등록된 매입 상품이 없습니다.</td></tr>`)+ '</tbody></table>';
@@ -55,11 +56,12 @@
             if((stockItemPage>0&&!lots.items.length)||(stockMovementPage>0&&!history.items.length)){stockItemPage=Math.min(stockItemPage,Math.max(0,lots.totalPages-1));stockMovementPage=Math.min(stockMovementPage,Math.max(0,history.totalPages-1));return refreshStockProduct();}
             $('stock-items').innerHTML=itemTable(lots.items,false,true);pager('stock-item-pager',lots,n=>{stockItemPage=n;refreshStockProduct();});
             stockMovementRows=history.items;$('stock-movements').innerHTML=movementTable(history.items,false,true);pager('stock-movement-pager',history,n=>{stockMovementPage=n;refreshStockProduct();});
-        }catch(err){if(sequence!==stockSequence||!$('stock-dialog').open)return;if(err.status===404){$('stock-dialog').close();message('inventory-success','이 상품에 남아 있는 구매 주문이 없습니다.');}else message('stock-error',err.message);}
+        }catch(err){if(sequence!==stockSequence||!$('stock-dialog').open)return;if(err.status===404){if(embedded)message('stock-error','이 상품에 남아 있는 매입 주문이 없습니다.');else{$('stock-dialog').close();message('inventory-success','이 상품에 남아 있는 구매 주문이 없습니다.');}}else message('stock-error',err.message);}
     }
-    async function showStockProduct(id){currentStock={productId:id};stockItemPage=0;stockMovementPage=0;stockMovementRows=[];$('stock-title').textContent='상품 재고';message('stock-error',null);for(const name of ['stock-summary','stock-options','stock-items','stock-movements','stock-item-pager','stock-movement-pager'])$(name).textContent='';if(!$('stock-dialog').open)$('stock-dialog').showModal();await refreshStockProduct();}
+    async function showStockProduct(id){currentStock={productId:id};stockItemPage=0;stockMovementPage=0;stockMovementRows=[];$('stock-title').textContent='상품 재고';message('stock-error',null);message('stock-message',null);for(const name of ['stock-summary','stock-options','stock-items','stock-movements','stock-item-pager','stock-movement-pager'])$(name).textContent='';if(!$('stock-dialog').open)$('stock-dialog').showModal();await refreshStockProduct();}
     $('stock-dialog').addEventListener('close',()=>{++stockSequence;currentStock=null;stockMovementRows=[];});
     async function load() {
+        if(embedded){await refreshStockProduct();document.dispatchEvent(new CustomEvent('inventory-updated'));return;}
         const seq=++loadSequence;message('inventory-error',null);const size=$('inventory-size').value,q=$('inventory-q').value,brandId=$('inventory-brand').value;
         $('inventory-query-label').textContent=tab==='items'?'상품코드·브랜드·검색어':tab==='purchases'?(admin?'구매처·주문번호':'구매처'):'검색어 검색 미지원';
         $('inventory-q').disabled=tab==='movements';$('inventory-clear-product').hidden=!productId;
@@ -79,7 +81,7 @@
         }catch(err){if(seq===loadSequence){$('inventory-total-quantity').textContent='—';$('inventory-filtered-total').hidden=true;message('inventory-error',err.message);}}
     }
     document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;page=0;document.querySelectorAll('[data-tab]').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-pressed',String(x===b));});load();});
-    $('inventory-filter').onsubmit=ev=>{ev.preventDefault();page=0;load();};$('inventory-clear-product').onclick=()=>{productId='';history.replaceState(null,'','/inventory');page=0;load();};
+    if(!embedded){$('inventory-filter').onsubmit=ev=>{ev.preventDefault();page=0;load();};$('inventory-clear-product').onclick=()=>{productId='';history.replaceState(null,'','/inventory');page=0;load();};}
     const orderFields=['purchasedOn','supplierName','orderNumber','orderUrl','paidOn','privateNote'];
     let pickerRow=null,pickerPage=0,pickerRows=[],pickerSequence=0,movementContext=null,autoSupplier='',supplierManual=false,paymentReady=false,purchaseSequence=0;
     function reindexItems() {$('purchase-items').querySelectorAll('.inventory-purchase-item').forEach((row,n)=>{row.querySelector('h4').textContent=`구매 항목 ${n+1}`;const remove=row.querySelector('[data-remove]');remove.setAttribute('aria-label',`구매 항목 ${n+1} 제거`);remove.title=`구매 항목 ${n+1} 제거`;});updatePurchaseAmount();}
@@ -215,7 +217,7 @@
         try {await postOnce(form,`/api/inventory/purchases/${order.id}/delete`,{revision:order.revision,deleteToken:order.deleteToken});}
         catch(err){if(err.status===409){deletingOrder=null;requestKeys.delete(form);$('purchase-delete-dialog').close();await showOrder(order.id);message('purchase-view-error',err.message+' 최신 주문을 확인한 뒤 다시 진행해 주세요.');return;}throw err;}
         deletingOrder=null;currentOrder=null;editingItemId=null;receiptOrder=null;++receiptSequence;
-        document.querySelectorAll('dialog[open]').forEach(d=>d.close());
+        document.querySelectorAll('[data-inventory-dialogs] dialog[open]').forEach(d=>d.close());
         await load();message('inventory-success','구매 주문을 삭제했습니다. 남은 미입고 수량을 취소하고 기존 이력을 보존했습니다.');
     });});
     let receiptOrder=null,receiptSequence=0;
@@ -327,5 +329,5 @@
     $('refund-form')?.elements.namedItem('status').addEventListener('change',()=>{if(value($('refund-form'),'status')!=='COMPLETED')field($('refund-form'),'refundedOn').value='';if(value($('refund-form'),'status')==='NONE')field($('refund-form'),'amount').value='';});
     $('refund-form')?.addEventListener('submit',ev=>{ev.preventDefault();const form=ev.currentTarget;run(form,'refund-error',async()=>{await apiPost(`/api/inventory/movements/${currentRefund.id}/refund`,{revision:currentRefund.refundRevision,status:value(form,'status'),amount:integer(value(form,'amount'),true),refundedOn:value(form,'refundedOn')||null});$('refund-dialog').close();if($('purchase-view-dialog').open)await showOrder(currentOrder.id);await load();});});
     async function loadBrands(){try {const brands=await apiGet('/api/settings/brands');$('inventory-brand').innerHTML='<option value="">전체 브랜드</option><option value="UNASSIGNED">미지정</option>'+brands.map(b=>`<option value="${escape(b.id)}">${escape(b.name)}</option>`).join('');$('inventory-brand').disabled=false;}catch(err){message('inventory-brand-error','브랜드 목록을 불러오지 못했습니다. '+err.message);}}
-    loadBrands();load();if(admin&&params.get('create')==='1')openCreate({product:productId});
+    if(!embedded){loadBrands();load();if(admin&&params.get('create')==='1')openCreate({product:productId});}
 })();

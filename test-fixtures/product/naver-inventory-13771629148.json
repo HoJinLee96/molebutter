@@ -1,0 +1,22 @@
+{
+  "_id": "13771629148",
+  "contents": {
+    "id": 13771629148,
+    "name": "[닥스골프]블랙 DD로고 패딩백 DNGF6F907BK",
+    "stockQuantity": 9,
+    "optionUsable": true,
+    "options": [
+      {
+        "id": 11904636444,
+        "optionType": "SIMPLE",
+        "groupName": "컬러",
+        "name": "블랙"
+      }
+    ],
+    "optionCombinations": [],
+    "optionStandards": [],
+    "productStatusType": "SALE",
+    "channelProductStatusType": "NORMAL",
+    "channelServiceType": "WINDOW"
+  }
+}
