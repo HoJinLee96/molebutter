@@ -1,5 +1,7 @@
 # 네이버 스마트스토어 — 판매 상품 조회
 
+> 문서 유형: 외부 API 조사와 미구현 연동 제안. 외부 사양은 조사 당시 기준이며 실제 계정 호출·연동 완료를 뜻하지 않는다. 구현 전 최신 공식 문서와 계정 권한을 다시 확인한다. 현재 코드 경계는 [모듈 구조](../modular-architecture.md)를 따른다.
+
 확인일: 2026-10-03. 웹 문서 현재 버전 표기는 **2.90.0 / 2026-09-29**다. URL의 `current`와 공식 Markdown은 앞으로 변경될 수 있다. 실제 구현 시 버전과 원문을 다시 확인한다. [상품 목록 웹 규격](https://apicenter.commerce.naver.com/docs/commerce-api/current/search-product)
 
 ## 가입·인증

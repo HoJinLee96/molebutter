@@ -1,5 +1,7 @@
 # 테스트 실행과 유지 기준
 
+> 문서 유형: 현재 구현 안내. 2026-10-05 로컬 코드와 대조했다. 날짜가 붙은 적용·검증 문단은 당시 기록이며 현재 정책과 구분한다.
+
 핵심 로직은 Java·JavaScript 테스트로 검증하고, 브라우저에서는 실제 템플릿과 화면 이벤트가 연결되는 대표 흐름만 확인한다. 운영 DB·계정과 외부 쇼핑몰은 사용하지 않는다.
 
 ## 유지하는 검증
@@ -32,7 +34,7 @@ NODE_PATH=/path/to/node_modules node scripts/test-inventory-ui.cjs
 NODE_PATH=/path/to/node_modules node scripts/test-notifications-ui.cjs
 ```
 
-`test-integration.sh`는 Bash 스크립트다. 별도 임시 MySQL·Redis를 시작하고 테스트 종료 시 종료·삭제한다. Python은 사용 가능한 포트를 찾는 데만 사용한다. Maven은 기본적으로 오프라인 캐시를 사용하며, 의존성을 처음 받아야 하면 `MOLEBUTTER_TEST_MAVEN_OFFLINE=false`를 지정한다.
+`test-integration.sh`는 Bash 스크립트다. 별도 임시 MySQL·Redis를 시작하고 테스트 종료 시 종료·삭제한다. 기본 실행에서 Python은 사용 가능한 포트를 찾는다. 선택적인 실행 JAR 검증을 켜면 Python 기반 기동·HTTP 검증 도구도 사용한다. Maven은 기본적으로 오프라인 캐시를 사용하며, 의존성을 처음 받아야 하면 `MOLEBUTTER_TEST_MAVEN_OFFLINE=false`를 지정한다.
 
 브라우저는 실제 화면 코드와 로컬 모의 API를 검증한다. 모의 API의 수량 결과는 서버 동시성 검증을 대신하지 않으며, 해당 검증은 Java 통합 테스트가 담당한다. 외부 응답 자료는 `test-fixtures/product` 아래에서 관리하고 필요한 검증에서만 참조한다. 브라우저 스크린샷은 무시되는 `target/ui-check`에 생성한다.
 
@@ -44,7 +46,7 @@ NODE_PATH=/path/to/node_modules node scripts/test-notifications-ui.cjs
 
 ## 다중 모듈 검증
 
-기존 Java 검증 442개와 JS 검증 47개를 기준으로 기능 검증을 유지한다. 단위 테스트는 소유 모듈, 전체 통합·화면 검증은 app에서 실행한다. `ModuleArchitectureTest`는 허용 의존성·공개 API 접근·업무 패키지 순환을 확인한다. `MigrationUpgradeIT`는 V28→V29→V30 이전과 활성 작업 거절, 값 불일치 시 삭제 거절, JSON null·버전·삭제/통합 상품·재고 값 보존을 함께 확인한다. 전체 구조와 운영 적용 절차는 [업무 모듈과 DB 책임](modular-architecture.md)을 따른다.
+2026-10-04 전환 당시 Java 검증 442개와 JS 검증 47개를 기준으로 기능 검증을 유지했다. 이 수치는 전환 기준점이며 현재 테스트 개수는 실행 결과로 확인한다. 단위 테스트는 소유 모듈, 전체 통합·화면 검증은 app에서 실행한다. `ModuleArchitectureTest`는 허용 의존성·공개 API 접근·업무 패키지 순환을 확인한다. `MigrationUpgradeIT`는 V28→V29→V30 이전과 활성 작업 거절, 값 불일치 시 삭제 거절, JSON null·버전·삭제/통합 상품·재고 값 보존을 함께 확인한다. 전체 구조와 운영 적용 절차는 [업무 모듈과 DB 책임](modular-architecture.md)을 따른다.
 
 최종 JAR을 먼저 `./mvnw -DskipTests package`로 생성한 후 `MOLEBUTTER_TEST_PACKAGE_SMOKE=true bash scripts/test-integration.sh`를 실행하면 같은 임시 DB·Redis에서 실행 JAR의 HTTP 기동·자원·마이그레이션 로딩과 두 상태 복구 명령의 미리보기까지 검증한다. 비밀 설정·테스트 자료·테스트 JAR·ArchUnit이 배포 JAR에 포함되지 않았는지도 확인한다. 초기화·예약 워커와 외부 메일 발송은 실행하지 않는다.
 
@@ -55,3 +57,15 @@ NODE_PATH=/path/to/node_modules node scripts/test-notifications-ui.cjs
 `ProductFlowIT`는 공개 catalog 계약을 직접 호출해 코드·브랜드·중복·버전·통합 대상 검증을 확인한다. 잠금 없는 호출, 읽기 전용 변경, 공유→배타 승격, 가드 행 누락과 잘못된 DataSource를 거절하고 `REQUIRES_NEW`·롤백 후 상태가 섞이지 않는지도 확인한다. 브랜드만 추론할 때 과거 상품코드와 조회 기준은 유지한다. `InventoryFlowIT`는 상품 통합의 마지막 참여 단계에서 실패해도 상품·매입처·재고·이력이 모두 복원되는지 확인한다. `ModuleArchitectureTest`는 알 수 없는 패키지·모듈 소유 불일치·제네릭 내부 타입 노출을 탐지하는 음성 사례를 포함한다.
 
 보강 전후 실행 결과와 유지 범위는 [모듈 경계 보강 검증](module-boundary-reinforcement.md)에 기록한다.
+
+## 실행 범위와 기록 해석
+
+루트 `./mvnw test`·`verify`의 기본 Surefire 실행은 `*IT` 전체 통합 테스트를 포함하지 않는다. 전체 Java 검증은 임시 서비스와 integration-tests 프로필을 사용하는 `scripts/test-integration.sh`로 실행한다. 일부 클래스만 선택할 때는 다른 모듈에 해당 클래스가 없어도 reactor가 계속 실행되도록 다음처럼 지정한다.
+
+```sh
+JAVA_HOME=/path/to/jdk21 bash scripts/test-integration.sh \
+  -Dtest=InventoryFlowIT,ProductFlowIT,MigrationUpgradeIT,LayoutViewTest \
+  -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+Mockito 에이전트는 Maven 설정을 사용한다. 개인 캐시 경로를 argLine으로 덮어쓰지 않는다. 브라우저 검증은 템플릿 생성 이후 순서대로 실행하며, 동시에 clean을 실행해 화면 자료를 지우지 않는다. 전환·경계 보강 문서의 건수와 성공 결과는 각 검증 당시 기록이다. 이번 변경의 검증은 [문서 정합성 정리](documentation-alignment.md)에 별도로 기록한다.

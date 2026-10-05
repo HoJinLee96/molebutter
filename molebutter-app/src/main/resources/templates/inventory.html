@@ -13,7 +13,7 @@
         </div>
         <p id="inventory-brand-error" class="form-error" role="alert" hidden></p>
         <form id="inventory-filter" class="toolbar">
-            <div class="field inventory-search-field"><label for="inventory-q">상품코드·상품명 / 주문 구매처</label><input id="inventory-q" type="search" maxlength="255"></div>
+            <div class="field inventory-search-field"><label id="inventory-query-label" for="inventory-q">상품코드·브랜드·검색어</label><input id="inventory-q" type="search" maxlength="255"></div>
 
             <div class="field inventory-brand-field"><label for="inventory-brand">브랜드</label><select id="inventory-brand" disabled><option value="">전체 브랜드</option><option value="UNASSIGNED">미지정</option></select></div>
             <div class="field inventory-size-field"><label for="inventory-size">페이지당 보기</label><select id="inventory-size"><option value="20">20개</option><option value="50">50개</option><option value="100" selected>100개</option></select></div><button class="btn primary">조회</button><button id="inventory-clear-product" class="btn" type="button" hidden>전체 상품 보기</button>
