@@ -1066,6 +1066,25 @@ class ProductFlowIT {
         assertThat(compare(p).recommendations()).isEmpty();assertThat(compare(p).groups()).flatExtracting(Group::listings).extracting(Listing::id).contains(candidate.id());
         jdbc.update("UPDATE product_refresh_entry SET selection_snapshot=NULL WHERE product_id=?",p.id());assertThat(compare(p).recommendationStatus().state()).isEqualTo("REFRESH_REQUIRED");assertThat(compare(p).recommendations()).isEmpty();
     }
+    @Test void scheduleSettingsSaveThroughHttpPersistsAndRetainsValidation() throws Exception {
+        String route="/api/product-refresh/settings";
+        var admin=login(users.findById(actor).orElseThrow());
+        var disabled=new ScheduleSettings(0,false,"19:30");
+        status(admin.post(route,disabled),200);
+        assertThat(products.schedule(actor)).isEqualTo(new ScheduleSettings(1,false,"19:30"));
+        assertThat(jdbc.queryForObject("SELECT schedule_enabled FROM procurement_settings WHERE id=1",Boolean.class)).isFalse();
+        assertThat(jdbc.queryForObject("SELECT schedule_time FROM procurement_settings WHERE id=1",String.class)).isEqualTo("19:30");
+
+        status(admin.post(route,disabled),409);
+        status(admin.post(route,new ScheduleSettings(1,true,"25:00")),400);
+        status(login(account(UserRole.PRODUCT)).post(route,new ScheduleSettings(1,true,"08:15")),403);
+        assertThat(products.schedule(actor)).isEqualTo(new ScheduleSettings(1,false,"19:30"));
+
+        status(admin.post(route,new ScheduleSettings(1,true,"08:15")),200);
+        assertThat(products.schedule(actor)).isEqualTo(new ScheduleSettings(2,true,"08:15"));
+        assertThat(jdbc.queryForObject("SELECT schedule_enabled FROM procurement_settings WHERE id=1",Boolean.class)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT schedule_time FROM procurement_settings WHERE id=1",String.class)).isEqualTo("08:15");
+    }
     @Test void noPreferencesBlocksManualAndScheduledWork(){jdbc.update("DELETE FROM supplier_preference");var p=create("ABCD6F123BK");assertThatThrownBy(()->start(p)).hasMessageContaining("선호 매입처");refresh.schedule();assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_refresh_run",Long.class)).isZero();}
     @Test void selectionUsesSpecificListingNotLowestAndPreservesSoldOutChoice(){var p=create("ABCD6F123BK");var lf=listing(ProcurementMall.LFMALL,"lf",94000,"온라인점","CONFIRMED");var hi=listing(ProcurementMall.HI_THEHYUNDAI,"hi",93450,"목동점","CONFIRMED");finish(p,List.of(lf,hi));assertThat(current(p).selectedSupplier()).isNull();choose(p,byMall(p,ProcurementMall.LFMALL));assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(94000);assertThat(compare(p).groups().getFirst().mall()).isEqualTo(ProcurementMall.HI_THEHYUNDAI);String selected=current(p).selectedSupplier().id();
         finish(p,List.of(listing(ProcurementMall.LFMALL,"lf",95000,"온라인점","SOLD_OUT"),listing(ProcurementMall.HI_THEHYUNDAI,"hi",100,"목동점","CONFIRMED")));assertThat(current(p).selectedSupplier().id()).isEqualTo(selected);assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(95000);assertThat(current(p).selectedSupplier().inventoryState()).isEqualTo("SOLD_OUT");assertThat(current(p).selectedSupplier().url()).endsWith("lf");}

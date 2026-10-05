@@ -330,5 +330,6 @@ public class ProductService {
     }
 
     public ScheduleSettings schedule(Long actor){return schedules.schedule(actor);}
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public ScheduleSettings updateSchedule(Long actor,ScheduleSettings settings){return schedules.updateSchedule(actor,settings);}
 }
