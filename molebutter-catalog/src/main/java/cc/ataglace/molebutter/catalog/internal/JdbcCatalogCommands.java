@@ -118,6 +118,13 @@ public class JdbcCatalogCommands implements CatalogCommands {
                 brand.name(), brand.id(), code, at, id, expected));
         if (input.registrationNames() != null) registrationNames(id, input.registrationNames());
     }
+    public void editBrand(long id, long expected, BrandSelection selection, LocalDateTime at) {
+        guard.requireExclusive();
+        var old = active(id); BusinessRevision.check(((Number) old.get("revision")).longValue(), expected);
+        Brand brand = resolveBrand(selection);
+        changed(jdbc.update("UPDATE catalog_product SET brand=?,brand_id=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?",
+                brand.name(), brand.id(), at, id, expected));
+    }
     public BrandInference inferBrands(List<Long> ids, LocalDateTime at) {
         guard.requireExclusive();
         var brands = new LinkedHashMap<Long, String>();

@@ -23,6 +23,8 @@ public interface CatalogCommands {
     void checkRevision(long id, Long expectedRevision);
     void create(long id, ProductInput input, LocalDateTime at);
     void edit(long id, long expectedRevision, ProductInput input, LocalDateTime at);
+    /** Changes the brand while preserving the existing product code verbatim. */
+    void editBrand(long id, long expectedRevision, BrandSelection brand, LocalDateTime at);
     void bump(long id, LocalDateTime at);
     void bump(long id);
     void delete(long id, Long actor, LocalDateTime at);

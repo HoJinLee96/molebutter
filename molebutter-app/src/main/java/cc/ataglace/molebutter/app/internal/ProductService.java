@@ -56,10 +56,6 @@ public class ProductService {
         return new Identity(code, "GENERAL", "", query, "MANUAL");
     }
 
-    private Identity existingIdentity(ProcurementProductView p) {
-        return new Identity(p.productCode(), p.codeType(), p.comparisonCode(), p.searchQuery(), p.searchMode());
-    }
-
     // Compatibility endpoint only; registration and edits never apply its
     // suggestion.
     public Map<String, String> codePreview(Long actor, ProductEditRequest input) {
@@ -122,7 +118,7 @@ public class ProductService {
         for (long id : ids) {
             if (b != null) {
                 var p = product(id);
-                update(p, b, existingIdentity(p));
+                catalog.editBrand(id, p.revision(), new BrandSelection(b.id() == null ? "" : b.id().toString(), null), context.time.now());
             }
             if (input.managed() != null)
                 {

@@ -124,11 +124,13 @@ class ProductFlowIT {
         var badBrand=new cc.ataglace.molebutter.catalog.api.CatalogCommands.ProductInput(
                 new cc.ataglace.molebutter.catalog.api.CatalogCommands.BrandSelection("999999",null),product.productCode(),null);
         assertThatThrownBy(()->exclusiveTransaction(()->catalogCommands.edit(Long.parseLong(product.id()),product.revision(),badBrand,time.now()))).hasMessageContaining("브랜드");
+        assertThatThrownBy(()->exclusiveTransaction(()->catalogCommands.editBrand(Long.parseLong(product.id()),product.revision(),badBrand.brand(),time.now()))).hasMessageContaining("브랜드");
         var duplicate=new cc.ataglace.molebutter.catalog.api.CatalogCommands.ProductInput(input.brand(),other.productCode(),null);
         assertThatThrownBy(()->exclusiveTransaction(()->catalogCommands.edit(Long.parseLong(product.id()),product.revision(),duplicate,time.now()))).hasMessageContaining("이미 등록");
         assertThatThrownBy(()->exclusiveTransaction(()->catalogCommands.validateMerge(Long.parseLong(product.id()),List.of(Long.parseLong(product.id()),Long.parseLong(other.id())),product.productCode()))).hasMessageContaining("동일한 전체 상품코드");
         var valid=new cc.ataglace.molebutter.catalog.api.CatalogCommands.ProductInput(input.brand(),product.productCode(),null);
         assertThatThrownBy(()->exclusiveTransaction(()->catalogCommands.edit(Long.parseLong(product.id()),99L,valid,time.now()))).hasMessageContaining("다른 작업");
+        assertThatThrownBy(()->exclusiveTransaction(()->catalogCommands.editBrand(Long.parseLong(product.id()),99L,input.brand(),time.now()))).hasMessageContaining("다른 작업");
         assertThatThrownBy(()->exclusiveTransaction(()->catalogCommands.bump(999999L))).isInstanceOf(cc.ataglace.molebutter.common.api.BusinessException.class);
         assertThat(current(product).revision()).isEqualTo(product.revision());
         exclusiveTransaction(()->{catalogCommands.appendRegistrationNames(Long.parseLong(product.id()),List.of("헤지스 가방"));catalogCommands.appendRegistrationNames(Long.parseLong(product.id()),List.of("헤지스 가방"));});
@@ -140,15 +142,19 @@ class ProductFlowIT {
         var rawCommands=cc.ataglace.molebutter.catalog.api.CatalogMaintenance.commands(jdbc);
         assertThatThrownBy(rawGuard::exclusive).hasMessageContaining("actual transaction");
         assertThatThrownBy(()->rawCommands.bump(id)).hasMessageContaining("actual transaction");
+        var brandSelection=new cc.ataglace.molebutter.catalog.api.CatalogCommands.BrandSelection(brand,null);
+        assertThatThrownBy(()->rawCommands.editBrand(id,product.revision(),brandSelection,time.now())).hasMessageContaining("actual transaction");
         var tx=new org.springframework.transaction.support.TransactionTemplate(transactions);
         tx.executeWithoutResult(status->{
             assertThatThrownBy(()->rawCommands.bump(id)).hasMessageContaining("guard required");
+            assertThatThrownBy(()->rawCommands.editBrand(id,product.revision(),brandSelection,time.now())).hasMessageContaining("guard required");
             assertThatThrownBy(()->procurementLifecycle.managed(id,true)).hasMessageContaining("guard required");
             assertThatThrownBy(()->inventoryLinks.assertDeletable(List.of(id))).hasMessageContaining("guard required");
             status.setRollbackOnly();
         });
         tx.setReadOnly(true);
         assertThatThrownBy(()->tx.executeWithoutResult(status->rawCommands.bump(id))).hasMessageContaining("writable transaction");
+        assertThatThrownBy(()->tx.executeWithoutResult(status->rawCommands.editBrand(id,product.revision(),brandSelection,time.now()))).hasMessageContaining("writable transaction");
         assertThat(current(product).revision()).isEqualTo(product.revision());
     }
     @Test void sharedGuardsCannotUpgradeAndExclusiveStateDoesNotLeakAcrossTransactions() {
@@ -189,6 +195,32 @@ class ProductFlowIT {
         assertThat(after.lookupRevision()).isEqualTo(before.lookupRevision());
         assertThat(after.revision()).isEqualTo(before.revision()+1);
         assertThat(after.brandId()).isEqualTo(brand);
+    }
+    @Test void bulkBrandChangesPreserveHistoricalCodesAndProcurementWithAndWithoutDuplicates() {
+        for(boolean duplicate:List.of(false,true)) {
+            var product=create("BRAND-BULK-"+duplicate);
+            String originalCode=duplicate ? "  abcd6f124bk  " : "  abcd6f123bk  ";
+            jdbc.update("UPDATE catalog_product SET product_code=? WHERE id=?",originalCode,product.id());
+            var ids=new ArrayList<String>();ids.add(product.id());
+            if(duplicate) {
+                var copy=create("BRAND-BULK-COPY");
+                jdbc.update("UPDATE catalog_product SET product_code=? WHERE id=?","ABCD6F124BK",copy.id());
+                ids.add(copy.id());
+            }
+            for(String id:ids)jdbc.update("UPDATE procurement_product SET search_query='  수동 검색 원문  ',search_mode='AUTO',code_type='LF_ACCESSORY',comparison_code='LEGACY',lookup_revision=7,latest_status='SUCCESS',latest_result=JSON_OBJECT('status','SUCCESS'),last_good_result=JSON_OBJECT('status','SUCCESS'),latest_at=? WHERE product_id=?",time.now(),id);
+            for(String requestedBrand:List.of("",brand,brand)) {
+                var before=ids.stream().map(id->products.product(Long.parseLong(id))).toList();
+                var criteria=ids.stream().map(id->jdbc.queryForMap("SELECT * FROM procurement_product WHERE product_id=?",id)).toList();
+                products.bulk(actor,new BulkEdit(before.stream().map(this::version).toList(),null,null,requestedBrand));
+                for(int index=0;index<ids.size();index++) {
+                    var after=products.product(Long.parseLong(ids.get(index)));
+                    assertThat(after.productCode()).isEqualTo(before.get(index).productCode());
+                    assertThat(after.brandId()).isEqualTo(requestedBrand.isBlank() ? null : requestedBrand);
+                    assertThat(after.revision()).isEqualTo(before.get(index).revision()+1);
+                    assertThat(jdbc.queryForMap("SELECT * FROM procurement_product WHERE product_id=?",after.id())).isEqualTo(criteria.get(index));
+                }
+            }
+        }
     }
     @BeforeEach void reset(){
         jdbc.update("UPDATE inventory_movement SET reference_id=NULL,reverses_id=NULL");
