@@ -10,7 +10,7 @@
 
 ## 저장과 동시 처리
 
-V20은 관측(`product_value_observation`), 검토 기준(`product_change_review`), 현재 요약(`product_change_summary`)을 만든다. `catalog_product.change_version`은 조회 기준을 초기화해도 계속 증가하여 예전 화면의 확인 요청이 새 비교 구간과 우연히 같은 버전을 갖지 않도록 한다.
+V20은 관측(`product_value_observation`), 검토 기준(`product_change_review`), 현재 요약(`product_change_summary`)을 만든다. `procurement_product.change_version`은 조회 기준을 초기화해도 계속 증가하여 예전 화면의 확인 요청이 새 비교 구간과 우연히 같은 버전을 갖지 않도록 한다.
 
 자동 조회 결과 및 개별 재고 조회의 확정 트랜잭션에서 관측/요약을 함께 저장한다. 기존 settings 잠금과 작업 점유권을 사용하며, 자동 조회 완료 상태와 관측의 `(origin_product_id,lookup_revision,supplier_id,source_key)` 유일 제약으로 재처리 중복을 막는다. 수동 조회는 기존 가격/배송비와 확인 시각을 그대로 가져온다. 실행별 상세 캐시도 최초 실제 응답 시각을 유지한다.
 

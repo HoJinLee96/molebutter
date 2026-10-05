@@ -2,8 +2,8 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {readFileSync}=require('node:fs');
 const vm=require('node:vm');
-const source=readFileSync('src/main/resources/static/js/app-ui.js','utf8')+readFileSync('src/main/resources/static/js/settings.js','utf8');
-const template=readFileSync('src/main/resources/templates/settings.html','utf8');
+const source=readFileSync('molebutter-app/src/main/resources/static/js/app-ui.js','utf8')+readFileSync('molebutter-app/src/main/resources/static/js/settings.js','utf8');
+const template=readFileSync('molebutter-app/src/main/resources/templates/settings.html','utf8');
 const settle=()=>new Promise(r=>setImmediate(r));
 function fixture({admin=true,post=async()=>({}),fail=false}={}){
     const make=()=>({value:'',textContent:'',innerHTML:'',disabled:false,hidden:true,dataset:{},listeners:{},classList:{toggle(){}},setAttribute(){},removeAttribute(){},addEventListener(k,f){this.listeners[k]=f;},close(){this.open=false;},showModal(){this.open=true;}});

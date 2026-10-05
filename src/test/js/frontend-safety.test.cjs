@@ -2,8 +2,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const vm = require('node:vm');
-const common = readFileSync('src/main/resources/static/js/app-ui.js', 'utf8');
-const source = common + readFileSync('src/main/resources/static/js/product-source-search.js', 'utf8');
+const common = readFileSync('molebutter-app/src/main/resources/static/js/app-ui.js', 'utf8');
+const source = common + readFileSync('molebutter-app/src/main/resources/static/js/product-source-search.js', 'utf8');
 
 test('outbound links accept HTTP and HTTPS but reject script URLs and credentials', () => {
     const context = vm.createContext({URL});vm.runInContext(source, context);
@@ -14,7 +14,7 @@ test('outbound links accept HTTP and HTTPS but reject script URLs and credential
 
 
 const ctx=vm.createContext({});
-vm.runInContext(common + readFileSync('src/main/resources/static/js/mall-tag.js','utf8')+';globalThis.tag=MallTag;',ctx);
+vm.runInContext(common + readFileSync('molebutter-app/src/main/resources/static/js/mall-tag.js','utf8')+';globalThis.tag=MallTag;',ctx);
 const {tag}=ctx;
 test('mall labels escape untrusted HTML',()=>{
     const html=tag.html('HMALL','<b>"x"</b>');

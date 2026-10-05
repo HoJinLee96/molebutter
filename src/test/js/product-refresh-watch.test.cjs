@@ -3,7 +3,7 @@ const settle=async()=>{for(let i=0;i<4;i++)await new Promise(r=>setImmediate(r))
 function setup(fetchStatus,onComplete=async()=>{},canPoll=()=>true){
  let id=0;const timers=new Map(),states=[],errors=[];
  const ctx=vm.createContext({setTimeout(fn){timers.set(++id,fn);return id;},clearTimeout(i){timers.delete(i);}});
- vm.runInContext(readFileSync('src/main/resources/static/js/product-refresh-watch.js','utf8'),ctx);
+ vm.runInContext(readFileSync('molebutter-app/src/main/resources/static/js/product-refresh-watch.js','utf8'),ctx);
  const create=vm.runInContext('ProductRefreshWatch.create',ctx);
  return {watch:create({fetchStatus,onComplete,onState:s=>states.push(s),onError:e=>errors.push(e),canPoll}),states,errors,timers,async tick(){const item=timers.entries().next().value;if(item){timers.delete(item[0]);item[1]();}await settle();}};
 }

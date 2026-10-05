@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 const ctx=vm.createContext({window:{},document:{addEventListener(){}},AppUI:{escape:x=>String(x??'').replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;'),stamp:x=>x},ProductSourceSearch:{webUrl:()=>''}});
-vm.runInContext(fs.readFileSync('src/main/resources/static/js/product-changes.js','utf8'),ctx);const ui=ctx.window.ProductChanges;
+vm.runInContext(fs.readFileSync('molebutter-app/src/main/resources/static/js/product-changes.js','utf8'),ctx);const ui=ctx.window.ProductChanges;
 const summary={selectedId:'1',listings:[{supplierId:'1',deltas:[{kind:'STOCK',optionId:'a',scope:'OPTION',difference:-63,before:100,after:37},{kind:'STOCK',optionId:'b',scope:'OPTION',difference:3,before:1,after:4}]}]};
 test('multiple option inventory renders a count and never sums quantities',()=>{const html=ui.selectedStock(summary,{id:'1',result:{options:[{id:'a'},{id:'b'}]}},'42');assert.match(html,/옵션 재고 변동 2건/);assert.doesNotMatch(html,/60개|41개/);});
 test('same option id in another scope does not receive the quantity delta',()=>{assert.equal(ui.option(summary,'1',{id:'a',stockScope:'PRODUCT'}),'');assert.match(ui.option(summary,'1',{id:'a'}),/63개/);});

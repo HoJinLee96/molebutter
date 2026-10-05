@@ -35,7 +35,7 @@
 
 ## 최초 관리자 준비
 
-로컬 `src/main/resources/application-secret/admin.properties` 또는 실행 디렉터리의 `application-secret/admin.properties`에 다음 값을 넣는다. 두 경로 모두 `spring.config.import`로 읽으며 Git과 배포 JAR에서 제외된다. 실제 비밀번호는 코드·SQL·Git에 넣지 않는다.
+로컬 `molebutter-app/src/main/resources/application-secret/admin.properties` 또는 실행 디렉터리의 `application-secret/admin.properties`에 다음 값을 넣는다. 두 경로 모두 `spring.config.import`로 읽으며 Git과 배포 JAR에서 제외된다. 실제 비밀번호는 코드·SQL·Git에 넣지 않는다.
 
 ```properties
 BOOTSTRAP_ADMIN_EMAIL=관리자가_사용할_이메일

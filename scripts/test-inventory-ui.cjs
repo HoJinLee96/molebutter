@@ -1,7 +1,7 @@
 // Rendered Thymeleaf and real frontend code; isolated mock APIs, no production data.
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {chromium}=require('playwright');
-const root=path.resolve(__dirname,'../src/main/resources'),fixtures=path.resolve(__dirname,'../target/ui-fixtures');
+const root=path.resolve(__dirname,'../molebutter-app/src/main/resources'),fixtures=path.resolve(__dirname,'../molebutter-app/target/ui-fixtures');
 let role='ADMIN',orders=[],items=[],movements=[],createRequests=0,ids=100,paymentMethods=[{id:'1',name:'카드',revision:0},{id:'2',name:'계좌이체',revision:0},{id:'3',name:'현금',revision:0}];
 const fixtureBrands=[{id:'1',name:'헤지스'},{id:'2',name:'닥스'}];
 const productBrand=p=>p.brandId||fixtureBrands.find(b=>b.name===p.brand)?.id||null;

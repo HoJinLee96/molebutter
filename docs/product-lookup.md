@@ -55,16 +55,16 @@
 
 | 책임 | 저장 구조 | API |
 |---|---|---|
-| 상품·브랜드·조회 기준 | catalog_product, product_brand | /api/products, /api/settings/brands |
+| 상품·브랜드·조회 기준 | catalog_product, procurement_product, product_brand | /api/products, /api/settings/brands |
 | 등록 | 원본 미저장, 상품의 registration_names | POST /api/products/imports |
 | 매입처 판매글·자동/수동 매장 지정·최근 관측 | product_supplier | 상품 상세 comparison, POST /api/products/{id}/suppliers/{supplier}/store |
 | 매장·선호 규칙 | supplier_store, supplier_preference | /api/settings/supplier-stores, /api/settings/preferred-suppliers |
 | 선정·변경 이력 | product_supplier_selection, product_supplier_change | POST /api/products/{id}/selection |
-| 조회 당시 옵션·가격·재고 | product_lookup_history, catalog_product.latest_result | /api/products/{id}/history |
+| 조회 당시 옵션·가격·재고 | product_lookup_history, procurement_product.latest_result | /api/products/{id}/history |
 | 작업·상품 진행·검색 공유 | product_refresh_run, product_refresh_entry, product_refresh_search | /api/product-refresh |
 | 작업 이력 조회 | product_refresh_run, product_refresh_entry | GET /api/product-refresh?from&to&status&failed&page&size&run → `items`·`page`·`totalPages`·`totalElements` + 조건과 무관한 `active`·`selected`·`stockLookupBlock` |
 | 모달 진행 상태 | 현재 조회 기준에 해당하는 작업 상태만 읽음 | /api/products/{id}/refresh-status |
-| 예약·작업 임대 | product_settings | /api/product-refresh/settings |
+| 예약·작업 임대 | procurement_settings, procurement_runtime | /api/product-refresh/settings |
 
 ID는 문자열로 반환합니다. 목록과 작업 결과에는 선정 가격·재고 요약을 반환하며 비교와 전체 이력은 상세에서 제공합니다. ADMIN·PRODUCT는 상품 업무를 사용할 수 있으며 설정 변경은 ADMIN만 허용합니다. 민감 조회의 최신 계정 검사, 변경 요청의 CSRF·감사·버전 충돌 검사를 유지합니다.
 

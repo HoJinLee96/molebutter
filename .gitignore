@@ -148,3 +148,11 @@ notes/
 /data/product-search-browser/
 /data/product-search-guest/
 /data/product-search-guest.backup-20260930
+
+# Module-local secrets and generated output
+**/src/main/resources/application-secret/
+**/src/main/resources/application-secret.properties
+**/src/main/resources/application-local.properties
+**/src/main/resources/application-*.local.properties
+**/src/main/resources/image/
+**/target/
