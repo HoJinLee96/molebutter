@@ -15,7 +15,7 @@ function fixture({load=async()=>pageOf(),post=async()=>null,brandFailure=false,l
  $('product-q').value='복원 검색어';$('product-status').value='SOLD_OUT';
  const ctx=vm.createContext({URL,URLSearchParams,console,FormData,location:{search:''},history:{replaceState(){}},window:{addEventListener(n,fn){events[n]=fn;}},setInterval(){},setTimeout(fn){timers.set(++timerId,fn);return timerId;},clearTimeout(id){timers.delete(id);},
  document:{hidden:false,body:{dataset:{page,productView:legacy?'old':'lookup-v11'}},addEventListener(){},querySelectorAll(q){return q==='[data-mode]'?tabs:[];}},
- AppUI:{$,escape:v=>String(v??''),stamp:v=>v,pager(id,data,change,options){pagers[id]={data,change,options};}},ProductSourceSearch:{webUrl:()=>''},
+ AppUI:{$,escape:v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'),stamp:v=>v,pager(id,data,change,options){pagers[id]={data,change,options};}},ProductSourceSearch:{webUrl:()=>''},
  setError(id,message){if($(id)){$(id).textContent=message||'';$(id).hidden=!message;}},
  apiGet:async url=>{calls.push(url);if(url.startsWith('/api/products/change-counts'))return {selected:0,all:0};if(url==='/api/settings/brands'){if(brandFailure)throw Error('설정 조회 실패');return [{id:'1',name:'헤지스'}];}return load(url);},
  apiPost:async(url,body)=>{posts.push({url,body});return post(url,body);}});vm.runInContext(readFileSync('molebutter-app/src/main/resources/static/js/product-refresh-watch.js','utf8'),ctx);vm.runInContext(readFileSync('molebutter-app/src/main/resources/static/js/mall-tag.js','utf8'),ctx);vm.runInContext(source,ctx);
@@ -147,31 +147,54 @@ test('missing preferred suppliers notice survives the conflict refresh',async()=
 });
 
 test('shared product stock is shown once in supplier card and selected summaries',async()=>{
- const result={offer:{mall:'NAVER_SMART_STORE',mallName:'헤지스핸드백',price:103800,deliveryFee:0},match:{state:'SEARCH_RESULT'},state:'CONFIRMED',options:[{id:'10481417934',label:'상품 전체',stock:50,state:'AVAILABLE',stockScope:'PRODUCT'}]};
+ const result={offer:{mall:'NAVER_SMART_STORE',mallName:'헤지스핸드백',price:103800,deliveryFee:0},match:{state:'SEARCH_RESULT'},state:'CONFIRMED',options:[{id:'10481417934',label:'상품 전체',stock:50,state:'AVAILABLE',stockScope:'PRODUCT',simpleChoices:[{id:'1',groupName:'컬러',name:'블랙'},{id:'2',groupName:'선물 포장',name:'O'},{id:'3',groupName:'선물 포장',name:'X'}]}]};
  const listing={id:'L1',mall:'NAVER_SMART_STORE',store:{retailer:'롯데백화점',name:'잠실점'},preferred:true,current:true,selected:true,priceStatus:'CONFIRMED',referencePrice:103800,inventoryState:'AVAILABLE',result};
  const p={...product,selectedSupplier:listing};const d={...detailOf(p),comparison:{selected:listing,groups:[{mall:listing.mall,store:listing.store,minPrice:103800,maxPrice:103800,listings:[listing]}],recommendations:[],recommendationStatus:{state:'READY'}}};
  const f=fixture({load:async url=>url==='/api/products/42'?d:url.endsWith('/duplicates')?[]:pageOf([p])});await settle();
  assert.match(f.$('product-rows').innerHTML,/상품 전체 재고 50개/);f.row({detail:'42'});await settle();
  assert.match(f.$('detail-summary').innerHTML,/상품 전체 재고 50개/);
  assert.equal((f.$('supplier-results').innerHTML.match(/상품 전체 재고/g)||[]).length,1);
- assert.doesNotMatch(f.$('supplier-results').innerHTML,/옵션 상품 전체|선물 포장/);
+ assert.doesNotMatch(f.$('supplier-results').innerHTML,/옵션 상품 전체/);
+ assert.match(f.$('supplier-results').innerHTML,/컬러: 블랙/);
+ assert.match(f.$('supplier-results').innerHTML,/선물 포장: O \/ X/);
+ assert.doesNotMatch(f.$('product-rows').innerHTML,/컬러:|선물 포장/);
+ result.options[0].simpleChoices=[{id:'1',groupName:'<컬러>',name:'<img src=x onerror=alert(1)>'}];f.row({detail:'42'});await settle();
+ assert.match(f.$('supplier-results').innerHTML,/&lt;img src=x onerror=alert\(1\)&gt;/);
+ assert.doesNotMatch(f.$('supplier-results').innerHTML,/<img src=x/);
  result.options=[{id:'old',label:'FREE',stock:3,state:'AVAILABLE',stockScope:null}];f.row({detail:'42'});await settle();
  assert.match(f.$('supplier-results').innerHTML,/옵션 FREE/);assert.doesNotMatch(f.$('supplier-results').innerHTML,/상품 전체 재고/);
+});
+
+test('one simple choice labels common stock while multiple choices retain product total',async()=>{
+ for(const choices of [[{id:'1',groupName:'컬러',name:'블랙'}],[{id:'1',groupName:'컬러',name:'블랙'},{id:'2',groupName:'컬러',name:'핑크'},{id:'3',groupName:'컬러',name:'옐로우'}],[{id:'1',groupName:'선물 포장',name:'O'},{id:'2',groupName:'선물 포장',name:'X'}],[],[{id:'1',groupName:'컬러',name:''}]]) {
+  const result={offer:{mall:'NAVER_SMART_STORE',mallName:'닥스골프',price:145630,deliveryFee:0},match:{state:'SEARCH_RESULT'},state:'CONFIRMED',options:[{id:'13771629148',label:'상품 전체',stock:9,state:'AVAILABLE',stockScope:'PRODUCT',simpleChoices:choices}]};
+  const listing={id:'L1',mall:'NAVER_SMART_STORE',store:{retailer:'롯데백화점',name:'본점'},preferred:true,current:true,selected:true,priceStatus:'CONFIRMED',referencePrice:145630,inventoryState:'AVAILABLE',result};
+  const p={...product,selectedSupplier:listing};const d={...detailOf(p),comparison:{selected:listing,groups:[{mall:listing.mall,store:listing.store,listings:[listing]}],recommendations:[],recommendationStatus:{state:'READY'}}};
+  const f=fixture({load:async url=>url==='/api/products/42'?d:url.endsWith('/duplicates')?[]:pageOf([p])});await settle();f.row({detail:'42'});await settle();
+  const single=choices.length===1&&choices[0].name==='블랙';
+  const gift=choices.length===2&&choices[0].groupName==='선물 포장';
+  assert.match(f.$('product-rows').innerHTML,single||gift?/재고 9개/:/상품 전체 재고 9개/);
+  assert.match(f.$('detail-summary').innerHTML,single||gift?/재고 9개/:/상품 전체 재고 9개/);
+  assert.match(f.$('supplier-results').innerHTML,single||gift?/재고 <strong>9개/:/상품 전체 재고 <strong>9개/);
+  if(single){assert.doesNotMatch(f.$('product-rows').innerHTML,/블랙/);assert.match(f.$('supplier-results').innerHTML,/옵션 블랙/);assert.doesNotMatch(f.$('supplier-results').innerHTML,/상품 전체 재고/);}
+  if(gift){assert.doesNotMatch(f.$('product-rows').innerHTML,/상품 전체 재고/);assert.doesNotMatch(f.$('supplier-results').innerHTML,/상품 전체 재고/);assert.match(f.$('supplier-results').innerHTML,/선물 포장: O \/ X/);}
+  assert.equal(result.options[0].stockScope,'PRODUCT');assert.equal(result.options.length,1);
+ }
 });
 
 test('list inventory badges require confirmed current stock and do not collapse mixed options',async()=>{
  const option=(stock,state)=>({id:String(stock),label:'FREE',stock,state});
  const cases=[
   {options:[option(35,'AVAILABLE')],expect:'재고 35개',absent:/구매 가능|product-badge bad/},
-  {options:[option(0,'SOLD_OUT')],expect:'>품절</span>',absent:/구매 불가능/},
-  {options:[option(12,'UNAVAILABLE')],expect:'>구매 불가능</span>',absent:/>품절<\/span>/},
+  {options:[option(0,'SOLD_OUT')],expect:'supplier-list-quantity is-unavailable',absent:/>품절<\/span>|구매 불가능/},
+  {options:[option(12,'UNAVAILABLE')],expect:'supplier-list-quantity is-unavailable',absent:/>품절<\/span>|구매 불가능/},
   {options:[option(null,'UNAVAILABLE')],expect:'>구매 불가능</span>',absent:/재고 0개/},
   {options:[option(null,'STOCK_UNKNOWN')],expect:'수량 미제공',absent:/product-badge bad/},
-  {options:[option(0,'SOLD_OUT')],current:false,expect:'이전 가격 및 재고',absent:/product-badge bad/},
-  {options:[option(0,'SOLD_OUT')],resultState:'FAILED',inventoryState:'FAILED',expect:'재고 조회 실패',absent:/product-badge bad/},
-  {options:[option(0,'SOLD_OUT'),option(4,'AVAILABLE')],expect:'옵션별 재고 확인',absent:/product-badge bad|재고 4개/},
+  {options:[option(0,'SOLD_OUT')],current:false,expect:'이전 가격 및 재고',absent:/product-badge bad|is-unavailable/},
+  {options:[option(0,'SOLD_OUT')],resultState:'FAILED',inventoryState:'FAILED',expect:'재고 조회 실패',absent:/product-badge bad|is-unavailable/},
+  {options:[option(0,'SOLD_OUT'),option(4,'AVAILABLE')],expect:'재고 상세',absent:/product-badge bad|재고 4개/},
   {options:[option(0,'SOLD_OUT'),option(0,'SOLD_OUT')],expect:'>품절</span>',absent:/재고 0개/},
-  {options:[option(0,'SOLD_OUT'),option(null,'STOCK_UNKNOWN')],resultState:'OPTIONS_PARTIAL',inventoryState:'OPTIONS_PARTIAL',expect:'일부 옵션만 확인',absent:/product-badge bad/},
+  {options:[option(0,'SOLD_OUT'),option(null,'STOCK_UNKNOWN')],resultState:'OPTIONS_PARTIAL',inventoryState:'OPTIONS_PARTIAL',expect:'재고 상세',absent:/product-badge bad|일부 옵션만 확인/},
   {options:[option(0,'SOLD_OUT'),option(3,'UNAVAILABLE')],expect:'>구매 불가능</span>',absent:/>품절<\/span>/}
  ];
  for(const c of cases){
@@ -186,7 +209,7 @@ test('list missing badge opens detail instead of expanding a duplicate explanati
  const f=fixture({load:async()=>pageOf([{...product,selectedSupplier:l}])});await settle();
  const html=f.$('product-rows').innerHTML;
  assert.match(html,/selected-missing-button" data-detail="42"/);assert.doesNotMatch(html,/<details|검색 범위 밖|>품절</);
- assert.match(html,/이전 확인값 · 이전 가격 및 재고/);assert.match(html,/2026-09-29T19:00:00/);
+ assert.doesNotMatch(html,/이전 확인값|is-unavailable/);
  assert(html.indexOf('supplier-compact-stock')<html.indexOf('selected-missing-button'));
 });
 
@@ -262,4 +285,16 @@ test('login retry and search cooldown stop spinner but keep polling until actual
  status={...status,runStatus:'RUNNING',nextRetryAt:null,nextSearchAt:'2026-09-28T01:31:00'};await f.tick();
  assert.equal(f.$('detail-spinner').hidden,true);assert.match(f.$('detail-progress-text').textContent,/다음 검색.*01:31/);assert.equal(f.$('detail-run-link').hidden,false);
  status={...status,status:'CHECKING',nextSearchAt:null};await f.tick();assert.equal(f.$('detail-spinner').hidden,false);
+});
+
+
+test('list hides historical store and option explanations but detail retains their evidence',async()=>{
+ const listing={id:'L1',mall:'LFMALL',branchRequired:true,storeStatus:'HISTORICAL',store:{name:'천호점'},preferred:true,current:true,priceStatus:'CONFIRMED',referencePrice:10000,inventoryState:'OPTIONS_PARTIAL',result:{offer:{mall:'LFMALL',price:10000,deliveryFee:0},match:{state:'SEARCH_RESULT'},state:'OPTIONS_PARTIAL',options:[{id:'a',label:'FREE',stock:3,state:'AVAILABLE'}]}};
+ const p={...product,latestStatus:'SOLD_OUT',selectedSupplier:listing};
+ const d={...detailOf(p),comparison:{selected:listing,groups:[],recommendations:[]}};
+ const f=fixture({load:async url=>url==='/api/products/42'?d:url.endsWith('/duplicates')?[]:pageOf([p])});await settle();
+ const html=f.$('product-rows').innerHTML;
+ assert.match(html,/product-badge bad[^"]*">품절/);assert.match(html,/재고 3개/);assert.doesNotMatch(html,/일부 옵션만 확인|이번 업체·지점 미확인|is-unavailable/);
+ f.row({detail:'42'});await settle();
+ assert.match(f.$('detail-summary').innerHTML,/일부 옵션만 확인/);assert.match(f.$('detail-summary').innerHTML,/이번 업체·지점 미확인/);
 });

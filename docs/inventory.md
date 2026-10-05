@@ -130,3 +130,5 @@ NODE_PATH=/path/to/node_modules node scripts/test-product-ui.cjs
 ## 구현 경계와 동시 처리
 
 조회·주문/항목 변경·수량 기록은 `InventoryQueryService`, `InventoryPurchaseService`, `InventoryMovementService`로 분리한다. 응답은 `InventoryView`의 공개/관리자 필드만 반환한다. 카탈로그 변경은 배타 가드, 재고 변경은 공유 가드와 요청 ID·주문·항목·이력 순서의 잠금을 사용한다. 서로 다른 주문은 병렬 처리할 수 있고 같은 요청은 기존 해시로 한 번만 반영한다. [연동 전 기반 정리](market-integration-readiness.md)에 상세 규칙을 기록한다.
+
+상품 화면의 보유·미입고 수량은 등록 상품 기준이며 1개 이상이면 검은색 굵은 글씨로 표시한다. 수량 영역의 폭은 고정한다. 재고 조회 버튼은 페이지 이동 없이 재고 페이지와 공유하는 상품 재고 상세 모달을 열며, 해당 모달의 합계는 동일 코드 그룹 전체 기준이다. 모달의 매입 내역·이력 페이지 처리와 주문 조회·기록 취소·권한 규칙은 기존 재고 화면과 같다.

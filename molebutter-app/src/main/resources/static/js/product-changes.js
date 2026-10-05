@@ -19,13 +19,14 @@ window.ProductChanges=(() => {
     }
     const listing=(summary,id)=>summary?.listings?.find(l=>l.supplierId===id);
     const metric=(summary,id,kind)=>chip(listing(summary,id)?.deltas?.find(d=>d.kind===kind));
-    function option(summary,id,o){
-        const ds=(listing(summary,id)?.deltas||[]).filter(d=>d.optionId===o.id&&d.scope===(o.stockScope||'OPTION'));
+    function option(summary,id,o,compact=false){
+        const ds=(listing(summary,id)?.deltas||[]).filter(d=>d.optionId===o.id&&d.scope===(o.stockScope||'OPTION')&&(!compact||['STOCK','SOLD_OUT','RESTOCK'].includes(d.kind)));
         return ds.filter(d=>!(d.kind==='STOCK'&&ds.some(x=>x.kind==='SOLD_OUT'))).map(chip).join('');
     }
     function selectedStock(summary,l,product){
         if(!summary||!l)return '';
-        if((l.result?.options||[]).length===1)return option(summary,l.id,l.result.options[0]);
+        if((l.result?.options||[]).length===1)return option(summary,l.id,l.result.options[0],Boolean(product));
+        if(product)return '';
         const ds=(listing(summary,l.id)?.deltas||[]).filter(d=>d.optionId);
         const count=new Set(ds.map(d=>d.scope+':'+d.optionId)).size;
         return count?(product?`<button type="button" class="value-delta neutral" data-detail="${e(product)}">옵션 재고 변동 ${count}건</button>`:`<a class="value-delta neutral" href="#listing-${e(l.id)}">옵션 재고 변동 ${count}건</a>`):'';
