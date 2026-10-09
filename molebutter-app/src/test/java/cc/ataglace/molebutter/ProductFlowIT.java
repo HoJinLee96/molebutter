@@ -700,7 +700,7 @@ class ProductFlowIT {
         }
         assertThat(recovery.history(actor,run,0,"",null).totalElements()).isEqualTo(5);
         refresh.control(actor,run,"resume");assertThat(recovery.gated()).isFalse();assertThat(refresh.status(actor,Long.parseLong(p.id())).searchRetryCount()).isZero();
-        time.value=time.value.plusSeconds(30);var w=refresh.claim("worker");long a=refresh.searchStarted("worker",w);assertThat(refresh.searchSucceeded("worker",w,a)).isTrue();assertThat(refresh.searchSucceeded("worker",w,a)).isFalse();
+        time.value=time.value.plusSeconds(60);var w=refresh.claim("worker");long a=refresh.searchStarted("worker",w);assertThat(refresh.searchSucceeded("worker",w,a)).isTrue();assertThat(refresh.searchSucceeded("worker",w,a)).isFalse();
     }
     @Test void searchCooldownCannotBeBypassedByCancellingRunOrNewManualQueue(){
         var p=stockProduct();var listing=skipped(p);long run=Long.parseLong(start(current(p)));var w=refresh.claim("worker");long a=refresh.searchStarted("worker",w);
@@ -801,11 +801,13 @@ class ProductFlowIT {
         var cached=refresh.claim("replacement");assertThat(cached.productId()).isEqualTo(Long.parseLong(same.id()));
         assertThat(refresh.cached(cached)).isNotNull();refresh.finish("replacement",cached,result());
         assertThat(refresh.claim("replacement")).isNull();
-        assertThat(refresh.status(actor,Long.parseLong(other.id())).nextSearchAt()).isEqualTo(time.value.plusSeconds(30));
+        assertThat(refresh.status(actor,Long.parseLong(other.id())).nextSearchAt()).isEqualTo(time.value.plusSeconds(60));
         assertThat(latestRun().get("nextSearchAt")).isNotNull();
-        time.value=time.value.plusSeconds(29);assertThat(refresh.claim("replacement")).isNull();
+        time.value=time.value.plusSeconds(59);assertThat(refresh.claim("replacement")).isNull();
         time.value=time.value.plusSeconds(1);var next=refresh.claim("replacement");assertThat(next.productId()).isEqualTo(Long.parseLong(other.id()));
-        refresh.searchFinished("replacement",next,true);time.value=time.value.plusSeconds(45);refresh.finish("replacement",next,result());
+        refresh.searchFinished("replacement",next,true);time.value=time.value.plusSeconds(70);
+        assertThat(refresh.claim("other-worker")).isNull(); // supplier lookup still owns the worker after the search interval
+        refresh.finish("replacement",next,result());
         assertThat(refresh.claim("replacement")).isNull(); // finished job
         var newProduct=create("ABCD6F125BK");start(newProduct);assertThat(refresh.claim("replacement")).isNotNull();
     }
