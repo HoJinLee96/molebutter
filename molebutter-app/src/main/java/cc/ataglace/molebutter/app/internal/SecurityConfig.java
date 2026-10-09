@@ -10,6 +10,7 @@ import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -78,6 +79,7 @@ public class SecurityConfig {
                     auth.requestMatchers(PUBLIC_PAGES).permitAll();
                     auth.requestMatchers(STATIC_RESOURCES).permitAll();
                     auth.requestMatchers(PUBLIC_AUTH_APIS).permitAll();
+                    auth.requestMatchers(HttpMethod.GET, "/marketplace-images/{token}").permitAll();
                     // 섹션별 인가: MenuSection 선언(pagePatterns/apiPatterns)에서 자동 생성.
                     // JwtAuthenticationFilter가 role → PERM_<섹션> 권한을 부여하는 것과 짝을 이룬다.
                     for (MenuSection section : MenuSection.values()) {

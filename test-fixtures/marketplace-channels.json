@@ -1,0 +1,62 @@
+[
+  {
+    "id": "COUPANG",
+    "label": "쿠팡",
+    "provider": "COUPANG",
+    "commonDraft": true,
+    "productRead": true,
+    "productCreate": true,
+    "productUpdate": true,
+    "orderRead": true
+  },
+  {
+    "id": "NAVER",
+    "label": "스마트스토어",
+    "provider": "NAVER",
+    "commonDraft": true,
+    "productRead": true,
+    "productCreate": true,
+    "productUpdate": true,
+    "orderRead": false
+  },
+  {
+    "id": "GMARKET",
+    "label": "G마켓",
+    "provider": "ESM",
+    "commonDraft": true,
+    "productRead": false,
+    "productCreate": false,
+    "productUpdate": false,
+    "orderRead": false
+  },
+  {
+    "id": "AUCTION",
+    "label": "옥션",
+    "provider": "ESM",
+    "commonDraft": true,
+    "productRead": false,
+    "productCreate": false,
+    "productUpdate": false,
+    "orderRead": false
+  },
+  {
+    "id": "LOTTEON",
+    "label": "롯데ON",
+    "provider": "LOTTEON",
+    "commonDraft": false,
+    "productRead": false,
+    "productCreate": false,
+    "productUpdate": false,
+    "orderRead": false
+  },
+  {
+    "id": "ELEVENST",
+    "label": "11번가",
+    "provider": "ELEVENST",
+    "commonDraft": false,
+    "productRead": false,
+    "productCreate": false,
+    "productUpdate": false,
+    "orderRead": false
+  }
+]
