@@ -13,20 +13,30 @@
     <packaging>pom</packaging>
     <properties>
         <java.version>21</java.version>
+        <aws-sdk.version>2.55.12</aws-sdk.version>
         <molebutter.build-directory>target</molebutter.build-directory>
     </properties>
     <modules>
         <module>molebutter-common</module>
+        <module>molebutter-storage</module>
         <module>molebutter-identity</module>
         <module>molebutter-operations</module>
         <module>molebutter-catalog</module>
         <module>molebutter-procurement</module>
         <module>molebutter-inventory</module>
         <module>molebutter-attendance</module>
+        <module>molebutter-imaging</module>
         <module>molebutter-app</module>
     </modules>
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${aws-sdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>com.microsoft.playwright</groupId>
                 <artifactId>playwright</artifactId>
@@ -90,6 +100,16 @@
             <dependency>
                 <groupId>cc.ataglace</groupId>
                 <artifactId>molebutter-app</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>cc.ataglace</groupId>
+                <artifactId>molebutter-storage</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>cc.ataglace</groupId>
+                <artifactId>molebutter-imaging</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>
