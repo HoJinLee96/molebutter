@@ -156,3 +156,44 @@ notes/
 **/src/main/resources/application-*.local.properties
 **/src/main/resources/image/
 **/target/
+
+**/marketplace-api-docs
+
+# Private marketplace source images (runtime only)
+**/data/marketplace-assets/
+
+# Local account setup notes and this Mac's launch agent
+/docs/cloudflare-setup.md
+/docs/local/
+/scripts/cloudflare-mac.plist
+
+# Secrets in any module or runtime working directory
+**/application-secret/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+!.dev.vars.*.example
+
+# Local Cloudflare / AWS authentication and tool state
+.cloudflared/
+.wrangler/
+.aws/
+
+# Private keys and credential stores (public certificates may be versioned)
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*-key.pem
+*_key.pem
+privkey*.pem
+id_rsa
+id_ed25519
+
+# Local previews, test reports, coverage and backups
+/output/
+playwright-report/
+test-results/
+coverage/
+backups/
