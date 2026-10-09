@@ -16,6 +16,8 @@
 
 전용 등록 API는 `/api/marketplaces/naver/product-registrations/drafts`의 POST, GET·PUT `/{id}`, POST `/{id}/prepare`다. 수정 API는 GET `/api/marketplaces/naver/products/{originProductNo}/observation`, POST `/{originProductNo}/prepare`이며 서버 관찰 토큰과 편집 입력을 받는다. 초안 목록은 `NAVER_REGISTRATION`을 전용 화면으로 연결한다. 기존 `COMMON`·쿠팡 초안과 실행 JSON의 호환 생성자는 유지한다. 다중 마켓 쓰기는 한 번에 한 마켓을 명시적으로 확인한다.
 
+원상품 상세 GET 응답은 원상품·채널상품 번호를 반복해서 포함하지 않을 수 있다. 서버 조회 어댑터는 검증한 요청 경로의 원상품 번호를 응답 투영의 루트에 보관해 관찰 토큰·옵션 및 이미지 UUID·결과 확인에 사용한다. 응답에 번호가 있으면 요청 번호와 일치하는지 검사하고, 채널상품 번호를 원상품 번호로 대신하지 않는다. 이 루트 식별자는 상품 수정 PUT에 포함하지 않는다. 판매중지(`SUSPENSION`)도 상세조회 응답의 유효한 상태이며 조회와 구매자 노출·구매 가능 여부는 구분한다.
+
 ### 연결 설정
 
 선택적 `application-secret/marketplace.properties`의 `naver_smart_store_*` 키를 실행 시 읽는다. 기존 `NAVER_COMMERCE_*` 환경 변수가 있으면 파일 키보다 우선하며, 네이버 공개 검색·매입처 로그인 설정과 별개다. 비밀 파일을 구현·검증 과정에서 열거나 수정하지 않는다.

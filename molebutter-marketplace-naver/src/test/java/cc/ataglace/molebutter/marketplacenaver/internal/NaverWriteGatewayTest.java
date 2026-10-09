@@ -54,6 +54,15 @@ class NaverWriteGatewayTest {
         var prepared=writer.prepare(1L,document(),null,true);assertThat(prepared.steps()).extracting(Step::type).containsExactly(Type.CREATE);var body=json.readTree(prepared.steps().getFirst().bodyJson());
         assertThat(body.path("originProduct").path("images").path("representativeImage").path("url").asString()).endsWith("uploaded.jpg");assertThat(body.path("originProduct").has("originProductNo")).isFalse();assertThat(body.path("smartstoreChannelProduct").has("channelProductNo")).isFalse();assertThat(body.has("requested")).isFalse();assertThat(body.path("originProduct").path("detailContent").asString()).contains("SmartEditor");verify(gateway,never()).write(any(),any(),any());
     }
+    @Test void pathIdentityProjectionKeepsExistingMappingsWithoutSendingIdentifiersInPut(){
+        base.path("originProduct").asObject().remove("originProductNo");base.path("smartstoreChannelProduct").asObject().remove("channelProductNo");
+        base.put("originProductNo",123); // The gateway's trusted path identity, outside the documented GET objects.
+        var prepared=edit(field(input(),"originProduct.name","수정한 상품명"));var step=prepared.steps().getFirst();
+        var body=json.readTree(step.bodyJson());assertThat(body.has("originProductNo")).isFalse();assertThat(body.path("originProduct").has("originProductNo")).isFalse();assertThat(body.path("smartstoreChannelProduct").has("channelProductNo")).isFalse();
+        when(gateway.write(any(),any(),any())).thenAnswer(i->{base.path("originProduct").asObject().put("name",((JsonNode)i.getArgument(2)).path("originProduct").path("name").asString());return response(200,"{\"originProductNo\":123,\"smartstoreChannelProductNo\":456}");});
+        var result=writer.execute(1L,prepared,step,mapping());assertThat(result.state()).isEqualTo(State.CONFIRMED);assertThat(result.mapping().sellerProductId()).isEqualTo("123");assertThat(result.mapping().channelProductId()).isEqualTo("456");
+        assertThat(writer.reconcile(1L,prepared,step,result).state()).isEqualTo(State.CONFIRMED);verify(gateway,times(1)).write(any(),any(),any());
+    }
     @Test void combinationIdsFollowUuidAndPriceIsAdditionalAmount(){
         var rows=json.createArrayNode().add(json.createObjectNode().put("id",7).put("optionName1","검정").put("price",0).put("stockQuantity",5).put("sellerManagerCode","BLACK").put("usable",true));var info=json.createObjectNode().set("optionCombinations",rows);info.asObject().set("optionCombinationGroupNames",json.createObjectNode().put("optionGroupName1","색상"));base.path("originProduct").path("detailAttribute").asObject().set("optionInfo",info);
         var before=input();var old=before.options().getFirst();var option=new NaverEditor.Option(old.id(),old.values(),-500L,0L,old.sellerManagerCode(),true);var desired=new NaverEditor.Input(before.fields(),"COMBINATION",before.optionNames(),List.of(option),before.images(),before.description());

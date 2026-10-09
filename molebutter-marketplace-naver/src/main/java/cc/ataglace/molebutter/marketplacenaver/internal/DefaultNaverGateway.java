@@ -57,8 +57,11 @@ final class DefaultNaverGateway implements NaverGateway {
     }
     public JsonNode product(String id){checkId(id);var value=parse(request("GET","/v2/products/origin-products/"+id,"",null,null));
         if(!value.path("originProduct").isObject())throw failure(RESPONSE);
-        String returned=scalar(value.path("originProduct").path("originProductNo"));
-        if(returned!=null&&!id.equals(returned))throw failure(RESPONSE);return value;
+        for(var identity:List.of(value.path("originProductNo"),value.path("originProduct").path("originProductNo")))
+            if(!identity.isMissingNode()&&!identity.isNull()&&!id.equals(scalar(identity)))throw failure(RESPONSE);
+        // The documented GET response need not repeat its path identity. Keep that trusted
+        // identity in the server projection, outside the origin/channel objects sent by PUT.
+        var projection=value.deepCopy().asObject();projection.put("originProductNo",Long.parseLong(id));return projection;
     }
     public JsonNode channel(String id){checkId(id);return parse(request("GET","/v2/products/channel-products/"+id,"",null,null));}
     public JsonNode search(JsonNode input){return parse(request("POST","/v1/products/search","","application/json",json.writeValueAsBytes(input)));}

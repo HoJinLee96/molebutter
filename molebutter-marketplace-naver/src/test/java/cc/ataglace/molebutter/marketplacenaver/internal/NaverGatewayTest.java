@@ -69,7 +69,51 @@ class NaverGatewayTest {
         var b=gateway.session(()->gateway.metadata("categories",Map.of("last","true")));assertEquals("test",b.get(0).path("name").asString());assertEquals(2,paths.size());
         assertThrows(InputValidationFailure.class,()->gateway.metadata("../oauth2/token",Map.of()));assertThrows(InputValidationFailure.class,()->gateway.product("17?other=1"));
     }
-    @Test void mismatchedReadIdentityIsRejected(){respond=(path,n)->new Reply(200,"{\"originProduct\":{\"originProductNo\":99}}");assertEquals(MarketplaceFailure.Kind.RESPONSE,assertThrows(MarketplaceFailure.class,()->gateway.product("17")).kind());}
+    @Test void documentedDetailWithoutProductIdsKeepsRequestedIdentityAndSourceFields(){
+        String body=documentedDetail();respond=(path,n)->new Reply(200,body);
+        var source=gateway.product("17");var expected=json.readTree(body);
+        assertTrue(source.path("originProductNo").isIntegralNumber());assertEquals(17L,source.path("originProductNo").asLong());
+        assertEquals(expected.path("originProduct"),source.path("originProduct"));
+        assertEquals(expected.path("smartstoreChannelProduct"),source.path("smartstoreChannelProduct"));
+        assertFalse(source.path("originProduct").has("originProductNo"));
+        assertFalse(source.has("smartstoreChannelProductNo"));assertFalse(source.path("smartstoreChannelProduct").has("channelProductNo"));
+    }
+    @Test void documentedDetailProjectsStableProductScopedOptionAndImageIdentities(){
+        respond=(path,n)->new Reply(200,documentedDetail());
+        var catalog=new DefaultNaverCatalog(mock(cc.ataglace.molebutter.identity.api.BusinessAccess.class),gateway,json);
+        var first=catalog.editor(7L,"17");var reloaded=catalog.editor(7L,"17");var other=catalog.editor(7L,"18");
+        assertEquals("17",first.originProductNo());assertEquals("18",other.originProductNo());assertNull(first.channelProductNo());
+        assertEquals(first.optionIdentities(),reloaded.optionIdentities());assertEquals(first.input().options(),reloaded.input().options());
+        assertEquals(first.input().images(),reloaded.input().images());
+        assertEquals("7",first.optionIdentities().getFirst().remoteId());
+        assertEquals(NaverEditPatch.uuid("naver:17:option:7"),first.input().options().getFirst().id());
+        assertEquals(NaverEditPatch.uuid("naver:17:image:https://shop-phinf.pstatic.net/representative.jpg"),first.input().images().getFirst().id());
+        assertNotEquals(first.input().options().getFirst().id(),other.input().options().getFirst().id());
+        for(int i=0;i<first.input().images().size();i++)assertNotEquals(first.input().images().get(i).id(),other.input().images().get(i).id());
+        assertEquals("SALE",first.input().fields().get("originProduct.statusType"));
+        assertEquals("ON",first.input().fields().get("smartstoreChannelProduct.channelProductDisplayStatusType"));
+        assertEquals("<p>상품 상세</p>",first.input().description());
+    }
+    @Test void suspendedProductDetailKeepsSaleAndDisplayStatusWithInt64RouteIdentity(){
+        var detail=json.readTree(documentedDetail()).asObject();detail.path("originProduct").asObject().put("statusType","SUSPENSION");
+        respond=(path,n)->new Reply(200,json.writeValueAsString(detail));
+        var catalog=new DefaultNaverCatalog(mock(cc.ataglace.molebutter.identity.api.BusinessAccess.class),gateway,json);
+        var editor=catalog.editor(7L,"13000000001");
+        assertEquals("13000000001",editor.originProductNo());assertNull(editor.channelProductNo());
+        assertEquals("SUSPENSION",editor.input().fields().get("originProduct.statusType"));
+        assertEquals("ON",editor.input().fields().get("smartstoreChannelProduct.channelProductDisplayStatusType"));
+        assertEquals(NaverEditPatch.uuid("naver:13000000001:option:7"),editor.input().options().getFirst().id());
+        assertTrue(paths.contains("/external/v2/products/origin-products/13000000001"));
+    }
+    @Test void mismatchedReadIdentityIsRejected(){
+        for(String body:List.of("{\"originProduct\":{\"originProductNo\":99}}",
+                "{\"originProductNo\":99,\"originProduct\":{}}",
+                "{\"originProductNo\":99,\"originProduct\":{\"originProductNo\":17}}",
+                "{\"originProductNo\":17,\"originProduct\":{\"originProductNo\":99}}")){
+            respond=(path,n)->new Reply(200,body);
+            assertEquals(MarketplaceFailure.Kind.RESPONSE,assertThrows(MarketplaceFailure.class,()->gateway.product("17")).kind());
+        }
+    }
     @Test void imageUploadUsesLocalAssetBytesWithoutPublicBaseAndSingleFileMapping() throws Exception {
         var image=new BufferedImage(2,2,BufferedImage.TYPE_INT_RGB);var bytes=new ByteArrayOutputStream();ImageIO.write(image,"png",bytes);
         var assets=mock(ImageAssets.class);when(assets.read(7L,"asset-id")).thenReturn(new ImageAssets.AssetContent(null,bytes.toByteArray()));
@@ -105,5 +149,16 @@ class NaverGatewayTest {
         assertThrows(cc.ataglace.molebutter.common.api.InputValidationFailure.class,()->catalog.products(1L,new cc.ataglace.molebutter.marketplace.api.NaverCatalog.Search(1,501,null,null)));
         org.mockito.Mockito.verify(fake).search(org.mockito.ArgumentMatchers.argThat(body->body.path("size").asInt()==20));
     }
-
+    private static String documentedDetail(){
+        // The official GET response schemas do not include originProductNo or channelProductNo.
+        return """
+          {"originProduct":{"statusType":"SALE","saleType":"NEW","leafCategoryId":"50000001","name":"테스트 상품",
+            "salePrice":10000,"stockQuantity":2,"detailContent":"<p>상품 상세</p>",
+            "images":{"representativeImage":{"url":"https://shop-phinf.pstatic.net/representative.jpg"},
+              "optionalImages":[{"url":"https://shop-phinf.pstatic.net/optional.jpg"}]},
+            "detailAttribute":{"optionInfo":{"optionCombinationGroupNames":{"optionGroupName1":"색상"},
+              "optionCombinations":[{"id":7,"optionName1":"검정","price":0,"stockQuantity":2,"usable":true}]}}},
+           "smartstoreChannelProduct":{"channelProductName":"채널 상품명","naverShoppingRegistration":false,"channelProductDisplayStatusType":"ON"}}
+          """;
+    }
 }
