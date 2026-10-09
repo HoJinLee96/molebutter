@@ -17,7 +17,9 @@ class ModuleArchitectureTest {
         "procurement",Set.of("common","identity","operations","catalog"),
         "inventory",Set.of("common","identity","operations","catalog"),
         "attendance",Set.of("common","identity","operations"),
-        "app",Set.of("common","identity","operations","catalog","procurement","inventory","attendance"));
+        "imaging",Set.of("common"),
+        "storage",Set.of("common"),
+        "app",Set.of("common","identity","operations","catalog","procurement","inventory","attendance","imaging","storage"));
     private static String owner(String name) { return name.startsWith(ROOT) ? name.substring(ROOT.length()).split("\\.")[0] : ""; }
     private static boolean api(String name, String owner) { return name.equals(ROOT+owner+".api") || name.startsWith(ROOT+owner+".api."); }
     private static boolean sourceMatches(URI source, String owner) {
