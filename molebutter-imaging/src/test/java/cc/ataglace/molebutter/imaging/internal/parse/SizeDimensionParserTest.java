@@ -5,11 +5,60 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import cc.ataglace.molebutter.imaging.api.SizeDimensionsDto;
 import cc.ataglace.molebutter.imaging.internal.policy.SizeGuidePolicy.SizeGuideTemplate;
 
 class SizeDimensionParserTest {
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "가로=250mm 폭=80mm 높이=200mm",
+            "250mm x 80mm x 200mm",
+            "250mmx80mmx200mm",
+            "250 MM × 80 MM × 200 MM",
+            "250mm x 200mm x 80mm(가로x세로x폭)",
+            "250mm(가로) x 200mm(높이) x 80mm(폭)",
+            "250 x 80 x 200mm",
+            "250X80X200MM",
+            "250 x 200 x 80mm(가로x세로x폭)",
+            "25cm x 80mm x 20cm"
+    })
+    void resolvesMillimetersAsCentimetersAcrossSizeFormats(String text) {
+        assertThat(SizeDimensionParser.resolve(text, Map.of(), Map.of()))
+                .isEqualTo(new SizeDimensionsDto("25", "8", "20"));
+    }
+
+    @Test
+    void resolvesMillimeterChartValuesBeforeApplyingChartPrecedence() {
+        assertThat(SizeDimensionParser.resolve("30 x 15 x 20cm", Map.of(),
+                Map.of("가로", "250mm", "폭", "80mm", "높이", "200mm")))
+                .isEqualTo(new SizeDimensionsDto("25", "8", "20"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"250mm x 200mm(가로x세로)", "250mm(가로) x 200mm(세로)", "250 x 200mm(가로x세로)"})
+    void resolvesMillimeterWalletPairs(String text) {
+        assertThat(SizeDimensionParser.resolve("", Map.of("크기", text), Map.of()))
+                .isEqualTo(new SizeDimensionsDto("25", "-", "20"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"20mm x 1080mm(폭x총길이)", "1080mm(총길이) x 20mm(너비)",
+            "20 x 1080mm", "2cm x 1080mm"})
+    void resolvesBeltMillimetersBeforeOrderingLengthAndStrapWidth(String text) {
+        assertThat(SizeDimensionParser.resolveBelt(text, Map.of(), Map.of()))
+                .isEqualTo(new SizeDimensionsDto("108", "-", "2"));
+    }
+
+    @Test
+    void preservesExactDecimalConversionAndCentimeterValues() {
+        assertThat(SizeDimensionParser.resolve("", Map.of(),
+                Map.of("가로", "250.5mm", "폭", "0.1mm", "높이", "20.75cm")))
+                .isEqualTo(new SizeDimensionsDto("25.05", "0.01", "20.75"));
+    }
 
     @Test
     void resolvesOrderedSizeTripleFromNotificationFields() {

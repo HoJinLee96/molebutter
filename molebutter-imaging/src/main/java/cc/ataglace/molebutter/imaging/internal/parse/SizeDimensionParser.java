@@ -1,5 +1,6 @@
 package cc.ataglace.molebutter.imaging.internal.parse;
 
+import java.math.BigDecimal;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -21,6 +22,11 @@ import cc.ataglace.molebutter.imaging.internal.policy.SizeGuidePolicy.SizeGuideT
 public final class SizeDimensionParser {
 
     private static final Pattern NUMBER_PATTERN = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)");
+    private static final Pattern MILLIMETER_PATTERN = Pattern.compile(
+            "([0-9]+(?:\\.[0-9]+)?)\\s*mm(?=$|[^a-z]|x\\s*[0-9])", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SHARED_MILLIMETER_PATTERN = Pattern.compile(
+            "([0-9]+(?:\\.[0-9]+)?(?:\\s*[x*×]\\s*[0-9]+(?:\\.[0-9]+)?){1,2})\\s*mm(?=$|[^a-z]|x\\s*[0-9])",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern SIZE_TRIPLE_PATTERN = Pattern.compile(
             "([0-9]+(?:\\.[0-9]+)?)\\s*(?:cm|CM|mm|MM)?\\s*[xX*×]\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:cm|CM|mm|MM)?\\s*[xX*×]\\s*([0-9]+(?:\\.[0-9]+)?)");
     private static final Pattern ORDERED_SIZE_TRIPLE_PATTERN = Pattern.compile(
@@ -491,7 +497,7 @@ public final class SizeDimensionParser {
     }
 
     private static Optional<String> normalizeDimensionValue(String value) {
-        Matcher matcher = NUMBER_PATTERN.matcher(value == null ? "" : value);
+        Matcher matcher = NUMBER_PATTERN.matcher(normalizeDimensionUnits(value));
         if (!matcher.find()) {
             return Optional.empty();
         }
@@ -508,10 +514,23 @@ public final class SizeDimensionParser {
     }
 
     private static String normalizeSizeText(String value) {
-        return Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFC)
+        return Normalizer.normalize(normalizeDimensionUnits(value), Normalizer.Form.NFC)
                 .toLowerCase()
                 .replaceAll("\\s+", "")
                 .replace('×', 'x');
+    }
+
+    /** Convert explicit mm values before every label/order parser discards unit suffixes. */
+    private static String normalizeDimensionUnits(String value) {
+        String text = value == null ? "" : value;
+        // A trailing unit in "250 x 80 x 200 mm" applies to the entire bare size group.
+        text = SHARED_MILLIMETER_PATTERN.matcher(text).replaceAll(match ->
+                NUMBER_PATTERN.matcher(match.group(1)).replaceAll(number -> millimetersToCentimeters(number.group(1))));
+        return MILLIMETER_PATTERN.matcher(text).replaceAll(match -> millimetersToCentimeters(match.group(1)));
+    }
+
+    private static String millimetersToCentimeters(String value) {
+        return new BigDecimal(value).movePointLeft(1).stripTrailingZeros().toPlainString() + "cm";
     }
 
     private static String formatDimensionNumber(String value) {
