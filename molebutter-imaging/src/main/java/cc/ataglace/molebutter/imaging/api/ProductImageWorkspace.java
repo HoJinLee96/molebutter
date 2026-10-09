@@ -51,7 +51,8 @@ public class ProductImageWorkspace {
     public JobDto startDownload(Long actor, DownloadRequestDto request) {
         ImagingInputs.actor(actor); ImagingInputs.download(request);
         ProductLookupDto product = observations.get(actor, request.productCode(), request.brandCode());
-        return jobs.start(actor, () -> rendered(() -> downloads.downloadImages(actor, request, product)));
+        var snapshot = downloads.capture(actor, request, product);
+        return jobs.start(actor, () -> rendered(() -> downloads.downloadImages(snapshot)));
     }
     public ImageExportPlan prepareExport(Long actor, DownloadRequestDto request) {
         ImagingInputs.actor(actor); ImagingInputs.download(request);
