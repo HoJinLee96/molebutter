@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('상품 이미지 도구')}"></head>
+<body class="app-layout">
+<header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
+<main id="main-content" tabindex="-1" class="page product-images-page">
+    <h1>상품 이미지 도구</h1>
+    <link rel="stylesheet" th:href="@{/css/product-images.css}" href="/css/product-images.css">
+    <div class="product-image-workspace">
+        <div class="lookup-shell">
+            <div class="workspace-toolbar panel">
+                <div class="lookup-tools">
+                    <form class="lookup-form toolbar" id="lookupForm">
+                        <div class="field lookup-brand-field">
+                            <label for="brandSelect">브랜드</label>
+                            <select class="lookup-select" id="brandSelect" aria-label="브랜드">
+                                <option value="DAKS">닥스</option>
+                                <option value="HAZZYS">헤지스</option>
+                                <option value="JILLSTUART">질스튜어트</option>
+                                <option value="LQT">루이까또즈</option>
+                            </select>
+                        </div>
+                        <div class="field field--code">
+                            <label for="productCodeInput">상품코드</label>
+                            <input class="lookup-input" id="productCodeInput" type="text" placeholder="상품코드 (예: DCBA6E370BK)"
+                                   autocomplete="off" maxlength="40" aria-label="상품코드">
+                        </div>
+                        <button class="btn primary" id="lookupButton" type="submit">조회</button>
+                    </form>
+                    <p class="lookup-status" id="lookupStatus" role="status"></p>
+                </div>
+            </div>
+
+            <div class="lookup-panel panel hidden" id="resultPanel">
+                <div class="product-heading">
+                    <div class="product-image-identity">
+                        <div class="product-name-row">
+                            <h2 id="productName">-</h2>
+                            <button class="copy-button" type="button" data-copy-target="productName" aria-label="상품명 복사">복사</button>
+                        </div>
+                        <div class="product-meta-row">
+                            <span class="product-image-meta" id="productMeta">-</span>
+                            <span class="product-image-meta" aria-hidden="true">·</span>
+                            <span class="product-image-meta" id="displayProductCode">-</span>
+                            <button class="copy-button" type="button" data-copy-target="displayProductCode" aria-label="조회 상품코드 복사">복사</button>
+                        </div>
+                    </div>
+                    <div class="price-summary">
+                        <span class="price-pill">출고가 <strong id="originalPrice">-</strong><button class="copy-button" type="button" data-copy-target="originalPrice" data-copy-digits aria-label="출고가 복사">복사</button></span>
+                        <span class="price-pill">판매가 <strong id="salePrice">-</strong><button class="copy-button" type="button" data-copy-target="salePrice" data-copy-digits aria-label="판매가 복사">복사</button></span>
+                    </div>
+                </div>
+
+                <div class="local-media-layout">
+                    <section class="gallery-panel" aria-labelledby="galleryTitle">
+                        <div class="section-heading">
+                            <h3 class="section-title" id="galleryTitle">이미지 순서 <span id="selectionCount"></span></h3>
+                        </div>
+                        <div class="gallery-stage" id="galleryStage">
+                            <div class="image-strip" id="imageStrip"></div>
+                        </div>
+                        <nav class="pagination" aria-label="이미지 페이지">
+                            <button class="page-button" id="previousImagePage" type="button" aria-label="이전 이미지 페이지">‹</button>
+                            <span id="imagePageStatus" role="status">1 / 1</span>
+                            <button class="page-button" id="nextImagePage" type="button" aria-label="다음 이미지 페이지">›</button>
+                        </nav>
+                    </section>
+
+                    <section class="trash-panel" id="trashPanel" aria-labelledby="trashTitle">
+                        <div class="section-heading">
+                            <h3 class="section-title" id="trashTitle">휴지통 <span id="trashCount">0</span></h3>
+                        </div>
+                        <p class="trash-hint">여기로 끌어 다운로드에서 제외하세요.<br>원본은 삭제되지 않습니다.</p>
+                        <div class="trash-stage" id="trashStage">
+                            <div class="trash-strip" id="trashStrip"></div>
+                        </div>
+                        <nav class="pagination" aria-label="휴지통 페이지">
+                            <button class="page-button" id="previousTrashPage" type="button" aria-label="이전 휴지통 페이지">‹</button>
+                            <span id="trashPageStatus" role="status">1 / 1</span>
+                            <button class="page-button" id="nextTrashPage" type="button" aria-label="다음 휴지통 페이지">›</button>
+                        </nav>
+                        <button class="btn small" id="restoreAllImages" type="button" disabled>모두 복구</button>
+                    </section>
+
+                    <aside class="details-panel" aria-label="상품정보">
+                        <section class="size-guide-row" id="sizeGuideRow" aria-labelledby="sizeGuideTitle">
+                            <h3 class="section-title" id="sizeGuideTitle">사이즈</h3>
+                            <div class="size-guide-controls">
+                                <div class="dim-inputs" title="고시에서 파싱한 값이 채워집니다. 수정하면 그 값으로 그립니다.">
+                                    <div class="dimension-field size-label-field">
+                                        <label for="sizeLabelInput">표기 사이즈</label>
+                                        <input id="sizeLabelInput" type="text" placeholder="표기 사이즈" aria-label="표기 사이즈" autocomplete="off" maxlength="100">
+                                    </div>
+                                    <div class="dimension-field">
+                                        <label for="dimWidthInput">가로</label>
+                                        <input id="dimWidthInput" type="text" inputmode="decimal" placeholder="가로" aria-label="가로" autocomplete="off">
+                                    </div>
+                                    <div class="dimension-field">
+                                        <label for="dimDepthInput">폭</label>
+                                        <input id="dimDepthInput" type="text" inputmode="decimal" placeholder="폭" aria-label="폭" autocomplete="off">
+                                    </div>
+                                    <div class="dimension-field">
+                                        <label for="dimHeightInput">높이</label>
+                                        <input id="dimHeightInput" type="text" inputmode="decimal" placeholder="높이" aria-label="높이" autocomplete="off">
+                                    </div>
+                                </div>
+                                <button class="btn" id="editPhotoButton" type="button" disabled>선택 사진으로 사이즈 편집</button>
+                                <select id="sizeTemplateSelect" aria-label="제품 카테고리" title="자동 분류가 안 되면 여기서 카테고리를 직접 고르세요" disabled></select>
+                                <button class="btn" id="addSizeImageButton" type="button" title="선택한 카테고리의 공용 표본 치수표를 이미지 목록에 추가" disabled>추가</button>
+                            </div>
+                        </section>
+                        <section class="notice-section">
+                            <div class="section-heading notice-heading">
+                                <h3 class="section-title">상품정보</h3>
+                                <button class="btn" id="addNoticeImageButton" type="button">상품정보 이미지 추가</button>
+                            </div>
+                            <div class="notice-stage" id="noticeStage">
+                                <div class="info-grid" id="notificationGrid"></div>
+                            </div>
+                            <p class="notice-status" id="noticePreviewStatus" role="status"></p>
+                        </section>
+                    </aside>
+                </div>
+
+                <div class="download-actions">
+                    <div class="download-main">
+                        <div class="download-title">이미지 다운로드</div>
+                        <div class="download-buttons">
+                            <button class="btn primary" id="downloadImagesButton" type="button">다운로드</button>
+                            <button class="btn" id="uploadImagesButton" type="button">업로드</button>
+                        </div>
+                    </div>
+                    <div class="download-result hidden" id="downloadResult">
+                        <p class="download-status" id="downloadStatus" role="status"></p>
+                        <button class="copy-button" type="button" data-copy-target="downloadStatus" aria-label="다운로드 결과 복사">복사</button>
+                        <button class="btn archive-download-button hidden" id="downloadArchiveButton" type="button">ZIP 다시 다운로드</button>
+                    </div>
+                </div>
+            </div>
+            <section class="upload-result panel hidden" id="uploadResult" aria-labelledby="uploadResultTitle">
+                <h3 class="section-title" id="uploadResultTitle">업로드 결과</h3>
+                <p class="upload-status" id="uploadStatus" role="status"></p>
+                <ul class="upload-files" id="uploadFiles"></ul>
+                <button class="btn hidden" id="checkUploadButton" type="button">결과 확인</button>
+            </section>
+        </div>
+        <dialog class="attendance-dialog image-upload-dialog" id="imageUploadDialog" aria-labelledby="imageUploadTitle">
+            <div class="product-dialog-head">
+                <h2 id="imageUploadTitle">상품 이미지 업로드</h2>
+                <button class="btn small" id="closeUploadDialog" type="button">닫기</button>
+            </div>
+            <form id="imageUploadForm">
+                <p class="upload-summary">조회 상품코드 <strong id="uploadSourceCode"></strong> · 이미지 <strong id="uploadImageCount"></strong>개</p>
+                <div class="field upload-code-field">
+                    <label for="uploadProductCodeInput">저장할 상품코드</label>
+                    <input id="uploadProductCodeInput" type="text" autocomplete="off" maxlength="40" aria-describedby="uploadCodeHint uploadPathPreview" required>
+                </div>
+                <p class="upload-hint" id="uploadCodeHint">영문·숫자·밑줄(_)·하이픈(-) 4~40자. 조회 상품정보는 바뀌지 않습니다.</p>
+                <p class="upload-path">공개 저장 경로 <code id="uploadPathPreview"></code></p>
+                <p class="form-error" id="uploadDialogError" role="alert" hidden></p>
+                <div class="upload-dialog-actions">
+                    <button class="btn" id="cancelUploadButton" type="button">취소</button>
+                    <button class="btn primary" id="confirmUploadButton" type="submit">공개 버킷에 업로드</button>
+                </div>
+            </form>
+        </dialog>
+    </div>
+</main>
+<script th:src="@{/js/api.js}" src="/js/api.js"></script>
+<script type="module" th:src="@{/js/product-images/app.js}" src="/js/product-images/app.js"></script>
+</body>
+</html>
