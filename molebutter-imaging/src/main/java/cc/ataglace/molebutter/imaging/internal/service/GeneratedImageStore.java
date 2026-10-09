@@ -3,7 +3,9 @@ package cc.ataglace.molebutter.imaging.internal.service;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -41,16 +43,28 @@ public class GeneratedImageStore {
             throw new ImagingFailure(ImagingFailure.Kind.INVALID_INPUT, "생성 이미지가 올바르지 않습니다.");
         }
         cleanup();
-        while (actorCount(actor) >= MAX_ACTOR_ENTRIES || actorBytes(actor) + png.length > MAX_ACTOR_BYTES) {
-            String oldest = entries.entrySet().stream().filter(e -> actor.equals(e.getValue().actor()))
-                    .map(Map.Entry::getKey).findFirst().orElseThrow();
-            entries.remove(oldest);
+        List<String> evictions = new ArrayList<>();
+        long remainingActorCount = actorCount(actor);
+        long remainingActorBytes = actorBytes(actor);
+        long remainingBytes = totalBytes();
+        for (Map.Entry<String, Entry> candidate : entries.entrySet()) {
+            if (remainingActorCount < MAX_ACTOR_ENTRIES && remainingActorBytes + png.length <= MAX_ACTOR_BYTES) {
+                break;
+            }
+            if (actor.equals(candidate.getValue().actor())) {
+                evictions.add(candidate.getKey());
+                remainingActorCount--;
+                remainingActorBytes -= candidate.getValue().png().length;
+                remainingBytes -= candidate.getValue().png().length;
+            }
         }
-        if (entries.size() >= MAX_ENTRIES || totalBytes() + png.length > MAX_BYTES) {
+        if (entries.size() - evictions.size() >= MAX_ENTRIES || remainingBytes + png.length > MAX_BYTES) {
             throw new ImagingFailure(ImagingFailure.Kind.BUSY, "생성 이미지 보관 공간이 가득 찼습니다. 잠시 후 다시 시도해주세요.");
         }
         String id = UUID.randomUUID().toString();
-        entries.put(id, new Entry(actor, product.productCode(), product.brandCode(), png.clone(), kind, clock.instant()));
+        Entry image = new Entry(actor, product.productCode(), product.brandCode(), png.clone(), kind, clock.instant());
+        evictions.forEach(entries::remove);
+        entries.put(id, image);
         return id;
     }
 

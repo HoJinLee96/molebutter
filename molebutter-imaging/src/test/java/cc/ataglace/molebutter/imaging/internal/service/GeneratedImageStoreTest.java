@@ -94,6 +94,64 @@ class GeneratedImageStoreTest {
         for(int i=0;i<15;i++)store.put(3L,product,new byte[]{3});
         assertThatThrownBy(() -> store.put(4L,product,new byte[]{4})).extracting(e -> ((ImagingFailure)e).kind()).isEqualTo(ImagingFailure.Kind.BUSY);
     }
+    @Test void rejectedGenerationPreservesSnapshotsAndSameSizeRetryCanReplaceOldest() {
+        GeneratedImageStore store = new GeneratedImageStore();
+        var product = product("BAG1", "DAKS");
+        List<String> existing = new ArrayList<>();
+        for (int i = 0; i < GeneratedImageStore.MAX_ACTOR_ENTRIES; i++) {
+            existing.add(store.put(1L, product, new byte[64 * 1024], i % 2 == 0 ? ImageKind.SIZE : ImageKind.NOTICE));
+        }
+        String other = store.put(2L, product, new byte[8 * 1024 * 1024]);
+        store.put(3L, product, new byte[7 * 1024 * 1024]);
+
+        assertThatThrownBy(() -> store.put(1L, product, new byte[128 * 1024]))
+                .isInstanceOfSatisfying(ImagingFailure.class,
+                        failure -> assertThat(failure.kind()).isEqualTo(ImagingFailure.Kind.BUSY));
+        for (int i = 0; i < existing.size(); i++) {
+            var stored = store.getStored(1L, existing.get(i), product);
+            assertThat(stored.png()).hasSize(64 * 1024);
+            assertThat(stored.kind()).isEqualTo(i % 2 == 0 ? ImageKind.SIZE : ImageKind.NOTICE);
+        }
+        assertThat(store.get(2L, other, product)).hasSize(8 * 1024 * 1024);
+
+        String replacement = store.put(1L, product, new byte[64 * 1024]);
+        assertThat(store.get(1L, replacement, product)).hasSize(64 * 1024);
+        assertThatThrownBy(() -> store.get(1L, existing.getFirst(), product))
+                .isInstanceOfSatisfying(ImagingFailure.class,
+                        failure -> assertThat(failure.kind()).isEqualTo(ImagingFailure.Kind.NOT_FOUND));
+        for (String id : existing.subList(1, existing.size())) {
+            assertThat(store.get(1L, id, product)).hasSize(64 * 1024);
+        }
+    }
+    @Test void globalRejectionPreservesAllCandidatesWhenActorByteLimitRequiresSeveralEvictions() {
+        GeneratedImageStore store = new GeneratedImageStore();
+        var product = product("BAG1", "DAKS");
+        List<String> existing = new ArrayList<>();
+        for (int i = 0; i < 4; i++) existing.add(store.put(1L, product, new byte[1024 * 1024]));
+        store.put(2L, product, new byte[6 * 1024 * 1024]);
+        store.put(3L, product, new byte[6 * 1024 * 1024]);
+
+        assertThatThrownBy(() -> store.put(1L, product, new byte[6 * 1024 * 1024]))
+                .isInstanceOfSatisfying(ImagingFailure.class,
+                        failure -> assertThat(failure.kind()).isEqualTo(ImagingFailure.Kind.BUSY));
+        for (String id : existing) assertThat(store.get(1L, id, product)).hasSize(1024 * 1024);
+    }
+    @Test void successfulGenerationAppliesSeveralOwnerEvictionsTogetherAtByteLimit() {
+        GeneratedImageStore store = new GeneratedImageStore();
+        var product = product("BAG1", "DAKS");
+        List<String> existing = new ArrayList<>();
+        for (int i = 0; i < 4; i++) existing.add(store.put(1L, product, new byte[2 * 1024 * 1024]));
+        String other = store.put(2L, product, new byte[8 * 1024 * 1024]);
+
+        String replacement = store.put(1L, product, new byte[4 * 1024 * 1024]);
+        assertThat(store.get(1L, replacement, product)).hasSize(4 * 1024 * 1024);
+        for (String id : existing.subList(0, 2)) {
+            assertThatThrownBy(() -> store.get(1L, id, product)).isInstanceOfSatisfying(ImagingFailure.class,
+                    failure -> assertThat(failure.kind()).isEqualTo(ImagingFailure.Kind.NOT_FOUND));
+        }
+        for (String id : existing.subList(2, 4)) assertThat(store.get(1L, id, product)).hasSize(2 * 1024 * 1024);
+        assertThat(store.get(2L, other, product)).hasSize(8 * 1024 * 1024);
+    }
     static class MutableClock extends Clock {
         Instant now=Instant.parse("2026-10-08T00:00:00Z");
         public ZoneId getZone(){return ZoneOffset.UTC;} public Clock withZone(ZoneId zone){return this;} public Instant instant(){return now;}
