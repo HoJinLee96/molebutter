@@ -48,7 +48,7 @@ G마켓과 옥션은 공통 클라이언트를 사용할 수 있지만, 한쪽�
 
 ### 통합 인증 설정 (2026-10-09)
 
-판매 마켓 인증값은 `application-secret/maketplace.properties` 한 파일에 보관한다. 파일명의 `maketplace` 표기는 현재 사용자 파일명과 일치시킨다. 로컬 classpath와 실행 디렉터리의 외부 파일을 선택적으로 읽으며, 기존 `coupang.properties`·`naver-commerce.properties` 자동 import는 제거했다. 비밀 파일은 Git·배포 JAR에 포함하지 않는다.
+판매 마켓 인증값은 `application-secret/marketplace.properties` 한 파일에 보관한다. 로컬 classpath와 실행 디렉터리의 외부 파일을 선택적으로 읽으며, 기존 `coupang.properties`·`naver-commerce.properties` 자동 import는 제거했다. 비밀 파일은 Git·배포 JAR에 포함하지 않는다.
 
 | 통합 파일 키 | 서버 내부 설정 |
 |---|---|

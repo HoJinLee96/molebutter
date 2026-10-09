@@ -463,8 +463,16 @@ JS 편집·전송·공통 편집 42건 통과. 기존 편집 브라우저 2560·
 
 ## 판매 마켓 통합 인증 설정 (2026-10-09)
 
-`application-secret/maketplace.properties`를 classpath·실행 디렉터리에서 선택적으로 읽도록 연결했다. 새 쿠팡·스마트스토어 키를 기존 서버 내부 설정에 매핑하고 네이버 환경 변수 우선순위·SELF 기본값을 유지한다. 11번가·ESM·롯데ON은 API 키 설정만 연결하며 API 기능을 활성화하지 않는다. 명시적 주문 조회 테스트의 import와 실행 안내도 통합 파일명으로 갱신했다.
+`application-secret/marketplace.properties`를 classpath·실행 디렉터리에서 선택적으로 읽도록 연결했다. 새 쿠팡·스마트스토어 키를 기존 서버 내부 설정에 매핑하고 네이버 환경 변수 우선순위·SELF 기본값을 유지한다. 11번가·ESM·롯데ON은 API 키 설정만 연결하며 API 기능을 활성화하지 않는다. 명시적 주문 조회 테스트의 import와 실행 안내도 통합 파일명으로 갱신했다.
 
 `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home MOLEBUTTER_COUPANG_LIVE=false MOLEBUTTER_ORDER_LIVE=false CLOUDFLARE_R2_ENABLED=false mvn -o -Dmolebutter.build-directory=target/credential-verification -pl molebutter-app -am -Dtest=MarketplaceCredentialConfigurationTest,R2ActivationConfigurationTest,CoupangClientTest,NaverGatewayTest -Dsurefire.failIfNoSpecifiedTests=false test`: 40개 통과(설정 5·R2 설정 4·쿠팡 인증/조회 계약 20·네이버 인증 계약 11).
 
 통합 설정 테스트는 실제 일반 application.properties의 사본에서 비밀 import를 제거하고, application-secret 밖의 임시 가짜 파일을 Spring ConfigData로 읽는다. 호스트 환경·시스템 설정을 격리해 누락 파일 기본값, 아홉 키 매핑, 이전 일반 쿠팡 키 제외, 네이버 환경 변수 우선순위와 canonical 설정 우선순위를 확인했다. 비밀 파일을 직접 열거나 수정하지 않았으며 실제 마켓 요청·운영 DB 변경·개발 서버 재시작은 수행하지 않았다. 검증 빌드는 별도 디렉터리를 사용했다.
+
+### 통합 파일명 수정 (2026-10-09)
+
+두 마켓의 조회에서 연결 설정 안내가 발생했다. 디렉터리 메타데이터로 실제 파일명은 `marketplace.properties`, 기존 import는 `maketplace.properties`임을 확인했다. optional import가 누락을 허용해 앱은 기동했지만 인증값이 비어 있었다. 일반 설정·명시적 live 테스트의 import·가짜 설정 테스트·구현 안내를 실제 파일명으로 수정했다.
+
+별도 `target/credential-filename-verification` 빌드에서 설정 5·R2 설정 4·쿠팡 인증/조회 계약 20·네이버 인증 계약 11, 총 40개 테스트가 통과했다. 처음 실행은 샌드박스의 로컬 socket 제한으로 중단되어 로컬 가짜 HTTP 서버를 허용한 실행에서 다시 검증했다. 실제 마켓 호출은 비활성화했다.
+
+추가로 컴포넌트·DB·스케줄러를 실행하지 않는 임시 Spring ConfigData 진단으로 수정된 일반 설정의 import를 확인했다. 통합 파일 import 및 쿠팡·네이버 필수 설정의 존재 여부만 모두 true로 확인했고 값은 출력하지 않았다. 비밀 파일을 직접 열거나 수정하지 않았으며 마켓 인증 성공·실제 상품 조회는 이 확인에 포함하지 않는다. 실행 중인 개발 서버는 재빌드·재시작 후 새 import를 적용한다.

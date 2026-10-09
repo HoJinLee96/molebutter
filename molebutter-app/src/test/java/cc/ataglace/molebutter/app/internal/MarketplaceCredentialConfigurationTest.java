@@ -51,7 +51,7 @@ class MarketplaceCredentialConfigurationTest {
         isolatedProperties.putAll(applicationProperties);
         // Replace all real imports with one optional fixture outside every application-secret directory.
         isolatedProperties.setProperty("spring.config.import",
-                "optional:" + configurationDirectory.resolve("maketplace.properties").toUri());
+                "optional:" + configurationDirectory.resolve("marketplace.properties").toUri());
         store(configurationDirectory.resolve("application.properties"), isolatedProperties);
     }
 
@@ -61,8 +61,8 @@ class MarketplaceCredentialConfigurationTest {
                 .map(String::trim).toList();
 
         assertThat(imports).contains(
-                "optional:classpath:/application-secret/maketplace.properties",
-                "optional:file:./application-secret/maketplace.properties");
+                "optional:classpath:/application-secret/marketplace.properties",
+                "optional:file:./application-secret/marketplace.properties");
         assertThat(imports).noneMatch(location -> location.endsWith("/coupang.properties")
                 || location.endsWith("/naver-commerce.properties"));
     }
@@ -143,7 +143,7 @@ class MarketplaceCredentialConfigurationTest {
         credentials.setProperty("access_id", "fixture-legacy-vendor");
         credentials.setProperty("access_key", "fixture-legacy-access");
         credentials.setProperty("secret_key", "fixture-legacy-secret");
-        store(configurationDirectory.resolve("maketplace.properties"), credentials);
+        store(configurationDirectory.resolve("marketplace.properties"), credentials);
     }
 
     private ApplicationContextRunner configuration(Map<String, Object> variables, String... overrides) {

@@ -104,7 +104,7 @@ HTTP 200뿐 아니라 목록·상세의 `code=SUCCESS`와 기대 `data` 구조�
 
 내부 API는 `GET /api/marketplaces/coupang/products`이며 `maxPerPage=10|50|100`, 선택적 `nextToken`과 아래 검색 조건을 받는다. `ApiResponse.data`에는 `items`, 문자열 `nextToken`, `hasNext`가 있다. 총 건수·총 페이지 수는 만들지 않는다. 처음·이전·다음은 방문 토큰으로 다시 조회하고 새 조회·크기 변경은 이력을 초기화한다. 서버는 계정당 단일 실행을 유지하고, 외부 요청 시작 간격 1초가 남으면 대기한다. 실제 HTTP 429만 실패한 GET을 한 번 재시도하며 전체 수집은 하지 않는다.
 
-앱 재기동 후 관리자 메뉴에서 실행한다. 통합 파일 `application-secret/maketplace.properties`를 로컬 classpath와 실행 디렉터리 외부 파일에서 읽는다. `coupang_access_id`는 vendorId, `coupang_access_key`는 Access Key, `coupang_secret_key`는 Secret Key다. 이전 개별 `coupang.properties`는 자동으로 읽지 않는다. 설정이 없으면 앱은 기동하고 조회 시에만 연결 설정 안내(503)를 반환한다. 키·서명·Authorization·원문 오류는 브라우저와 로그에 출력하지 않는다. 파일은 Git·배포 JAR에서 제외한다.
+앱 재기동 후 관리자 메뉴에서 실행한다. 통합 파일 `application-secret/marketplace.properties`를 로컬 classpath와 실행 디렉터리 외부 파일에서 읽는다. `coupang_access_id`는 vendorId, `coupang_access_key`는 Access Key, `coupang_secret_key`는 Secret Key다. 이전 개별 `coupang.properties`는 자동으로 읽지 않는다. 설정이 없으면 앱은 기동하고 조회 시에만 연결 설정 안내(503)를 반환한다. 키·서명·Authorization·원문 오류는 브라우저와 로그에 출력하지 않는다. 파일은 Git·배포 JAR에서 제외한다.
 
 호스트는 `https://api-gateway.coupang.com`으로 고정한다. TLS 검증을 유지하고 리다이렉트를 따르지 않는다. 연결 10초, 본문 완료까지 전체 20초, 최대 5MiB를 적용하며 시간·용량 초과 시 수신을 취소한다. 서명과 실제 요청에 동일한 인코딩 query를 사용한다. HTTP 200이어도 `code=ERROR` 또는 목록 구조 오류는 실패다.
 
@@ -122,7 +122,7 @@ bash scripts/test-integration.sh '-Dtest=AuthenticationFlowIT#marketplaceRequire
 ```bash
 MOLEBUTTER_COUPANG_LIVE=true bash scripts/test-integration.sh \
   '-Dtest=AuthenticationFlowIT#coupangLivePages+coupangLiveSearch' -Dsurefire.failIfNoSpecifiedTests=false \
-  '-Dspring.config.import=classpath:bootstrap-admin-test.properties,optional:classpath:/application-secret/maketplace.properties,optional:file:./molebutter-app/src/main/resources/application-secret/maketplace.properties'
+  '-Dspring.config.import=classpath:bootstrap-admin-test.properties,optional:classpath:/application-secret/marketplace.properties,optional:file:./molebutter-app/src/main/resources/application-secret/marketplace.properties'
 ```
 
 실제 관찰: 2026-10-05 첫 페이지 외부 HTTP **403**, 업무 코드 확인 불가, 정상 목록 건수 확인 불가, 다음 페이지 여부 확인 불가. 내부 API는 **502 / COUPANG_PERMISSION**을 반환했다. 정상 연결 완료로 간주하지 않는다. 허용 IP·키 사용 권한 확인 후 다시 조회해야 한다. 원문을 공개하지 않으므로 IP와 권한 중 어느 원인인지는 확정하지 않았다. 다음 페이지는 정상 첫 응답 이후 검증한다.

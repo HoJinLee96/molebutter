@@ -32,7 +32,7 @@ class MarketplaceOrderLiveIT {
   r.add("spring.datasource.url",()->url);r.add("spring.flyway.url",()->url);
   r.add("spring.data.redis.port",()->System.getenv("MOLEBUTTER_TEST_REDIS_PORT"));
   // Spring loads the existing credentials; the test never opens or copies the secret file.
-  r.add("spring.config.import",()->"classpath:bootstrap-admin-test.properties,optional:classpath:/application-secret/maketplace.properties,optional:file:./molebutter-app/src/main/resources/application-secret/maketplace.properties");
+  r.add("spring.config.import",()->"classpath:bootstrap-admin-test.properties,optional:classpath:/application-secret/marketplace.properties,optional:file:./molebutter-app/src/main/resources/application-secret/marketplace.properties");
  }
  @Autowired CoupangOrderClient client;
  @Autowired CoupangProductClient transport;

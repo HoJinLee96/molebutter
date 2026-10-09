@@ -18,7 +18,7 @@
 
 ### 연결 설정
 
-선택적 `application-secret/maketplace.properties`의 `naver_smart_store_*` 키를 실행 시 읽는다. 파일명은 현재 통합 파일의 `maketplace` 표기를 사용한다. 기존 `NAVER_COMMERCE_*` 환경 변수가 있으면 파일 키보다 우선하며, 네이버 공개 검색·매입처 로그인 설정과 별개다. 비밀 파일을 구현·검증 과정에서 열거나 수정하지 않는다.
+선택적 `application-secret/marketplace.properties`의 `naver_smart_store_*` 키를 실행 시 읽는다. 기존 `NAVER_COMMERCE_*` 환경 변수가 있으면 파일 키보다 우선하며, 네이버 공개 검색·매입처 로그인 설정과 별개다. 비밀 파일을 구현·검증 과정에서 열거나 수정하지 않는다.
 
 | 통합 파일 키 | 우선하는 환경 변수 | Spring 프로퍼티 | 용도 |
 |---|---|---|---|
