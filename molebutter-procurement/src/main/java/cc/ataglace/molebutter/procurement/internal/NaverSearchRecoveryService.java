@@ -52,7 +52,7 @@ public class NaverSearchRecoveryService {
         db.jdbc.update("UPDATE procurement_runtime SET search_cooldown_until=NULL,search_gate_run_id=NULL,search_gate_attempt_id=NULL,search_gate_version=search_gate_version+1 WHERE id=1 AND search_manual_resume_required=FALSE AND (search_cooldown_until IS NULL OR search_cooldown_until<=?) AND (search_gate_attempt_id IS NULL OR search_gate_attempt_id<?)",db.time.now(),id);
         return true;
     }
-    public void searchInterval(){db.lock();db.jdbc.update("UPDATE procurement_runtime SET next_search_at=GREATEST(COALESCE(next_search_at,?),?) WHERE id=1",db.time.now().plusSeconds(30),db.time.now().plusSeconds(30));}
+    public void searchInterval(){db.lock();db.jdbc.update("UPDATE procurement_runtime SET next_search_at=GREATEST(COALESCE(next_search_at,?),?) WHERE id=1",db.time.now().plusSeconds(60),db.time.now().plusSeconds(60));}
     public void failure(String owner,DefaultSupplierRefreshService.Work w,long id,Exception error){
         String code,stage;Integer http=null;Map<String,Object> diagnostic=Map.of();
         if(error instanceof NaverSearchFailure f){code=f.code().name();stage=f.stage();http=f.httpStatus();diagnostic=f.diagnostics();}
