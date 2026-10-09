@@ -10,7 +10,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs');
   for(const width of [1440,390]) {
    const context=await browser.newContext({viewport:{width,height:width===390?844:1080}}),page=await context.newPage(),errors=[];
    page.setDefaultTimeout(8000);page.on('pageerror',e=>errors.push(e.message));
-   await page.route('https://**',route=>route.abort());
+   await context.route('https://**',route=>route.abort());
    await page.goto(base+'/products');await page.locator(`[data-detail="${first}"]`).first().waitFor();
    await page.waitForFunction(id=>document.querySelector(`[data-inventory-summary="${id}"]`)?.textContent.includes('보유 5개'),first);
    await page.locator('#product-q').fill('HIBA');await page.locator('#product-query').click();
@@ -92,6 +92,60 @@ const assert=require('node:assert/strict'),fs=require('node:fs');
    await page.waitForFunction(name=>document.querySelector('#settings-brand-rows').textContent.includes(name),'검증 브랜드 '+width);
    await page.goto(base+'/settings?role=PRODUCT&tab=brands');await page.locator('#settings-brand-rows tr').first().waitFor();
    assert.equal(await page.locator('#brand-create-form').count(),0);
+   // Marketplace stays manual and preserves opaque page tokens; no external request is made.
+   let marketCalls=0,failMarket=false;
+   await page.route('**/api/marketplaces/coupang/products?*',async route=>{
+    marketCalls++;const u=new URL(route.request().url());
+    if(failMarket){failMarket=false;return route.fulfill({status:504,json:{code:'COUPANG_TIMEOUT',message:'쿠팡 응답 시간이 초과되었습니다.'}});}
+    const second=u.searchParams.has('nextToken');
+    if(second)assert.equal(u.searchParams.get('nextToken'),'0007+/=');
+    await route.fulfill({json:{code:'OK',data:{items:[{sellerProductId:second?'99999999999999999999':'1',sellerProductName:second?'두번째 상품':'<b>첫 상품</b>',productId:'14784194',brand:'헤지스',statusName:'승인완료',createdAt:'2026-10-05T18:00:00'}],nextToken:second?'':'0007+/=',hasNext:!second}}});
+   });
+   let detailCalls=0;
+   await page.route('https://images.example.test/first.svg',route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240"><rect width="240" height="240" fill="#e2e8f0"/><text x="70" y="120">첫 옵션</text></svg>'}));
+   await context.route('https://img1a.coupangcdn.com/image/**',route=>{return route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jLZkAAAAASUVORK5CYII=','base64')});});
+   await page.route('**/api/marketplaces/coupang/products/*',route=>{detailCalls++;return route.fulfill({json:{code:'OK',data:{product:{sellerProductId:'1',sellerProductName:'관리용 상품명',productId:'14784194',brand:'헤지스',statusName:'승인완료'},displayProductName:'고객에게 노출되는 상품명',delivery:[{name:'deliveryCharge',value:'0'}],settings:[{name:'manufacture',value:'테스트 제조사'}],items:[{sellerProductItemId:'1001',vendorItemId:'3000000000',itemName:'블랙 / FREE',current:{sellerItemId:'3000000000',salePrice:99900,amountInStock:0,onSale:true},currentError:null,images:[{url:'https://images.example.test/first.svg',type:'REPRESENTATION',order:1},{url:'https://images.example.test/missing.jpg',type:'DETAIL',order:2}],contents:[{type:'HTML',detailType:'TEXT',content:'<h2>설명 미리보기</h2><img src="http://img1a.coupangcdn.com/image/description-test.svg"><script>parent.document.body.dataset.injected="yes"</script><form action="https://bad.test"><input></form>'}],notices:[],attributes:[{name:'색상',value:'블랙',exposed:'EXPOSED'}],settings:[{name:'salePrice',value:'100000'}]},{sellerProductItemId:'1002',vendorItemId:null,itemName:'화이트 / FREE',current:null,currentError:'현재 값 미확인',images:[],contents:[{type:'IMAGE',detailType:'IMAGE',content:'vendor_inventory/synthetic-description.svg'}],settings:[],notices:[]}]}}});});
+   await page.goto(base+'/marketplaces?role=ADMIN');await page.locator('#marketplace-coupang-tab').click();assert.equal(marketCalls,0);
+   await page.locator('#marketplace-query button[type=submit]').click();await page.locator('#marketplace-rows').getByText('<b>첫 상품</b>',{exact:true}).waitFor();
+   assert.equal(await page.locator('#marketplace-rows b').count(),0);
+   await page.locator('#marketplace-next').click();await page.locator('#marketplace-rows').getByText('두번째 상품',{exact:true}).waitFor();assert(await page.locator('#marketplace-next').isDisabled());
+   await page.locator('#marketplace-prev').click();await page.locator('#marketplace-rows').getByText('<b>첫 상품</b>',{exact:true}).waitFor();
+   await page.locator('#marketplace-size').selectOption('50');assert(await page.locator('#marketplace-next').isDisabled());
+   failMarket=true;await page.locator('#marketplace-query button[type=submit]').click();await page.locator('#marketplace-error').waitFor({state:'visible'});
+   await page.locator('#marketplace-query button[type=submit]').click();await page.locator('#marketplace-rows').getByText('<b>첫 상품</b>',{exact:true}).waitFor();
+   await page.screenshot({path:`target/ui-check/marketplace-smoke-${width}.png`});
+   await page.locator('[data-marketplace-product="1"]').click();
+   await page.locator('#marketplace-detail-content').getByText('고객에게 노출되는 상품명',{exact:true}).waitFor();
+   assert.equal(await page.locator('#marketplace-detail').evaluate(el=>el.open),true);
+   assert.equal(await page.locator('.marketplace-tabs [role=tab]').count(),4);
+   await page.locator('#marketplace-detail-content').getByText('블랙 / FREE',{exact:true}).waitFor();
+   await page.locator('#marketplace-detail-content').getByText('99,900원',{exact:true}).waitFor();
+   await page.locator('#marketplace-detail-content').getByText('0개',{exact:true}).waitFor();
+   await page.locator('#marketplace-detail-content').getByText('판매 중',{exact:true}).waitFor();
+   await page.screenshot({path:`target/ui-check/marketplace-detail-${width}.png`});
+   await page.locator('[data-detail-tab=images]').click();await page.locator('.marketplace-images img').first().waitFor();
+   await page.locator('.marketplace-images img').first().evaluate(img=>img.decode());
+   await page.locator('.marketplace-images .marketplace-image-fallback').last().waitFor({state:'visible'});
+   assert(await page.locator('.marketplace-images img').last().isHidden());
+   await page.locator('#marketplace-option').selectOption('1');await page.getByText('등록된 이미지가 없습니다.',{exact:true}).waitFor();
+   await page.locator('#marketplace-option').selectOption('0');
+   await page.screenshot({path:`target/ui-check/marketplace-images-${width}.png`});
+
+   assert.equal(await page.locator('iframe').getAttribute('sandbox'),'');
+   await page.frameLocator('iframe').getByText('설명 미리보기',{exact:true}).waitFor();
+   assert.equal(await page.locator('body').getAttribute('data-injected'),null);
+   assert.equal(await page.frameLocator('iframe').locator('img').getAttribute('src'),'https://img1a.coupangcdn.com/image/description-test.svg');
+   // Chrome's opaque srcdoc frame can issue its first request before Playwright attaches
+   // interception. Reissue only the synthetic fixture after attachment to verify decoding.
+   await page.frameLocator('iframe').locator('img').evaluate(img=>{img.src=img.src+'?fixture=1';return img.decode();});
+   assert((await page.frameLocator('iframe').locator('img').getAttribute('src')).startsWith('https://'));
+   await page.locator('#marketplace-option').selectOption('1');
+   await page.locator('.marketplace-content-image img').evaluate(img=>img.decode());
+   assert.equal(await page.locator('.marketplace-content-image img').getAttribute('src'),'https://img1a.coupangcdn.com/image/vendor_inventory/synthetic-description.svg');
+
+   for(const tab of ['delivery','settings','basic'])await page.locator(`[data-detail-tab=${tab}]`).click();
+   assert.equal(detailCalls,1);
+   await page.locator('#marketplace-detail-close').click();assert.equal(await page.locator('#marketplace-detail').evaluate(el=>el.open),false);
    assert.deepEqual(errors,[]);await context.close();
    console.log(`PASS product/settings smoke: search, supplier selection, refresh/input preservation, create/edit/delete, settings permissions (${width}px)`);
   }

@@ -29,7 +29,7 @@
         finally {controls.forEach((e,i)=>e.disabled=old[i]);busy=false;syncOrderActions();syncPurchaseItemActions();}
     }
     async function postOnce(form,url,body) {
-        const fingerprint=JSON.stringify({url,body}),old=requestKeys.get(form),key=old?.fingerprint===fingerprint?old.key:crypto.randomUUID();
+        const fingerprint=JSON.stringify({url,body}),old=requestKeys.get(form),key=old?.fingerprint===fingerprint?old.key:AppUI.uuid();
         requestKeys.set(form,{fingerprint,key});
         const result=await apiRequest(url,{method:'POST',headers:{'Content-Type':'application/json','X-Operation-Id':key},body:JSON.stringify(body)});
         requestKeys.delete(form);return result;

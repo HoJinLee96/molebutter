@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('판매 상품 편집')}"></head>
+<body class="app-layout">
+<link rel="stylesheet" th:href="@{/css/common-marketplace-editor.css(v=4)}">
+<link rel="stylesheet" th:href="@{/css/coupang-product-editor.css(v=17)}">
+<header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
+<main id="main-content" tabindex="-1" class="page marketplace-editor common-marketplace-editor">
+<div class="marketplace-editor-heading"><div><p id="common-editor-mode" class="product-meta">공통 상품</p><h1 id="common-editor-title">상품 등록</h1></div><a class="btn" href="/marketplaces" data-common-exit>목록</a></div>
+<div id="common-source" class="common-source" hidden></div>
+<fieldset class="common-market-picker"><legend>이번 전송 대상</legend><div id="common-market-selection"></div></fieldset>
+<div id="common-view-tabs" class="common-tab-list" role="tablist" aria-label="편집 대상"></div>
+<div id="common-live-state" class="common-live-state" aria-live="polite" hidden></div>
+<div id="common-apply-panel" class="panel common-apply-panel" hidden><div class="common-subheading"><h2>공통값 적용</h2><button type="button" class="btn" id="common-apply">선택 항목 적용</button></div><div id="common-apply-targets" class="common-row"></div><div id="common-apply-fields" class="common-apply-fields"></div><p id="common-apply-error" class="form-error" role="alert" hidden></p></div>
+<nav class="editor-section-nav" id="common-section-nav" aria-label="상품 입력 구역"><a href="#common-basic">기본 정보·옵션 판매</a><a href="#common-media">이미지·설명·고시</a><a href="#common-delivery">배송·반품</a><a href="#common-markets">기타 설정</a></nav>
+<p id="common-loading" role="status" hidden>초안 조회 중…</p><p id="common-error" class="form-error" role="alert" hidden></p><button id="common-retry" type="button" class="btn" hidden>다시 조회</button>
+<form id="common-editor-form" novalidate hidden>
+<section id="common-basic" class="panel editor-section"><h2>기본 정보·옵션 판매</h2><div id="common-basic-fields"></div><div class="common-subheading"><h3>옵션·판매</h3><button id="common-option-add" type="button" class="btn small">옵션 추가</button></div><div id="common-option-fields"></div></section>
+<section id="common-media" class="panel editor-section"><h2>이미지·설명·고시</h2><label class="field editor-option-picker"><span>이미지·설명 적용 대상</span><select id="common-media-option"></select></label><div id="common-media-fields"></div></section>
+<section id="common-delivery" class="panel editor-section"><h2>배송·반품</h2><div id="common-delivery-fields"></div></section>
+<section id="common-markets" class="panel editor-section"><h2>기타 설정</h2><div id="common-market-tabs" class="marketplace-tabs" role="tablist" aria-label="마켓별 입력" hidden></div><div id="common-market-fields"></div></section>
+<div id="common-validation" class="editor-validation" role="status" tabindex="-1" hidden></div>
+<div class="common-market-submit-option"><label><input type="checkbox" id="common-requested">쿠팡 저장 후 판매 승인 요청</label></div>
+<div class="editor-actions"><button type="button" class="btn" data-common-exit>취소</button><button type="button" class="btn" id="common-validate">입력 검증</button><button type="submit" class="btn" id="common-save">임시 저장</button><button type="button" class="btn primary" id="common-market-save">마켓에 저장</button></div>
+</form>
+<p id="common-submission-error" role="alert" class="form-error" hidden></p>
+<section id="common-submissions" class="panel editor-section" hidden><div class="common-subheading"><h2>마켓 전송 기록</h2><button type="button" class="btn small" id="common-submission-refresh">새로고침</button></div><div id="common-submission-list" aria-live="polite"></div><div class="pagination"><button type="button" class="btn small" id="common-submission-previous">이전</button><span id="common-submission-page"></span><button type="button" class="btn small" id="common-submission-next">다음</button></div></section>
+<dialog id="common-submission-dialog" class="common-submission-dialog" aria-labelledby="common-submission-title"><div class="common-subheading"><h2 id="common-submission-title">마켓 전송 확인</h2><button type="button" class="btn" id="common-submission-dismiss">닫기</button></div><p id="common-submission-dialog-error" role="alert" class="form-error" hidden></p><div id="common-submission-preview"></div><div class="common-submission-dialog-actions"><button type="button" class="btn primary" id="common-submission-confirm">확인 후 전송</button></div></dialog>
+</main>
+<script defer th:src="@{/js/api.js}"></script><script defer th:src="@{/js/marketplace-requests.js(v=2)}"></script><script defer th:src="@{/js/marketplace-editor-model.js(v=8)}"></script><script defer th:src="@{/js/coupang-brand-picker.js(v=2)}"></script><script defer th:src="@{/js/common-marketplace-editor-model.js(v=7)}"></script><script defer th:src="@{/js/marketplace-submissions.js(v=3)}"></script><script defer th:src="@{/js/common-marketplace-editor.js(v=8)}"></script>
+</body></html>

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('판매 마켓')}"></head>
+<body class="app-layout">
+<link rel="stylesheet" th:href="@{/css/common-marketplace-editor.css(v=1)}">
+<header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
+<main id="main-content" tabindex="-1" class="page marketplace-page">
+<h1>판매 마켓</h1>
+<div class="common-tab-list" role="tablist" aria-label="판매 상품 목록"><button id="marketplace-common-tab" type="button" role="tab" aria-selected="true" aria-controls="marketplace-common-panel">공통 상품</button><button id="marketplace-coupang-tab" type="button" role="tab" aria-selected="false" aria-controls="marketplace-coupang-panel">쿠팡 등록상품</button><button id="marketplace-naver-tab" type="button" role="tab" aria-selected="false" aria-controls="marketplace-naver-panel">스마트스토어 등록상품</button><button th:each="channel : ${marketplaceChannels}" th:if="${!channel.productRead}" type="button" role="tab" aria-selected="false" disabled th:text="${channel.label + ' · 준비 중'}">준비 중</button></div>
+<section id="marketplace-common-panel" class="panel" role="tabpanel" aria-labelledby="marketplace-common-tab">
+<div class="marketplace-heading"><h2>공통 상품</h2><a class="btn primary" href="/marketplaces/products/new" data-common-editor-link>상품 등록</a></div>
+<form id="marketplace-drafts-query" class="toolbar"><label class="field"><span>상품코드·상품명</span><input id="marketplace-drafts-search" maxlength="100"></label><button type="submit" class="btn primary">검색</button><button id="marketplace-drafts-reset" type="button" class="btn">초기화</button></form>
+<p id="marketplace-drafts-error" class="form-error" role="alert" hidden></p><p id="marketplace-drafts-summary" role="status" class="list-summary"></p>
+<div class="table-wrap"><table class="data common-draft-table"><thead><tr><th scope="col">상품코드</th><th scope="col">상품명</th><th scope="col">판매 마켓</th><th scope="col">상태</th><th scope="col">수정일시</th><th scope="col">작업</th></tr></thead><tbody id="marketplace-drafts-rows"></tbody></table></div>
+<nav class="toolbar marketplace-pagination" aria-label="공통 상품 페이지"><button id="marketplace-drafts-prev" type="button" class="btn small" disabled>이전</button><span id="marketplace-drafts-page" class="product-meta"></span><button id="marketplace-drafts-next" type="button" class="btn small" disabled>다음</button></nav>
+</section>
+<section id="marketplace-coupang-panel" class="panel" role="tabpanel" aria-labelledby="marketplace-coupang-tab" hidden>
+<div class="marketplace-heading">
+<div><h2>쿠팡 등록상품</h2></div><a class="btn primary" href="/marketplaces/coupang/products/new" data-marketplace-editor-link>상품 등록</a>
+</div>
+<form id="marketplace-query" class="marketplace-search">
+<div class="marketplace-search-basic">
+<label class="field"><span>등록상품 ID</span><input id="filter-sellerProductId" inputmode="numeric" pattern="[0-9]{1,30}"></label>
+<label class="field"><span>등록상품명</span><input id="filter-sellerProductName" maxlength="20"></label>
+<label class="field"><span>등록상태</span><select id="filter-status"><option value="">전체</option><option value="IN_REVIEW">심사중</option><option value="SAVED">임시저장</option><option value="APPROVING">승인대기중</option><option value="APPROVED">승인완료</option><option value="PARTIAL_APPROVED">부분승인완료</option><option value="DENIED">승인반려</option><option value="DELETED">상품삭제</option></select></label>
+<label class="field"><span>등록일</span><input id="filter-createdAt" type="date"></label>
+<label class="field marketplace-size"><span>페이지당 보기</span><select id="marketplace-size"><option value="10">10개</option><option value="50">50개</option><option value="100">100개</option></select></label>
+<button class="btn primary" type="submit">검색</button><button id="marketplace-reset" class="btn" type="button">초기화</button>
+</div>
+
+</form>
+<p id="marketplace-error" class="form-error" role="alert" hidden></p>
+<p id="marketplace-summary" class="list-summary" role="status">조회 버튼을 눌러 상품을 확인하세요.</p>
+<div class="table-wrap"><table class="data marketplace-table"><colgroup><col class="marketplace-col-id"><col class="marketplace-col-id"><col class="marketplace-col-brand"><col><col class="marketplace-col-status"><col class="marketplace-col-date"><col class="marketplace-col-action"></colgroup><thead><tr><th scope="col">등록상품 ID</th><th scope="col">노출상품 ID</th><th scope="col">브랜드</th><th scope="col">등록상품명</th><th scope="col">등록상태</th><th scope="col">등록일시</th><th scope="col">작업</th></tr></thead><tbody id="marketplace-rows"><tr><td colspan="7" class="empty">조회 버튼을 눌러 상품을 불러오세요.</td></tr></tbody></table></div>
+<nav class="toolbar marketplace-pagination" aria-label="쿠팡 상품 페이지"><button id="marketplace-first" class="btn small" type="button" disabled>처음</button><button id="marketplace-prev" class="btn small" type="button" disabled>이전</button><span id="marketplace-page" class="product-meta"></span><button id="marketplace-next" class="btn small" type="button" disabled>다음</button></nav>
+</section>
+<section id="marketplace-naver-panel" class="panel" role="tabpanel" aria-labelledby="marketplace-naver-tab" hidden>
+<div class="marketplace-heading"><h2>스마트스토어 등록상품</h2><a class="btn primary" href="/marketplaces/naver/products/new" data-naver-editor-link>상품 등록</a></div>
+<form id="naver-products-query" class="toolbar"><label class="field"><span>원상품 번호</span><input id="naver-products-keyword" inputmode="numeric" pattern="[0-9]{1,30}"></label><label class="field"><span>판매자 상품코드</span><input id="naver-products-seller-code" maxlength="100"></label><label class="field"><span>페이지당 보기</span><select id="naver-products-size"><option value="20">20개</option><option value="50">50개</option><option value="100">100개</option></select></label><button class="btn primary" type="submit">검색</button><button id="naver-products-reset" class="btn" type="button">초기화</button></form>
+<p id="naver-products-error" class="form-error" role="alert" hidden></p><p id="naver-products-summary" role="status" class="list-summary">조회 버튼을 눌러 상품을 확인하세요.</p>
+<div class="table-wrap"><table class="data marketplace-table"><thead><tr><th scope="col">원상품 번호</th><th scope="col">채널상품 번호</th><th scope="col">상품명</th><th scope="col">판매 상태</th><th scope="col">전시 상태</th><th scope="col">판매가</th><th scope="col">재고</th><th scope="col">작업</th></tr></thead><tbody id="naver-products-rows"><tr><td colspan="8" class="empty">조회 버튼을 눌러 상품을 불러오세요.</td></tr></tbody></table></div>
+<nav class="toolbar marketplace-pagination" aria-label="스마트스토어 상품 페이지"><button id="naver-products-prev" class="btn small" type="button" disabled>이전</button><span id="naver-products-page" class="product-meta"></span><button id="naver-products-next" class="btn small" type="button" disabled>다음</button></nav>
+</section></main>
+<dialog id="marketplace-detail" class="attendance-dialog product-dialog marketplace-detail" aria-labelledby="marketplace-detail-title">
+<div class="product-dialog-head"><div><h2 id="marketplace-detail-title">쿠팡 등록상품 상세</h2><p id="marketplace-detail-meta" class="marketplace-detail-meta"></p></div><div class="marketplace-detail-actions"><button id="marketplace-detail-import" class="btn" type="button" hidden>공통 상품으로 가져오기</button><a id="marketplace-detail-edit" class="btn primary" href="#" data-marketplace-editor-link hidden>수정</a><button id="marketplace-detail-close" type="button" class="btn">닫기</button></div></div>
+<p id="marketplace-detail-loading" role="status" hidden>상품 상세와 현재 가격·재고 조회 중…</p>
+<p id="marketplace-detail-error" class="form-error" role="alert" hidden></p>
+<button id="marketplace-detail-retry" type="button" class="btn" hidden>다시 조회</button>
+<div id="marketplace-detail-content"></div>
+</dialog>
+<script defer th:src="@{/js/api.js}"></script><script defer th:src="@{/js/marketplace-requests.js(v=2)}"></script><script defer th:src="@{/js/marketplace-drafts.js(v=3)}"></script><script defer th:src="@{/js/marketplaces.js(v=14)}"></script>
+<script defer th:src="@{/js/naver-products.js(v=1)}"></script>
+</body></html>

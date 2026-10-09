@@ -2,6 +2,8 @@
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {chromium}=require('playwright');
 const root=path.resolve(__dirname,'../molebutter-app/src/main/resources'),fixtures=path.resolve(__dirname,'../molebutter-app/target/ui-fixtures');
+// A synthetic LAN hostname keeps the fixture local while exercising an untrusted HTTP origin.
+const httpLan=process.env.MOLEBUTTER_UI_HTTP_LAN==='true',fixtureHost=httpLan?'molebutter-http.test':'127.0.0.1';
 let role='ADMIN',orders=[],items=[],movements=[],createRequests=0,ids=100,paymentMethods=[{id:'1',name:'카드',revision:0},{id:'2',name:'계좌이체',revision:0},{id:'3',name:'현금',revision:0}];
 const fixtureBrands=[{id:'1',name:'헤지스'},{id:'2',name:'닥스'}];
 const productBrand=p=>p.brandId||fixtureBrands.find(b=>b.name===p.brand)?.id||null;
@@ -95,13 +97,16 @@ const server=http.createServer(async(req,res)=>{
 });
 (async()=>{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
- const browser=await chromium.launch({headless:true,channel:'chrome'}),base='http://127.0.0.1:'+server.address().port;
+ const browser=await chromium.launch({headless:true,channel:'chrome',args:httpLan?['--host-resolver-rules=MAP molebutter-http.test 127.0.0.1','--no-proxy-server']:[]}),base='http://'+fixtureHost+':'+server.address().port,loopbackBase='http://127.0.0.1:'+server.address().port;
  try {
   for(const width of [1440,390]) {
    role='ADMIN';orders=[];items=[];movements=[];createRequests=0;movementRequests.clear();movementAttempts.length=0;
    const context=await browser.newContext({viewport:{width,height:width===390?844:1080}}),page=await context.newPage(),errors=[];
    page.setDefaultTimeout(8000);page.on('pageerror',e=>errors.push(e.message));await page.route('https://**',r=>r.abort());
-   await page.goto(base+'/inventory');await page.locator('#purchase-create').click();
+   await page.goto(base+'/inventory');
+   const cryptoContext=await page.evaluate(()=>({hostname:location.hostname,secure:isSecureContext,randomUUID:typeof globalThis.crypto?.randomUUID,getRandomValues:typeof globalThis.crypto?.getRandomValues}));
+   assert.deepEqual(cryptoContext,{hostname:fixtureHost,secure:!httpLan,randomUUID:httpLan?'undefined':'function',getRandomValues:'function'});
+   await page.locator('#purchase-create').click();
    const purchase=page.locator('#purchase-form'),row=page.locator('#purchase-items .inventory-purchase-item').first();
    await purchase.locator('[name=purchasedOn]').fill('2026-10-01');assert.equal(await purchase.locator('[name=paidOn]').inputValue(),'2026-10-01');
    await purchase.locator('[name=orderUrl]').fill('https://www.lfmall.co.kr/order/123');
@@ -132,7 +137,8 @@ const server=http.createServer(async(req,res)=>{
    await page.locator('[data-tab=purchases]').click();await page.locator(`[data-order-receipt="${order.id}"]`).click();
    const receipt=page.locator(`[data-receipt-item="${item.id}"]`);await receipt.locator('[name=quantity]').fill('2');
    const receiptUrl=`**/api/inventory/items/${item.id}/movements`;let loseResponse=true;
-   await page.route(receiptUrl,async r=>{if(loseResponse){loseResponse=false;await r.fetch();await r.abort('failed');}else await r.continue();});
+   // Route.fetch uses Playwright's HTTP client, which does not share Chromium's hostname mapping.
+   await page.route(receiptUrl,async r=>{if(loseResponse){loseResponse=false;await r.fetch({url:r.request().url().replace(base,loopbackBase)});await r.abort('failed');}else await r.continue();});
    await receipt.locator('button').click();await page.locator('#purchase-receipt-error').waitFor({state:'visible'});
    await receipt.locator('button').click();await page.locator('#purchase-receipt-success').waitFor({state:'visible'});await page.unroute(receiptUrl);
    assert.equal(item.onHand,2);assert.equal(item.pending,3);assert.equal(items[1].onHand,0);
@@ -154,7 +160,7 @@ const server=http.createServer(async(req,res)=>{
    await card.locator('[data-item-history] summary').click();await card.locator('[data-reverse]').first().click();
    await page.locator('#movement-form [name=reason]').fill('입력 오류');await page.locator('#movement-submit').click();
    await page.locator('#movement-dialog').waitFor({state:'hidden'});assert.equal(item.pending,3);assert.equal(item.onHand,2);
-   fs.mkdirSync('target/ui-check',{recursive:true});await page.screenshot({path:`target/ui-check/inventory-smoke-${width}.png`});
+   fs.mkdirSync('target/ui-check',{recursive:true});await page.screenshot({path:`target/ui-check/inventory-smoke-${httpLan?'http-lan-':''}${width}.png`});
    await page.locator('[data-close=purchase-view-dialog]').click();await page.locator('[data-tab=items]').click();
    await page.waitForFunction(()=>document.querySelector('#inventory-total-quantity').textContent==='2개');
 
@@ -165,7 +171,7 @@ const server=http.createServer(async(req,res)=>{
    await card.locator('[name=color]').fill('블랙');await card.locator('[data-save-product]').click();
    await page.waitForFunction(id=>document.querySelector(`[data-purchase-product="${id}"] [name=color]`).readOnly,item.id);
    assert.equal(item.color,'블랙');assert.deepEqual(errors,[]);await context.close();
-   console.log(`PASS inventory smoke: exact sums, order/pending stock, per-item partial receipt/retry, edit/memo preservation, cancellation/reversal and PRODUCT permissions (${width}px)`);
+   console.log(`PASS inventory smoke: exact sums, order/pending stock, per-item partial receipt/retry, edit/memo preservation, cancellation/reversal and PRODUCT permissions (${width}px, ${httpLan?'untrusted HTTP origin':'trusted loopback origin'})`);
   }
  }finally {await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(err=>{console.error(err);process.exitCode=1;server.close();});

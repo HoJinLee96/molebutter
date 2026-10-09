@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('판매 주문')}"></head>
+<body class="app-layout">
+<link rel="stylesheet" th:href="@{/css/marketplace-orders.css(v=3)}">
+<header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
+<main id="main-content" tabindex="-1" class="page">
+<h1>판매 주문</h1>
+<section class="panel" aria-labelledby="orders-collection-title">
+<h2 id="orders-collection-title">주문 수집</h2>
+<form id="orders-collect-form" class="toolbar">
+<label class="field"><span>시작일</span><input id="orders-from" type="date" required></label>
+<label class="field"><span>종료일</span><input id="orders-to" type="date" required></label>
+<fieldset class="order-markets"><legend>판매 마켓</legend><label th:each="channel : ${marketplaceChannels}"><input type="checkbox" name="market" th:value="${channel.id}" th:checked="${channel.orderRead}" th:disabled="${!channel.orderRead}"><span th:text="${channel.label + (channel.orderRead ? '' : ' · 준비 중')}">마켓</span></label></fieldset>
+<button id="orders-collect" class="btn primary" type="submit">주문 수집</button>
+<button id="orders-cancel" class="btn" type="button" hidden>수집 취소</button><button id="orders-retry" class="btn" type="button" hidden>남은·실패 구간 다시 수집</button>
+</form>
+<label class="field"><span>최근 수집 이력</span><select id="orders-job-history"><option value="">수집 이력 조회 중…</option></select></label>
+<p id="orders-job-summary" role="status" aria-live="polite"></p>
+<div id="orders-job-progress" class="order-job-progress" hidden></div>
+<p id="orders-job-retry-note" class="order-secondary" hidden></p>
+<details id="orders-job-failures" class="order-job-failures" hidden><summary id="orders-job-failure-summary">실패 구간</summary><div id="orders-job-failure-content"></div></details>
+<ul id="orders-job-markets" class="order-progress"></ul>
+<p id="orders-collection-error" class="form-error" role="alert" hidden></p>
+</section>
+<section class="panel" aria-labelledby="orders-list-title">
+<h2 id="orders-list-title">수집한 주문</h2>
+<form id="orders-query" class="toolbar">
+<label class="field"><span>마켓</span><select id="orders-market"><option value="">전체</option><option th:each="channel : ${marketplaceChannels}" th:value="${channel.id}" th:text="${channel.label}">마켓</option></select></label>
+<label class="field"><span>날짜 기준</span><select id="orders-date-basis"><option value="ORDERED">주문일</option><option value="PAID">결제일</option><option value="CLAIM">클레임 변경일</option></select></label>
+<label class="field"><span>시작일</span><input id="orders-query-from" type="date"></label>
+<label class="field"><span>종료일</span><input id="orders-query-to" type="date"></label>
+<label class="field"><span>주문번호·상품명</span><input id="orders-search" maxlength="100"></label>
+<label class="field"><span>클레임</span><select id="orders-claim"><option value="">전체</option><option value="CANCEL">취소</option><option value="RETURN">반품</option><option value="EXCHANGE">교환</option></select></label>
+<label class="field"><span>주문 상태</span><select id="orders-status"><option value="">전체</option><option value="ACCEPT">결제완료</option><option value="INSTRUCT">상품준비중</option><option value="DEPARTURE">배송지시</option><option value="DELIVERING">배송중</option><option value="FINAL_DELIVERY">배송완료</option><option value="NONE_TRACKING">직접배송</option></select></label>
+<label class="field"><span>페이지당 보기</span><select id="orders-size"><option value="10">10개</option><option value="50">50개</option><option value="100">100개</option></select></label>
+<button class="btn primary" type="submit">검색</button><button id="orders-reset" class="btn" type="button">초기화</button>
+</form>
+<p id="orders-error" class="form-error" role="alert" hidden></p><p id="orders-summary" class="list-summary" role="status"></p>
+<div class="table-wrap"><table class="data orders-table"><thead><tr><th scope="col">마켓·주문번호</th><th scope="col">상품·옵션</th><th scope="col">상태·클레임</th><th scope="col">수량</th><th scope="col">주문 금액</th><th scope="col">주문·수집 일시</th><th scope="col">상세</th></tr></thead><tbody id="orders-rows"><tr><td colspan="7" class="empty">수집한 주문을 조회합니다.</td></tr></tbody></table></div>
+<nav class="toolbar" aria-label="판매 주문 페이지"><button id="orders-prev" type="button" class="btn small" disabled>이전</button><span id="orders-page"></span><button id="orders-next" type="button" class="btn small" disabled>다음</button></nav>
+</section>
+</main>
+<dialog id="orders-detail" class="attendance-dialog product-dialog" aria-labelledby="orders-detail-title">
+<div class="product-dialog-head"><h2 id="orders-detail-title">주문 상세</h2><button id="orders-detail-close" type="button" class="btn">닫기</button></div>
+<p id="orders-detail-loading" role="status" hidden>최신 주문·배송 정보를 조회 중입니다…</p><p id="orders-detail-error" class="form-error" role="alert" hidden></p><button id="orders-detail-retry" class="btn" type="button" hidden>다시 조회</button><div id="orders-detail-content"></div>
+</dialog>
+<script defer th:src="@{/js/api.js}"></script><script defer th:src="@{/js/marketplace-orders.js(v=3)}"></script>
+</body></html>
