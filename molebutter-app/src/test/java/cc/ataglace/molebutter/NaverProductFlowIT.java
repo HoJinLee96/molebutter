@@ -73,4 +73,18 @@ class NaverProductFlowIT {
   gateway.salePrice(3000L);var conflict=saving.prepare(admin,"101",new NaverProductSaving.Prepare(observation.token(),changed(observation.document().input(),"originProduct.salePrice",2000L)));
   assertThat(conflict.executable()).isFalse();assertThat(conflict.targets().getFirst().issues()).isNotEmpty();assertThat(gateway.writes()).isEmpty();
  }
+ @Test void firstImportWithoutChannelIdCanChangeChannelAndEnterReleaseDateWithZeroStock(){
+  gateway.seed(changed(input(),"originProduct.statusType","SUSPENSION"));gateway.omitChannelNumber();
+  var observation=saving.observe(admin,"101");assertThat(observation.document().channelProductNo()).isNull();
+  var edited=changed(changed(changed(observation.document().input(),"originProduct.statusType","SALE"),"smartstoreChannelProduct.channelProductDisplayStatusType","SUSPENSION"),"originProduct.detailAttribute.releaseDate","2026-10-10");
+  var e=execute(saving.prepare(admin,"101",new NaverProductSaving.Prepare(observation.token(),edited)));worker.runPending();
+  assertThat(submissions.get(admin,e.id()).status()).isEqualTo(Status.SUCCEEDED);
+  assertThat(gateway.writes()).containsExactly("PUT /v2/products/origin-products/101");
+  assertThat(gateway.source().path("originProduct").path("statusType").asString()).isEqualTo("OUTOFSTOCK");
+  assertThat(gateway.source().path("smartstoreChannelProduct").path("channelProductDisplayStatusType").asString()).isEqualTo("SUSPENSION");
+  assertThat(gateway.source().path("originProduct").path("detailAttribute").path("releaseDate").asString()).isEqualTo("2026-10-10");
+  String request=db.queryForObject("SELECT request_json FROM marketplace_execution_attempt WHERE execution_id=?",String.class,Long.parseLong(e.id()));
+  var expected=json.readTree(json.readTree(request).path("expectedJson").asString());assertThat(expected.path("markets.NAVER.naver.editorInput.fields.originProduct.statusType").asString()).isEqualTo("OUTOFSTOCK");
+  var next=saving.observe(admin,"101");assertThat(saving.prepare(admin,"101",new NaverProductSaving.Prepare(next.token(),changed(next.document().input(),"originProduct.salePrice",2000L))).executable()).isTrue();
+ }
 }
