@@ -37,6 +37,26 @@ class NaverWorkflowServicesTest {
     DefaultNaverProductRegistrations registrations(){return new DefaultNaverProductRegistrations(access,drafts,store,assets,editing,submissions,gateway,new ObjectMapper(),transactions);}
     DefaultNaverProductSaving saving(){return new DefaultNaverProductSaving(access,catalog,gateway,drafts,store,editing,submissions,transactions);}
     MarketplaceDrafts.Document document(long revision){return gateway.document("10",revision,input());}
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.NullSource
+    @org.junit.jupiter.params.provider.ValueSource(strings={"456","999"})
+    void observedNaverChannelMayBeAbsentButMustNotContradictStoredMapping(String channel){
+        var reference=document(3);var mapping=new MarketplaceWriteGateway.Mapping(account,"123",List.of(),"456");
+        when(drafts.find(10,true)).thenReturn(reference);when(drafts.registration(10)).thenReturn(new DraftStore.Registration(1L,account,"COMMON"));
+        when(store.mapping(10,"NAVER",account,true)).thenReturn(mapping);
+        var sessions=mock(EditingStore.class);var actual=new DefaultMarketplaceEditing(access,mock(MarketplaceDrafts.class),drafts,store,sessions,List.of(gateway),transactions);
+        var observed=new NaverEditor.EditorDocument(input(),source().limits(),List.of(),"123",channel);
+        String expires=Instant.now().plusSeconds(600).toString();
+        if("999".equals(channel)){
+            assertThatThrownBy(()->actual.startObservedNaver(1L,"10",observed,expires)).isInstanceOfSatisfying(MarketplaceEditingFailure.class,e->assertThat(e.kind()).isEqualTo(MarketplaceEditingFailure.Kind.CONFLICT));
+            verifyNoInteractions(sessions);
+        }else{
+            var session=actual.startObservedNaver(1L,"10",observed,expires);assertThat(session.targets().getFirst().mode()).isEqualTo("UPDATE");
+            verify(sessions).insert(1L,account,mapping,session);verify(store,never()).saveMapping(anyLong(),anyLong(),anyString(),any(),anyBoolean());
+        }
+        var wrongProduct=new NaverEditor.EditorDocument(input(),source().limits(),List.of(),"124",channel);
+        assertThatThrownBy(()->actual.startObservedNaver(1L,"10",wrongProduct,expires)).isInstanceOf(MarketplaceEditingFailure.class);
+    }
     @Test void incompleteDraftIsInternalOnlyAndKeepsDedicatedEditorAndAccount(){
         when(drafts.insert(eq(1L),anyLong(),any(),isNull(),isNull())).thenAnswer(i->DraftStore.version(i.getArgument(2),"10",0L));
         var draft=registrations().create(1L,input());

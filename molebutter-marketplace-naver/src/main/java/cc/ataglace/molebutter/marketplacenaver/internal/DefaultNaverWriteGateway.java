@@ -203,7 +203,14 @@ final class DefaultNaverWriteGateway implements MarketplaceWriteGateway {
         if(!source.path("originProduct").isObject())return false;var body=source.deepCopy();var origin=body.path("originProduct").asObject();if(!origin.has("saleType"))origin.put("saleType","NEW");var detail=origin.path("detailAttribute");if(detail.isObject()&&!detail.has("taxType"))detail.asObject().put("taxType","TAX");var channel=body.path("smartstoreChannelProduct");if(channel.isObject()&&!channel.has("storeKeepExclusiveProduct"))channel.asObject().put("storeKeepExclusiveProduct",false);for(String key:List.of("name","leafCategoryId","salePrice","detailContent","images"))if(!contains(body.path("originProduct").path(key),expected.path("originProduct").path(key)))return false;
         for(var e:expected.path("originProduct").properties())if(!Set.of("detailAttribute","statusType").contains(e.getKey())&&!contains(body.path("originProduct").path(e.getKey()),e.getValue()))return false;
         for(var e:expected.path("originProduct").path("detailAttribute").properties())if(!e.getKey().equals("optionInfo")&&!contains(body.path("originProduct").path("detailAttribute").path(e.getKey()),e.getValue()))return false;
-        for(var e:expected.path("smartstoreChannelProduct").properties())if(!(e.getKey().equals("channelProductName")&&e.getValue().asString("").isBlank())&&!contains(body.path("smartstoreChannelProduct").path(e.getKey()),e.getValue()))return false;
+        for(var e:expected.path("smartstoreChannelProduct").properties()){
+            if(e.getKey().equals("channelProductName")&&e.getValue().asString("").isBlank())continue;
+            var actual=body.path("smartstoreChannelProduct").path(e.getKey());
+            // Shopping enrollment is conditional: Naver stores false for non-advertisers even when true is requested.
+            // Only this documented boolean normalization is valid; absence, invalid types and false -> true still conflict.
+            if(e.getKey().equals("naverShoppingRegistration")&&e.getValue().isBoolean()&&e.getValue().asBoolean()&&actual.isBoolean()&&!actual.asBoolean())continue;
+            if(!contains(actual,e.getValue()))return false;
+        }
         var options=expected.path("originProduct").path("detailAttribute").path("optionInfo").path("optionCombinations");var actual=body.path("originProduct").path("detailAttribute").path("optionInfo").path("optionCombinations");if(options.size()!=actual.size())return false;for(var wanted:options){int matches=0;for(var row:actual){boolean equal=true;for(var e:wanted.properties()){
             if(e.getKey().equals("id"))continue;
             if(e.getKey().equals("sellerManagerCode")&&e.getValue().asString("").isEmpty()&&(row.path(e.getKey()).isMissingNode()||row.path(e.getKey()).isNull()))continue;

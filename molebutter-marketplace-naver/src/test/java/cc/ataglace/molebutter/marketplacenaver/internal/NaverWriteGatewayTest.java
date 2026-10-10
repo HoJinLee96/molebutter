@@ -130,6 +130,40 @@ class NaverWriteGatewayTest {
         var prepared=writer.prepare(1L,document(),null,true);assertThat(prepared.steps()).extracting(Step::type).containsExactly(Type.CREATE);var body=json.readTree(prepared.steps().getFirst().bodyJson());
         assertThat(body.path("originProduct").path("images").path("representativeImage").path("url").asString()).endsWith("uploaded.jpg");assertThat(body.path("originProduct").has("originProductNo")).isFalse();assertThat(body.path("smartstoreChannelProduct").has("channelProductNo")).isFalse();assertThat(body.has("requested")).isFalse();assertThat(body.path("originProduct").path("detailContent").asString()).contains("SmartEditor");verify(gateway,never()).write(any(),any(),any());
     }
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    void createAcceptsDocumentedShoppingNormalizationWithoutRepeatingPost(boolean actualRegistration){
+        var desired=field(input(),"smartstoreChannelProduct.naverShoppingRegistration",true);
+        var prepared=writer.prepare(1L,NaverDraftAdapter.document("1",0L,desired),null,false);var step=prepared.steps().getFirst();
+        when(gateway.write(any(),any(),any())).thenAnswer(i->{var registered=((JsonNode)i.getArgument(2)).deepCopy().asObject();registered.path("originProduct").asObject().put("originProductNo",123);registered.path("smartstoreChannelProduct").asObject().put("channelProductNo",456).put("naverShoppingRegistration",actualRegistration);base.removeAll();for(var e:registered.properties())base.set(e.getKey(),e.getValue());return response(200,"{\"originProductNo\":123,\"smartstoreChannelProductNo\":456}");});
+        var result=writer.execute(1L,prepared,step,null);assertThat(result.state()).isEqualTo(State.CONFIRMED);
+        for(int i=0;i<3;i++)assertThat(writer.reconcile(1L,prepared,step,result).state()).isEqualTo(State.CONFIRMED);
+        assertThat(writer.execute(1L,prepared,step,result.mapping()).code()).isEqualTo("ALREADY_REGISTERED");
+        verify(gateway,times(1)).write(eq("POST"),eq("/v2/products"),any());
+    }
+    @ParameterizedTest @ValueSource(strings={"missing","null","string","reverse","price","channelStatus"})
+    void shoppingNormalizationDoesNotHideMissingInvalidOrUnrelatedMismatches(String mismatch){
+        var desired=field(input(),"smartstoreChannelProduct.naverShoppingRegistration",!mismatch.equals("reverse"));
+        var prepared=writer.prepare(1L,NaverDraftAdapter.document("1",0L,desired),null,false);var step=prepared.steps().getFirst();
+        var registered=json.readTree(step.bodyJson()).deepCopy().asObject();registered.path("originProduct").asObject().put("originProductNo",123);
+        var channel=registered.path("smartstoreChannelProduct").asObject();channel.put("channelProductNo",456).put("naverShoppingRegistration",false);
+        switch(mismatch){case "missing"->channel.remove("naverShoppingRegistration");case "null"->channel.putNull("naverShoppingRegistration");case "string"->channel.put("naverShoppingRegistration","false");case "reverse"->channel.put("naverShoppingRegistration",true);case "price"->registered.path("originProduct").asObject().put("salePrice",20000);case "channelStatus"->channel.put("channelProductDisplayStatusType","SUSPENSION");}
+        when(gateway.product("123")).thenReturn(registered);
+        var result=writer.reconcile(1L,prepared,step,new Result(State.ACCEPTED,mapping(),"ACCEPTED",null,Instant.now(),step.bodyJson()));
+        assertThat(result.state()).isEqualTo(State.ACCEPTED);assertThat(result.code()).isEqualTo("REFLECTION_PENDING");verify(gateway,never()).write(any(),any(),any());
+    }
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    void lostCreateWithShoppingNormalizationStillRequiresOneNewMatchingProduct(boolean ambiguous){
+        var desired=field(input(),"smartstoreChannelProduct.naverShoppingRegistration",true);
+        var prepared=writer.prepare(1L,NaverDraftAdapter.document("1",0L,desired),null,false);var step=prepared.steps().getFirst();
+        var registered=json.readTree(step.bodyJson()).deepCopy().asObject();registered.path("originProduct").asObject().put("originProductNo",789);registered.path("smartstoreChannelProduct").asObject().put("naverShoppingRegistration",false);
+        when(gateway.product("789")).thenReturn(registered);var rows=json.createArrayNode().add(json.createObjectNode().put("originProductNo",789));
+        if(ambiguous){var other=registered.deepCopy();other.path("originProduct").asObject().put("originProductNo",790);when(gateway.product("790")).thenReturn(other);rows.add(json.createObjectNode().put("originProductNo",790));}
+        when(gateway.search(any())).thenReturn(json.createObjectNode().put("totalPages",1).put("last",true).set("contents",rows));
+        var result=writer.reconcile(1L,prepared,step,new Result(State.UNKNOWN,null,"NETWORK",null,Instant.now()));
+        assertThat(result.state()).isEqualTo(ambiguous?State.UNKNOWN:State.CONFIRMED);
+        if(ambiguous)assertThat(result.mapping()).isNull();else assertThat(result.mapping().sellerProductId()).isEqualTo("789");
+        verify(gateway,never()).write(any(),any(),any());
+    }
     @Test void pathIdentityProjectionKeepsExistingMappingsWithoutSendingIdentifiersInPut(){
         base.path("originProduct").asObject().remove("originProductNo");base.path("smartstoreChannelProduct").asObject().remove("channelProductNo");
         base.put("originProductNo",123); // The gateway's trusted path identity, outside the documented GET objects.
