@@ -31,6 +31,8 @@ public class MarketplaceSubmissionController {
     public ApiResponse<MarketplaceSubmissions.Execution> retry(@AuthenticationPrincipal UserPrincipal actor,@PathVariable String id){return ApiResponse.success(submissions.retry(actor.userId(),id));}
     @PostMapping("/{id}/reconcile")
     public ApiResponse<MarketplaceSubmissions.Execution> reconcile(@AuthenticationPrincipal UserPrincipal actor,@PathVariable String id){return ApiResponse.success(submissions.reconcile(actor.userId(),id));}
+    @PostMapping("/{id}/revise")
+    public ApiResponse<MarketplaceSubmissions.Execution> revise(@AuthenticationPrincipal UserPrincipal actor,@PathVariable String id){return ApiResponse.success(submissions.revise(actor.userId(),id));}
     @ExceptionHandler(MarketplaceSubmissionFailure.class)
     public ResponseEntity<ApiResponse<Void>> failure(MarketplaceSubmissionFailure failure){
         var status=switch(failure.kind()){case NOT_FOUND->HttpStatus.NOT_FOUND;case INVALID->HttpStatus.UNPROCESSABLE_ENTITY;default->HttpStatus.CONFLICT;};

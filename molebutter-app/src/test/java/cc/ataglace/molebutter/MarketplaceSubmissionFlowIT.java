@@ -117,6 +117,36 @@ class MarketplaceSubmissionFlowIT {
   org.mockito.Mockito.doReturn(new Validation(false,List.of(new Issue("COUPANG","common.name","필수")),List.of())).when(draftService).validate(org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.any(Document.class));
   var invalid=preview(d);assertThat(invalid.executable()).isFalse();assertThatThrownBy(()->start(invalid)).isInstanceOf(MarketplaceSubmissionFailure.class);assertThat(gateway.dispatches()).isEmpty();
  }
+ @org.junit.jupiter.params.ParameterizedTest
+ @org.junit.jupiter.params.provider.CsvSource({"UNKNOWN,ACCESS_DENIED","ACCEPTED,ACCESS_DENIED","UNKNOWN,ACCOUNT_CHANGED","ACCEPTED,ACCOUNT_CHANGED","UNKNOWN,UNSUPPORTED_SNAPSHOT_VERSION","ACCEPTED,UNSUPPORTED_SNAPSHOT_VERSION"})
+ void failedConfirmationPreservesOriginalOutcomeAndWriteLock(String state,String failure){
+  gateway.outcomes("CREATE",state);var d=drafts.create(admin,blank());var p=preview(d);var e=start(p);worker.runPending();
+  long id=Long.parseLong(e.id());String original=db.queryForObject("SELECT result_json FROM marketplace_execution_step WHERE execution_id=?",String.class,id);
+  submissions.reconcile(admin,e.id());
+  if(failure.equals("ACCESS_DENIED"))db.update("UPDATE `user` SET user_status='SUSPENDED' WHERE id=?",admin);
+  if(failure.equals("ACCOUNT_CHANGED"))gateway.currentAccount("different-vendor");
+  if(failure.equals("UNSUPPORTED_SNAPSHOT_VERSION"))db.update("UPDATE marketplace_submission_preview SET prepared_json=JSON_SET(prepared_json,'$.schemaVersion',99) WHERE id=?",Long.parseLong(p.id()));
+  try{worker.runPending();}finally{db.update("UPDATE `user` SET user_status='ACTIVE' WHERE id=?",admin);gateway.currentAccount(null);}
+  var retained=submissions.get(admin,e.id());assertThat(retained.status()).isEqualTo(Status.valueOf(state));
+  assertThat(db.queryForObject("SELECT result_json FROM marketplace_execution_step WHERE execution_id=?",String.class,id)).isEqualTo(original);
+  assertThat(db.queryForObject("SELECT result_code FROM marketplace_execution_attempt WHERE execution_id=? AND action='RECONCILE'",String.class,id)).isEqualTo(failure);
+  assertThat(db.queryForObject("SELECT status FROM marketplace_execution_attempt WHERE execution_id=? AND action='RECONCILE'",String.class,id)).isEqualTo("FAILED");
+  assertThat(gateway.readbacks()).isEmpty();assertThat(gateway.dispatches()).containsExactly("CREATE");
+  assertThatThrownBy(()->submissions.retry(admin,e.id())).isInstanceOf(MarketplaceSubmissionFailure.class);
+  assertThatThrownBy(()->preview(d)).isInstanceOf(MarketplaceSubmissionFailure.class);
+  db.update("UPDATE marketplace_submission_preview SET prepared_json=JSON_SET(prepared_json,'$.schemaVersion',1) WHERE id=?",Long.parseLong(p.id()));
+  submissions.reconcile(admin,e.id());worker.runPending();assertThat(submissions.get(admin,e.id()).status()).isEqualTo(Status.SUCCEEDED);
+  assertThat(gateway.readbacks()).containsExactly("CREATE");assertThat(gateway.dispatches()).containsExactly("CREATE");
+ }
+ @Test void unsupportedSnapshotRetiresUnstartedWritesAndAllowsFreshPreview(){
+  gateway.types("DELIVERY","PRICE","STOCK");var d=drafts.create(admin,blank());var p=preview(d);var e=start(p);
+  db.update("UPDATE marketplace_submission_preview SET prepared_json=JSON_SET(prepared_json,'$.schemaVersion',99) WHERE id=?",Long.parseLong(p.id()));
+  worker.runPending();worker.runPending();var result=submissions.get(admin,e.id());assertThat(result.status()).isEqualTo(Status.FAILED);
+  assertThat(result.targets().getFirst().steps()).extracting(Step::code).containsExactly("UNSUPPORTED_SNAPSHOT_VERSION","NOT_EXECUTED","NOT_EXECUTED");
+  assertThat(result.targets().getFirst().steps()).extracting(Step::attempts).containsExactly(1,0,0);assertThat(gateway.dispatches()).isEmpty();
+  assertThatThrownBy(()->submissions.retry(admin,e.id())).isInstanceOf(MarketplaceSubmissionFailure.class);
+  var fresh=preview(changed(d));assertThat(fresh.executable()).as("fresh preview: %s",fresh).isTrue();
+ }
  @Test void partialFailureRetryDispatchesOnlyFailedStockStep(){
   gateway.types("PRICE","STOCK");gateway.outcomes("STOCK","FAILED","CONFIRMED");var e=start(preview(drafts.create(admin,blank())));
   worker.runPending();worker.runPending();assertThat(submissions.get(admin,e.id()).status()).isEqualTo(Status.PARTIAL);
@@ -131,6 +161,46 @@ class MarketplaceSubmissionFlowIT {
   submissions.retry(admin,e.id());for(int i=0;i<4;i++)worker.runPending();
   assertThat(gateway.dispatches()).containsExactly("DELIVERY","ORIGINAL_PRICE","PRICE","PRICE","STOCK","PRODUCT");
   assertThat(submissions.get(admin,e.id()).status()).isEqualTo(Status.SUCCEEDED);
+ }
+ @Test void revisePreservesAttemptedResultsRetiresPendingStagesAndAllowsFreshPreparation()throws Exception{
+  gateway.types("DELIVERY","PRICE","STOCK");gateway.outcomes("PRICE","FAILED");var d=drafts.create(admin,blank());var e=start(preview(d));
+  worker.runPending();worker.runPending();var original=submissions.get(admin,e.id());assertThat(original.status()).isEqualTo(Status.PARTIAL);
+  var attempted=original.targets().getFirst().steps().subList(0,2);assertThatThrownBy(()->preview(d)).isInstanceOf(MarketplaceSubmissionFailure.class);
+  var browser=new Browser(admin);var path="/api/marketplaces/submissions/"+e.id()+"/revise";
+  assertThat(browser.send("POST",path,Map.of(),false).statusCode()).isEqualTo(403);
+  assertThat(new Browser(staff).send("POST",path,Map.of(),true).statusCode()).isEqualTo(403);
+  var response=browser.send("POST",path,Map.of(),true);assertThat(response.statusCode()).isEqualTo(200);
+  var revised=json.treeToValue(json.readTree(response.body()).path("data"),Execution.class);assertThat(revised.revised()).isTrue();assertThat(revised.status()).isEqualTo(Status.PARTIAL);
+  assertThat(revised.targets().getFirst().steps().subList(0,2)).isEqualTo(attempted);
+  assertThat(revised.targets().getFirst().steps().getLast()).satisfies(s->{assertThat(s.status()).isEqualTo(Status.FAILED);assertThat(s.attempts()).isZero();assertThat(s.code()).isEqualTo("NOT_EXECUTED");});
+  assertThat(db.queryForObject("SELECT revised_by FROM marketplace_execution WHERE id=?",Long.class,Long.parseLong(e.id()))).isEqualTo(admin);
+  assertThat(db.queryForObject("SELECT COUNT(*) FROM marketplace_execution_attempt WHERE execution_id=?",Long.class,Long.parseLong(e.id()))).isEqualTo(2);
+  assertThat(submissions.revise(admin,e.id())).isEqualTo(revised);assertThatThrownBy(()->submissions.retry(admin,e.id())).isInstanceOf(MarketplaceSubmissionFailure.class);
+  worker.runPending();assertThat(gateway.dispatches()).containsExactly("DELIVERY","PRICE");var fresh=preview(changed(d));assertThat(fresh.executable()).isTrue();
+  var corrected=start(fresh);worker.runPending();assertThat(submissions.get(admin,corrected.id()).status()).isEqualTo(Status.SUCCEEDED);assertThat(gateway.dispatches()).containsExactly("DELIVERY","PRICE","PRODUCT");assertThat(submissions.get(admin,e.id()).revised()).isTrue();
+ }
+ @Test void reviseRejectsUncertainAcceptedAndRunningExecutionsWithoutReleasingThem(){
+  gateway.types("PRICE","STOCK");gateway.outcomes("PRICE","UNKNOWN");var d=drafts.create(admin,blank());var e=start(preview(d));
+  assertThatThrownBy(()->submissions.revise(admin,e.id())).isInstanceOf(MarketplaceSubmissionFailure.class);
+  worker.runPending();for(String state:List.of("UNKNOWN","ACCEPTED","RUNNING")){
+   db.update("UPDATE marketplace_execution_step SET status=? WHERE execution_id=? AND step_type='PRICE'",state,Long.parseLong(e.id()));
+   db.update("UPDATE marketplace_execution SET status=? WHERE id=?",state,Long.parseLong(e.id()));
+   assertThatThrownBy(()->submissions.revise(admin,e.id())).isInstanceOf(MarketplaceSubmissionFailure.class);
+   assertThat(submissions.get(admin,e.id()).revised()).isFalse();assertThat(submissions.get(admin,e.id()).targets().getFirst().steps().getLast().status()).isEqualTo(Status.QUEUED);
+  }
+  assertThat(db.queryForObject("SELECT revised_at FROM marketplace_execution WHERE id=?",java.sql.Timestamp.class,Long.parseLong(e.id()))).isNull();assertThat(gateway.dispatches()).containsExactly("PRICE");
+ }
+ @Test void concurrentReviseAndRetryCannotBothReactivateFailedIntent()throws Exception{
+  gateway.types("PRICE","STOCK");gateway.outcomes("PRICE","FAILED");var e=start(preview(drafts.create(admin,blank())));worker.runPending();
+  var ready=new java.util.concurrent.CountDownLatch(2);var go=new java.util.concurrent.CountDownLatch(1);var pool=java.util.concurrent.Executors.newFixedThreadPool(2);List<Object> results;
+  try{
+   var futures=new ArrayList<java.util.concurrent.Future<Object>>();for(boolean revise:List.of(true,false))futures.add(pool.submit(()->{ready.countDown();go.await();try{return revise?submissions.revise(admin,e.id()):submissions.retry(admin,e.id());}catch(MarketplaceSubmissionFailure failure){return failure;}}));
+   assertThat(ready.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();go.countDown();results=new ArrayList<>();for(var f:futures)results.add(f.get(10,java.util.concurrent.TimeUnit.SECONDS));
+  }finally{go.countDown();pool.shutdownNow();}
+  assertThat(results.stream().filter(Execution.class::isInstance)).hasSize(1);assertThat(results.stream().filter(MarketplaceSubmissionFailure.class::isInstance)).hasSize(1);
+  var current=submissions.get(admin,e.id());worker.runPending();worker.runPending();
+  if(current.revised()){assertThat(gateway.dispatches()).containsExactly("PRICE");assertThat(submissions.get(admin,e.id()).status()).isEqualTo(Status.FAILED);}
+  else{assertThat(current.status()).isEqualTo(Status.QUEUED);assertThat(gateway.dispatches()).containsExactly("PRICE","PRICE","STOCK");assertThat(submissions.get(admin,e.id()).status()).isEqualTo(Status.SUCCEEDED);}
  }
  @Test void historicalLengthRequiredFailureGetsActionableMessageWithoutSendingPendingStock(){
   gateway.types("PRICE","STOCK");gateway.outcomes("PRICE","FAILED");var e=start(preview(drafts.create(admin,blank())));worker.runPending();

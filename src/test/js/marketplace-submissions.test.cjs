@@ -28,3 +28,9 @@ test('change review identifies the option and field across registration and curr
     assert.equal(S.changeLabel('items.[1].images.[2].vendorPath',draft,spec),'옵션 블랙 · 이미지 2 · 이미지 주소');
     assert.equal(S.changeLabel('배송.returnCharge',draft,spec),'배송 · 반품 비용');
 });
+
+test('retry requires a replayable failure and the current saved draft revision',()=>{
+ for(const code of ['ALREADY_REGISTERED','UNSUPPORTED_SNAPSHOT_VERSION','BASELINE_CHANGED'])assert.equal(S.retryable({status:'FAILED',revision:1,targets:[{steps:[{status:'FAILED',code}]}]},1),false);
+ const failed={...execution('FAILED','FAILED'),revision:1};assert.equal(S.retryable(failed,2),false);assert.equal(S.retryable(failed,1),true);assert.equal(S.retryable({...failed,revised:true},1),false);
+ assert.equal(S.retryable(execution('PARTIAL','FAILED','ACCEPTED')),false);
+});

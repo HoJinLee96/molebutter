@@ -2,19 +2,21 @@
     'use strict';
     const {$,escape:e}=AppUI;
     function create(options){
-        let observation=null,initial=null,preview=null,key=null,busy=false,executionId=null,timer=null,disposed=false,submitted=null,completedId=null,blocked=false,refreshing=false,ambiguous=false;
+        let observation=null,initial=null,preview=null,key=null,busy=false,executionId=null,timer=null,disposed=false,submitted=null,completedId=null,blocked=false,refreshing=false,ambiguous=false,lastExecution=null,generation=0;
         const dialog=$('editor-save-dialog'),status={QUEUED:'대기',RUNNING:'전송 중',SUCCEEDED:'성공',ACCEPTED:'승인·반영 대기',PARTIAL:'일부 완료',FAILED:'실패',UNKNOWN:'결과 확인 필요'};
         const error=message=>{$('editor-save-error').textContent=message||'';$('editor-save-error').hidden=!message;$('editor-save-dialog-error').textContent=message||'';$('editor-save-dialog-error').hidden=!message;};
-        function update(){options.busy(busy||blocked||refreshing||ambiguous);$('editor-save-confirm').disabled=busy||!preview?.executable;$('editor-save-close').disabled=busy||ambiguous;}
-        function remember(id){executionId=id;try{sessionStorage.setItem('coupang-save-'+options.productId,id);}catch{}}
+        function update(){options.busy(busy||blocked||refreshing||ambiguous);$('editor-save-confirm').disabled=busy||!preview?.executable;$('editor-save-close').disabled=busy||ambiguous;for(const button of $('editor-save-results').querySelectorAll('[data-save-action]'))button.disabled=busy||refreshing;}
+        function remember(id){if(executionId!==id)generation++;executionId=id;try{sessionStorage.setItem('coupang-save-'+options.productId,id);}catch{}}
+        const revisable=value=>!value.revised&&['FAILED','PARTIAL'].includes(value.status)&&(value.targets||[]).some(t=>(t.steps||[]).some(s=>s.status==='FAILED'))&&!(value.targets||[]).some(t=>(t.steps||[]).some(s=>['RUNNING','UNKNOWN','ACCEPTED'].includes(s.status)));
         function render(value){
+            lastExecution=value;
             const steps=(value.targets||[]).flatMap(t=>t.steps||[]),done=steps.filter(s=>s.status==='SUCCEEDED').length;
             $('editor-save-results').hidden=false;
-            $('editor-save-results').innerHTML=`<h2>저장 결과</h2><p role="status">${e(status[value.status]||value.status)} · ${done} / ${steps.length}단계 완료</p><ol>${steps.map(s=>`<li><strong>${e(s.label)}</strong> · ${e(s.status==='QUEUED'&&['FAILED','PARTIAL','UNKNOWN','ACCEPTED'].includes(value.status)?'앞 단계 중단으로 미실행':status[s.status]||s.status)} <span>${e(s.message||'')}</span></li>`).join('')}</ol><div class="toolbar"><button class="btn" type="button" data-save-action="refresh">새로고침</button>${window.MarketplaceSubmissionUI.retryable(value)?'<button class="btn" type="button" data-save-action="retry">실패·미실행 단계 재시도</button>':''}${window.MarketplaceSubmissionUI.reconcilable(value)?'<button class="btn" type="button" data-save-action="reconcile">결과 확인</button>':''}</div>`;
+            $('editor-save-results').innerHTML=`<h2>저장 결과</h2><p role="status">${e(status[value.status]||value.status)} · ${done} / ${steps.length}단계 완료</p><ol>${steps.map(s=>`<li><strong>${e(s.label)}</strong> · ${e(s.code==='NOT_EXECUTED'||s.status==='QUEUED'&&['FAILED','PARTIAL','UNKNOWN','ACCEPTED'].includes(value.status)?'미실행':status[s.status]||s.status)} <span>${e(s.message||'')}</span></li>`).join('')}</ol>${value.revised?'<p>위에서 값을 수정한 뒤 다시 저장할 수 있습니다. 이전 실행 기록은 보관됩니다.</p>':''}<div class="toolbar">${revisable(value)?'<button class="btn primary" type="button" data-save-action="revise">입력 수정</button>':''}<button class="btn" type="button" data-save-action="refresh">새로고침</button>${window.MarketplaceSubmissionUI.retryable(value)?'<button class="btn" type="button" data-save-action="retry">실패·미실행 단계 재시도</button>':''}${window.MarketplaceSubmissionUI.reconcilable(value)?'<button class="btn" type="button" data-save-action="reconcile">결과 확인</button>':''}</div>`;
             clearTimeout(timer);if(['RUNNING','QUEUED'].includes(value.status)&&!disposed)timer=setTimeout(refresh,2000);
-            blocked=['RUNNING','QUEUED'].includes(value.status)||window.MarketplaceSubmissionUI.retryable(value)||window.MarketplaceSubmissionUI.reconcilable(value);update();if(!blocked&&submitted&&completedId!==value.id&&!refreshing){refreshing=true;update();options.saved(value.status==='SUCCEEDED'?submitted:initial).then(fresh=>{observation=fresh.observation;initial=structuredClone(fresh.draft);completedId=value.id;}).catch(err=>{blocked=true;error(err.message);}).finally(()=>{refreshing=false;update();});}
+            blocked=!value.revised&&(['RUNNING','QUEUED'].includes(value.status)||window.MarketplaceSubmissionUI.retryable(value)||window.MarketplaceSubmissionUI.reconcilable(value));update();if(value.status==='SUCCEEDED'&&submitted&&completedId!==value.id&&!refreshing){refreshing=true;update();options.saved(submitted).then(fresh=>{observation=fresh.observation;initial=structuredClone(fresh.draft);completedId=value.id;}).catch(err=>{blocked=true;error(err.message);}).finally(()=>{refreshing=false;update();});}
         }
-        async function refresh(){if(!executionId||disposed)return;try{render(await apiGet('/api/marketplaces/submissions/'+encodeURIComponent(executionId)));}catch(err){error(err.message);}}
+        async function refresh(){if(!executionId||disposed)return;const id=executionId,version=generation;try{const value=await apiGet('/api/marketplaces/submissions/'+encodeURIComponent(id));if(id===executionId&&version===generation&&!disposed)render(value);}catch(err){if(id===executionId&&version===generation)error(err.message);}}
         async function prepare(){
             if(busy||blocked||refreshing||ambiguous||!observation)return;
             error('');let changes;try{changes=window.CoupangEditorModel.changes(initial,options.value());}catch(err){error(err.message);return;}
@@ -36,7 +38,22 @@
         $('editor-save-close').addEventListener('click',()=>{if(!busy&&!ambiguous){dialog.close();preview=null;}});
         dialog.addEventListener('cancel',ev=>{if(busy||ambiguous)ev.preventDefault();else preview=null;});
         $('editor-save-results').addEventListener('click',async ev=>{
-            const action=ev.target.closest('[data-save-action]')?.dataset.saveAction;if(!action||busy)return;
+            const action=ev.target.closest('[data-save-action]')?.dataset.saveAction;if(!action||busy||refreshing)return;
+            if(action==='revise'){
+                if(!lastExecution||!revisable(lastExecution))return;
+                busy=true;generation++;clearTimeout(timer);update();error('');
+                try{
+                    // Keep the trusted original observation: prepare re-reads Coupang,
+                    // omits already-applied changes and still detects outside conflicts.
+                    const value=await apiPost('/api/marketplaces/submissions/'+encodeURIComponent(executionId)+'/revise',{});
+                    if(!value.revised)throw Error('입력 수정 전환 결과를 확인할 수 없습니다. 새로고침 후 다시 시도해 주세요.');
+                    preview=null;render(value);
+                    $('editor-option-list').scrollIntoView({behavior:'smooth',block:'start'});
+                }catch(err){error(err.message);}finally{busy=false;update();}
+                if(lastExecution?.revised)$('editor-option-list').querySelector('input:not(:disabled)')?.focus({preventScroll:true});
+                return;
+            }
+            if(!['refresh','retry','reconcile'].includes(action))return;
             if(action==='refresh'){await refresh();return;}busy=true;update();try{render(await apiPost('/api/marketplaces/submissions/'+encodeURIComponent(executionId)+'/'+action,{}));}catch(err){error(err.message);}finally{busy=false;update();}
         });
         window.addEventListener('pagehide',()=>{disposed=true;clearTimeout(timer);});
