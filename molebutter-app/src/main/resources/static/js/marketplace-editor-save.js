@@ -57,7 +57,7 @@
             if(action==='refresh'){await refresh();return;}busy=true;update();try{render(await apiPost('/api/marketplaces/submissions/'+encodeURIComponent(executionId)+'/'+action,{}));}catch(err){error(err.message);}finally{busy=false;update();}
         });
         window.addEventListener('pagehide',()=>{disposed=true;clearTimeout(timer);});
-        return {observe(value,draft){observation=value;initial=structuredClone(draft);try{executionId=sessionStorage.getItem('coupang-save-'+options.productId);}catch{}if(executionId)refresh();else if(value.draftId)apiGet('/api/marketplaces/submissions?draftId='+encodeURIComponent(value.draftId)+'&page=0&size=1').then(result=>{if(result.items?.[0]){remember(result.items[0].id);render(result.items[0]);}}).catch(err=>error(err.message));},prepare,changed(){if(preview&&!busy&&!ambiguous){preview=null;dialog.close();}},busy:()=>busy};
+        return {observe(value,draft){observation=value;initial=structuredClone(draft);const version=++generation;try{executionId=sessionStorage.getItem('coupang-save-'+options.productId);}catch{}if(executionId){blocked=true;update();refresh();}else if(value.draftId){blocked=true;update();apiGet('/api/marketplaces/submissions?draftId='+encodeURIComponent(value.draftId)+'&page=0&size=10').then(result=>{if(version!==generation||disposed)return;if(result.items?.[0]){remember(result.items[0].id);render(result.items[0]);}else {blocked=false;update();}}).catch(err=>{if(version===generation&&!disposed)error(err.message);});}},prepare,changed(){if(preview&&!busy&&!ambiguous){preview=null;dialog.close();}},busy:()=>busy};
     }
     window.CoupangEditorSave={create};
 })();

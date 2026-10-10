@@ -89,6 +89,7 @@
         $('field-basic-displayCategoryCode').parentElement.classList.add('coupang-category-inline');
         $('field-basic-displayCategoryCode').parentElement.append(categoryControls);
         categoryControls.hidden=mode==='edit';
+        FormActions.bindEnter($('field-basic-displayCategoryCode'),$('editor-category-load'));
         renderOptionTable();
         $('editor-option-add').hidden=mode==='edit';
         renderDelivery();
@@ -173,6 +174,7 @@
         $('editor-media-fields').innerHTML=`<div class="editor-image-controls"><label class="field"><span>이미지 주소</span><input id="editor-image-url" type="url" placeholder="https://"></label><button class="btn" type="button" data-add-image>주소 추가</button><label class="btn editor-file-label">파일 선택<input id="editor-image-file" type="file" accept="image/jpeg,image/png" multiple></label></div><p class="product-meta">파일은 서버 업로드 후 저장 요청에 포함됩니다.</p><p id="editor-image-error" class="form-error" role="alert" hidden></p>${row('대표 이미지',`<div class="coupang-image-group" data-image-group="representative" data-image-type="REPRESENTATION"><div class="editor-image-grid">${images('REPRESENTATION')||'<p class="empty">대표 이미지를 추가해 주세요.</p>'}</div></div>`)}${row('추가 이미지 ('+o.images.filter(i=>i.type==='DETAIL').length+'/9)',`<div class="coupang-image-group" data-image-group="additional" data-image-type="DETAIL"><div class="editor-image-grid">${images('DETAIL')||'<p class="empty">추가 이미지가 없습니다.</p>'}</div></div>`)}${o.images.some(i=>i.type==='USED_PRODUCT')?row('중고 상태 이미지',`<div class="coupang-image-group" data-image-group="used" data-image-type="USED_PRODUCT"><div class="editor-image-grid">${images('USED_PRODUCT')}</div></div>`):''}<div data-error-for="${p}.images" class="editor-field-error" hidden></div>`;
         $('editor-description-fields').innerHTML=o.contents.map((c,n)=>`<div class="editor-content"><h3>${e(c.type==='HTML'?'HTML 설명':c.detailType==='IMAGE'?'설명 이미지':c.type||c.detailType||'콘텐츠')} ${n+1}</h3>${field(`${p}.contents.${n}.content`,c.detailType==='IMAGE'?'설명 이미지 주소':'설명 원문',c.detailType==='IMAGE'?'text':'textarea',c.content)}<div class="editor-preview" data-preview="${n}"></div><button class="btn small" type="button" data-remove-content="${n}">설명 삭제</button></div>`).join('')+`<div data-error-for="${p}.contents" class="editor-field-error" hidden></div><div class="toolbar"><button type="button" class="btn" data-add-content="HTML">HTML 설명 추가</button><button type="button" class="btn" data-add-content="IMAGE">설명 이미지 추가</button></div>`;
 
+        FormActions.bindEnter($('editor-image-url'),$('editor-media-fields').querySelector('[data-add-image]'));
         previews();updateBusy();
     }
     const noticeReference='상품 상세페이지 참조',noticeBackups=new WeakMap();
@@ -224,6 +226,7 @@
             +registrationChoice('taxType','부가세',[['TAX','과세'],['FREE','면세']])
             +`<details id="editor-extra-settings" class="coupang-additional"><summary>추가 등록 설정</summary>${grid(configured('settings',['extraInfoMessage'],draft.settings)+configured(p+'.registration',['unitCount','overseasPurchased','pccNeeded',...additional],o.registration)+extras.map(k=>field(p+'.registration.'+k,k,'text',o.registration[k],false,true)).join('')+Object.keys(draft.settings).filter(k=>!M.settingsKeys.includes(k)&&k!=='bundleInfo.bundleType'&&k!=='brandId').map(k=>field('settings.'+k,k,'text',draft.settings[k],false,true)).join(''))}</details>`;
         if(extraOpen)$('editor-extra-settings').open=true;
+        FormActions.bindEnter($('editor-cert-code'),$('editor-settings-fields').querySelector('[data-add-cert]'));
         $('editor-search-tags-fields').innerHTML=field(p+'.registration.searchTags','검색어','text',o.registration.searchTags)+`<small id="editor-tag-count" class="product-meta"></small><p id="editor-tag-limit" class="form-error" role="alert" hidden></p><div id="editor-tag-list" class="coupang-tag-list" aria-label="입력한 검색어"></div>`;renderTags();
         $('editor-search-filter-fields').innerHTML=attrs(o,0,'NONE')+o.attributes.map((a,n)=>!['NONE','EXPOSED'].includes(a.exposed)&&!M.productIdentity(a.name)?field(`${p}.attributes.${n}.value`,a.name||'미분류 속성','text',a.value,false,true):'').join('');
     }
@@ -467,13 +470,13 @@
         }
         changed();renderMedia();if(full)imageError('추가 이미지는 최대 9개입니다.');if(rejected){$('editor-image-error').textContent='3MiB 이하 JPG·PNG 파일을 선택해 주세요.';$('editor-image-error').hidden=false;}
     }
-    $('marketplace-editor-form').addEventListener('submit',ev=>{
+    FormActions.bindExplicitSubmit($('marketplace-editor-form'),$('editor-validate'),ev=>{
         ev.preventDefault();if(loading||ruleLoading||saveBusy||!draft)return;
         const errors=M.validate(draft,rules,mode),box=$('editor-validation');
         document.querySelectorAll('[aria-invalid]').forEach(el=>el.removeAttribute('aria-invalid'));document.querySelectorAll('[data-error-for]').forEach(el=>el.hidden=true);
         box.hidden=false;box.className=errors.length?'editor-validation form-error':'editor-validation editor-validation-success';
         box.textContent=errors.length?`${errors.length}개 항목을 확인해 주세요. ${errors[0].message}`:'입력 검증 완료';
-        if(!errors.length){if(save)save.prepare();else box.focus();return;}
+        if(!errors.length){if(save)return save.prepare();box.focus();return;}
         const first=errors[0],match=/^options\.(\d+)/.exec(first.path);
         if(match)selectOption(Number(match[1]));
         for(const error of errors){const input=document.querySelector(`[data-field="${CSS.escape(error.path)}"]`);if(input)input.setAttribute('aria-invalid','true');const hint=document.querySelector(`[data-error-for="${CSS.escape(error.path)}"]`);if(hint){hint.textContent=error.message;hint.hidden=false;}}

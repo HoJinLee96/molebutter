@@ -181,6 +181,8 @@ lookupForm.addEventListener('submit', async (event) => {
     }
 });
 
+FormActions.bindEnterSubmit(lookupForm, lookupButton);
+
 downloadImagesButton.addEventListener('click', () => {
     if (!currentProduct || workspaceBusy()) return;
     if (!imageOrder.order.length) {
