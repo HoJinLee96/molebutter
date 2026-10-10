@@ -229,6 +229,24 @@ class MarketplaceSubmissionFlowIT {
   assertThat(new Browser(admin).get("/api/marketplaces/submissions/"+e.id()).body()).doesNotContain("actual-request","bodyJson","expectedJson");submissions.reconcile(admin,e.id());worker.runPending();
   assertThat(gateway.lastReconciledStep().id()).isEqualTo("create");assertThat(gateway.lastReconciledStep().bodyJson()).isEqualTo(recorded.path("bodyJson").asText());assertThat(gateway.lastReconciledStep().expectedJson()).isEqualTo(recorded.path("expectedJson").asText());assertThat(gateway.dispatches()).containsExactly("CREATE");assertThat(gateway.readbacks()).containsExactly("CREATE");assertThat(submissions.get(admin,e.id()).status()).isEqualTo(Status.SUCCEEDED);
  }
+ @Test void unresolvedCreateRetainsRecordedCandidatesAndLockAcrossRepeatedReadback(){
+  gateway.rebaseActualRequest();gateway.outcomes("CREATE","UNKNOWN");gateway.readbackOutcome("UNKNOWN");
+  var d=registrations.create(admin,registrationInput());var p=registrations.prepare(admin,d.id(),new CoupangProductRegistrations.Prepare(d.revision(),true));
+  var e=start(p);worker.runPending();
+  var recorded=json.readTree(db.queryForObject("SELECT request_json FROM marketplace_execution_attempt WHERE execution_id=? AND action='WRITE'",String.class,Long.parseLong(e.id())));
+  assertThat(json.readTree(recorded.path("baselineJson").asText()).path("knownSellerProductIds")).isEqualTo(json.readTree("[\"555\"]"));
+  for(int i=0;i<2;i++){
+   submissions.reconcile(admin,e.id());worker.runPending();
+   assertThat(gateway.lastReconciledStep().baselineJson()).isEqualTo(recorded.path("baselineJson").asText());
+   var unresolved=submissions.get(admin,e.id());assertThat(unresolved.status()).isEqualTo(Status.UNKNOWN);
+   assertThat(unresolved.targets().getFirst().steps().getFirst().message()).contains("쿠팡 Wing");
+   var draft=registrations.get(admin,d.id());assertThat(draft.externalProductId()).isNull();assertThat(draft.blocked()).isTrue();
+   assertThatThrownBy(()->submissions.retry(admin,e.id())).isInstanceOf(MarketplaceSubmissionFailure.class);
+   assertThatThrownBy(()->registrations.prepare(admin,d.id(),new CoupangProductRegistrations.Prepare(d.revision(),true))).isInstanceOf(MarketplaceDraftFailure.class);
+  }
+  assertThat(db.queryForObject("SELECT COUNT(*) FROM marketplace_listing_mapping",Long.class)).isZero();
+  assertThat(gateway.dispatches()).containsExactly("CREATE");assertThat(gateway.readbacks()).containsExactly("CREATE","CREATE");
+ }
  @Test void acceptedStepPausesRemainingWritesUntilReadbackConfirms(){
   gateway.types("PRODUCT","PRICE");gateway.outcomes("PRODUCT","ACCEPTED");var d=drafts.create(admin,blank());var e=start(preview(d));worker.runPending();worker.runPending();
   assertThat(submissions.get(admin,e.id()).status()).isEqualTo(Status.ACCEPTED);assertThat(gateway.dispatches()).containsExactly("PRODUCT");assertThatThrownBy(()->preview(d)).isInstanceOf(MarketplaceSubmissionFailure.class);

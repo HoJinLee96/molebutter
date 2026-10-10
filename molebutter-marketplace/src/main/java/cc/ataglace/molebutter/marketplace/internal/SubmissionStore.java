@@ -252,6 +252,7 @@ class SubmissionStore {
         return switch(code){case "ACCESS_DENIED"->"실행 권한이 변경되었습니다.";case "BASELINE_CHANGED"->"쿠팡 상품이 변경되었습니다. 다시 확인해 주세요.";case "LEGACY_INTENT"->"최신 조회와 변경 항목을 다시 확인해 주세요.";case "ACCOUNT_CHANGED"->"쿠팡 연결 계정이 변경되었습니다.";case "RATE_LIMIT"->"쿠팡 호출 제한입니다. 잠시 후 다시 시도해 주세요.";case "AUTHENTICATION","PERMISSION","CONFIGURATION"->"쿠팡 연결 설정·권한을 확인해 주세요.";default->"요청이 반영되지 않았습니다. 입력과 실행 결과를 확인해 주세요.";};
     }
     static String publicMessage(String status,String code,String market){
+        if("COUPANG".equals(market)&&status.equals("UNKNOWN")&&code.equals("UNRESOLVED"))return "이번 요청의 등록상품 ID를 확인할 수 없습니다. 새로 등록하지 말고 쿠팡 Wing에서 등록 여부를 확인해 주세요.";
         if(!"NAVER".equals(market))return publicMessage(status,code);
         if(status.equals("SUCCEEDED"))return "반영 확인 완료";
         if(status.equals("ACCEPTED"))return "스마트스토어 접수 완료 · 반영 확인 필요";

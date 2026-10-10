@@ -223,15 +223,49 @@ class CoupangWriteGatewayTest {
         assertThat(writer.reconcile(1L,prepared,step,pending).state()).isEqualTo(State.CONFIRMED);
         verify(client,times(1)).write(any(),any(),any(),any());
     }
-    @Test void lostCreateResponseCanRecoverIdentityWhileApprovalIsStillPending(){
+    @Test void createRefreshesCandidatesBeforeRecordingAndDispatchingActualRequest(){
+        when(client.rawSummary("SKU-A")).thenReturn(JSON.readTree("[{\"sellerProductId\":444}]"));
         var prepared=writer.prepare(1L,fresh(),null,true);var step=prepared.steps().getFirst();
-        var actual=JSON.readTree(step.expectedJson()).deepCopy().asObject();actual.put("sellerProductId",555);actual.put("statusName","심사중");actual.path("items").get(0).asObject().put("sellerProductItemId",111);
-        when(client.now()).thenReturn(NOW.plusSeconds(60));when(client.rawSummary("SKU-A")).thenReturn(JSON.readTree("[{\"sellerProductId\":555}]"));when(client.rawProduct("555")).thenReturn(actual);
-        var pending=writer.reconcile(1L,prepared,step,new Result(State.UNKNOWN,prepared.mapping(),"TIMEOUT","확인 중",NOW));
-        assertThat(pending.state()).isEqualTo(State.ACCEPTED);assertThat(pending.mapping().sellerProductId()).isEqualTo("555");
-        actual.put("statusName","APPROVED");
-        var confirmed=writer.reconcile(1L,prepared,step,pending);assertThat(confirmed.state()).isEqualTo(State.CONFIRMED);assertThat(confirmed.message()).doesNotContain("기다리고");
+        when(client.rawSummary("SKU-A")).thenReturn(JSON.readTree("[{\"sellerProductId\":444},{\"sellerProductId\":555}]"));
+        var recorded=new java.util.concurrent.atomic.AtomicReference<Step>();
+        when(client.write(any(),any(),any(),any())).thenAnswer(call->{
+            assertThat(recorded.get()).isNotNull();
+            assertThat(JSON.readTree(recorded.get().baselineJson()).path("knownSellerProductIds")).isEqualTo(JSON.readTree("[\"444\",\"555\"]"));
+            throw new MarketplaceFailure(MarketplaceFailure.Kind.NETWORK);
+        });
+        var unknown=writer.execute(1L,prepared,step,prepared.mapping(),recorded::set);
+        assertThat(unknown.state()).isEqualTo(State.UNKNOWN);assertThat(unknown.mapping().sellerProductId()).isNull();
+        assertThat(recorded.get().id()).isEqualTo(step.id());assertThat(recorded.get().bodyJson()).isEqualTo(step.bodyJson());assertThat(recorded.get().expectedJson()).isEqualTo(step.expectedJson());
+        assertThat(JSON.readTree(step.baselineJson()).path("knownSellerProductIds")).isEqualTo(JSON.readTree("[\"444\"]"));
+        when(client.now()).thenReturn(NOW.plusSeconds(60));
+        var checked=writer.reconcile(1L,prepared,recorded.get(),unknown);
+        assertThat(checked.state()).isEqualTo(State.UNKNOWN);assertThat(checked.mapping().sellerProductId()).isNull();
+        verify(client,times(1)).write(any(),any(),any(),any());verify(client,never()).rawProduct("555");
+    }
+    @Test void createCandidateLookupFailureNeverRecordsOrPosts(){
+        var prepared=writer.prepare(1L,fresh(),null,false);clearInvocations(client);
+        when(client.rawSummary("SKU-A")).thenThrow(new MarketplaceFailure(MarketplaceFailure.Kind.NETWORK));
+        when(client.write(any(),any(),any(),any())).thenThrow(new MarketplaceFailure(MarketplaceFailure.Kind.NETWORK));
+        var recorded=new ArrayList<Step>();
+        var failed=writer.execute(1L,prepared,prepared.steps().getFirst(),prepared.mapping(),recorded::add);
+        assertThat(failed.state()).isEqualTo(State.FAILED);assertThat(failed.mapping().sellerProductId()).isNull();assertThat(recorded).isEmpty();
         verify(client,never()).write(any(),any(),any(),any());
+    }
+    @Test void unknownCreateDoesNotLinkAnIdenticalConcurrentOrLateVisibleCandidate(){
+        var prepared=writer.prepare(1L,fresh(),null,true);var step=prepared.steps().getFirst();
+        when(client.write(any(),any(),any(),any())).thenThrow(new MarketplaceFailure(MarketplaceFailure.Kind.NETWORK));
+        var recorded=new java.util.concurrent.atomic.AtomicReference<Step>();
+        var previous=writer.execute(1L,prepared,step,prepared.mapping(),recorded::set);
+        assertThat(previous.state()).isEqualTo(State.UNKNOWN);
+        var actual=JSON.readTree(step.expectedJson()).deepCopy().asObject();actual.put("sellerProductId",555);actual.put("statusName","APPROVED");actual.path("items").get(0).asObject().put("sellerProductItemId",111);
+        when(client.rawSummary("SKU-A")).thenReturn(JSON.readTree("[{\"sellerProductId\":555}]"));when(client.rawProduct("555")).thenReturn(actual);
+        for(int minute=1;minute<=3;minute++){
+            when(client.now()).thenReturn(NOW.plusSeconds(60L*minute));
+            previous=writer.reconcile(1L,prepared,recorded.get(),previous);
+            assertThat(previous.state()).isEqualTo(State.UNKNOWN);assertThat(previous.mapping().sellerProductId()).isNull();
+            assertThat(previous.mapping().options()).allSatisfy(o->{assertThat(o.sellerProductItemId()).isNull();assertThat(o.vendorItemId()).isNull();});
+        }
+        verify(client,times(1)).write(any(),any(),any(),any());
     }
     @Test void unknownCreateWaitsOneMinuteAndNeverPostsAgain(){
         var p=writer.prepare(1L,fresh(),null,false);var unknown=new Result(State.UNKNOWN,p.mapping(),"TIMEOUT","확인 중",NOW);
@@ -250,7 +284,7 @@ class CoupangWriteGatewayTest {
         when(client.now()).thenReturn(NOW.plusSeconds(60));when(client.rawSummary("SKU-A")).thenReturn(JSON.readTree("[{\"sellerProductId\":555}]"));when(client.rawProduct("555")).thenReturn(actual);
         var previous=new Result(State.UNKNOWN,p.mapping(),"TIMEOUT","확인 중",NOW);var unlinked=writer.reconcile(1L,p,step,previous);
         assertThat(unlinked.state()).isEqualTo(State.UNKNOWN);assertThat(unlinked.mapping().sellerProductId()).isNull();assertThat(unlinked.mapping().options().getFirst().sellerProductItemId()).isNull();
-        actual.put("brand","브랜드");var linked=writer.reconcile(1L,p,step,previous);assertThat(linked.state()).isEqualTo(State.CONFIRMED);assertThat(linked.mapping().sellerProductId()).isEqualTo("555");verify(client,never()).write(any(),any(),any(),any());
+        actual.put("brand","브랜드");var linked=writer.reconcile(1L,p,step,previous);assertThat(linked.state()).isEqualTo(State.UNKNOWN);assertThat(linked.mapping().sellerProductId()).isNull();verify(client,never()).write(any(),any(),any(),any());
     }
     @Test void urlSafetyAndUnsupportedServiceAreExplicit(){
         assertThat(DefaultCoupangWriteGateway.https("https://images.example.com/a.jpg")).isEqualTo("https://images.example.com/a.jpg");
