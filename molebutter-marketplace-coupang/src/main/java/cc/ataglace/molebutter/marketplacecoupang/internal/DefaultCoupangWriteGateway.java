@@ -233,8 +233,8 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
             desired.put("requested",requested);for(var e:delivery(d,m).entrySet())set(desired,e.getKey(),e.getValue());
             if(m.coupang()!=null)desired.set("requiredDocuments",documentRows(m.coupang(),json.createArrayNode()));
             if(skus.isEmpty())throw invalid("응답 유실 시 등록 여부를 확인할 판매자 상품코드를 입력해 주세요.");
-            // A SKU is not an idempotency key. Exclude every pre-existing candidate from timeout reconciliation.
-            var prior=json.createObjectNode();var ids=json.createArrayNode();for(var row:client.rawSummary(skus.getFirst()))ids.add(scalar(row.path("sellerProductId")));prior.set("knownSellerProductIds",ids);
+            // Keep the preview candidates for comparison; execution records a fresh snapshot before POST.
+            var prior=createBaseline(List.of(skus.getFirst()));
             var step=new Step(UUID.randomUUID().toString(),Type.CREATE,null,"POST",CoupangProductClient.PATH,"",wire(desired),wire(prior),wire(desired));
             diff("",json.createObjectNode(),desired,changes);
             return new Prepared(client.accountKey(),new Mapping(client.accountKey(),null,mappings),List.of(step),List.copyOf(changes),client.now(),List.of(skus.getFirst()));
@@ -268,9 +268,14 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
             access.productActor(actor,true);
             if(step.type()!=Type.CREATE&&(!Objects.equals(prepared.mapping().sellerProductId(),mapping.sellerProductId())||!Objects.equals(prepared.mapping().options(),mapping.options())))return result(State.FAILED,mapping,"MAPPING_CHANGED","상품 연결이 변경되었습니다. 다시 준비해 주세요.",attempted);
             if(step.type()!=Type.CREATE&&!baselineMatches(step,mapping))return result(State.FAILED,mapping,"BASELINE_CHANGED","쿠팡 상품이 변경되었습니다. 다시 준비해 주세요.",attempted);
+            Step actual=step;
+            if(step.type()==Type.CREATE){
+                try{actual=new Step(step.id(),step.type(),step.optionId(),step.method(),step.path(),step.query(),step.bodyJson(),wire(createBaseline(prepared.expectedSkus())),step.expectedJson());}
+                catch(MarketplaceFailure failure){return result(State.FAILED,mapping,failure.kind().name(),"등록 전 기존 상품을 조회하지 못해 전송하지 않았습니다. 다시 확인해 주세요.",attempted);}
+            }
             access.productActor(actor,true);
-            beforeDispatch.accept(step);
-            var response=client.write(step.method(),step.path(),step.query(),step.bodyJson());
+            beforeDispatch.accept(actual);
+            var response=client.write(actual.method(),actual.path(),actual.query(),actual.bodyJson());
             if(response.status()!=200)return httpFailure(response.status(),response.body(),mapping,attempted);
             var accepted=parseOutcome(response.body(),step,mapping,attempted);
             if(accepted.state()!=State.ACCEPTED)return accepted;
@@ -307,16 +312,21 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
             if(step.type()==Type.CREATE&&mapping.sellerProductId()==null){
                 var candidates=new LinkedHashSet<String>();for(String sku:prepared.expectedSkus())for(var row:client.rawSummary(sku))candidates.add(scalar(row.path("sellerProductId")));
                 for(var id:json.readTree(step.baselineJson()).path("knownSellerProductIds"))candidates.remove(id.asString());
-                var expected=json.readTree(step.expectedJson());var matching=new ArrayList<JsonNode>();for(String id:candidates){var actual=client.rawProduct(id);if(matchesCreate(expected,actual)&&createApplied(expected,actual))matching.add(actual);}
-                if(matching.size()!=1)return result(State.UNKNOWN,mapping,"UNRESOLVED",matching.isEmpty()?"등록 여부를 확인하지 못했습니다. 다시 확인해 주세요.":"같은 상품코드의 등록 결과가 여러 개입니다. 연결 확인이 필요합니다.",previous.attemptedAt());
-                var found=matching.getFirst();boolean approved=createApprovalApplied(expected,found);
-                return result(approved?State.CONFIRMED:State.ACCEPTED,mappingFor(prepared.mapping(),found,expected),"RECONCILED",approved?"쿠팡 등록 결과를 확인했습니다.":"상품 등록을 확인했습니다. 판매 승인을 기다리고 있습니다.",previous.attemptedAt());
+                // SKU/content equality cannot distinguish our lost POST from a concurrent or late-visible registration.
+                // Only an ID returned by the registration response is authoritative for automatic mapping.
+                return result(State.UNKNOWN,mapping,"UNRESOLVED",candidates.isEmpty()?"등록 여부를 확인하지 못했습니다. 다시 확인해 주세요.":"같은 상품코드의 후보가 있지만 이번 등록 결과인지 확인할 수 없습니다. 새로 등록하지 말고 쿠팡에서 확인해 주세요.",previous.attemptedAt());
             }
             if(step.type()==Type.CREATE)return verifyKnown(prepared,step,previous);
             if("NEEDS_CORRECTION".equals(previous.code()))return previous;
             if(expectedMatches(step,mapping))return result(State.CONFIRMED,mapping,"VERIFIED",previous.code().equals("NEEDS_CORRECTION")?previous.message():"쿠팡 반영을 확인했습니다.",previous.attemptedAt());
             return result(previous.state()==State.ACCEPTED?State.ACCEPTED:State.UNKNOWN,mapping,previous.code(),previous.state()==State.ACCEPTED?"쿠팡 반영을 기다리고 있습니다.":"쿠팡 처리 결과를 확인하지 못했습니다.",previous.attemptedAt());
         });}catch(MarketplaceFailure e){return result(State.UNKNOWN,mapping,e.kind().name(),"쿠팡 처리 결과를 확인하지 못했습니다.",previous.attemptedAt());}
+    }
+    private ObjectNode createBaseline(List<String> skus){
+        var ids=new LinkedHashSet<String>();
+        for(String sku:skus)for(var row:client.rawSummary(sku))ids.add(scalar(row.path("sellerProductId")));
+        var baseline=json.createObjectNode();var rows=json.createArrayNode();ids.forEach(rows::add);
+        baseline.set("knownSellerProductIds",rows);return baseline;
     }
     private boolean validAccount(Prepared p,Mapping m){return client.accountKey().equals(p.accountKey())&&m!=null&&client.accountKey().equals(m.accountKey());}
     private Result verifyKnown(Prepared prepared,Step step,Result accepted){

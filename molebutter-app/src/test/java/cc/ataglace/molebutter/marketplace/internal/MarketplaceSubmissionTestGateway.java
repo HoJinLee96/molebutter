@@ -18,9 +18,10 @@ public class MarketplaceSubmissionTestGateway implements cc.ataglace.molebutter.
     private Mapping lastMapping;
     private Prepared lastPrepared;
     private boolean rebaseActual;
+    private State readbackState=State.CONFIRMED;
     private StepSnapshot lastReconciled;
-    public record StepSnapshot(String id,String bodyJson,String expectedJson) {}
-    public void reset(){currentAccount=null;types=List.of("CREATE");responses.clear();dispatches.clear();readbacks.clear();lastMapping=null;lastPrepared=null;rebaseActual=false;lastReconciled=null;}
+    public record StepSnapshot(String id,String bodyJson,String expectedJson,String baselineJson) {}
+    public void reset(){currentAccount=null;types=List.of("CREATE");responses.clear();dispatches.clear();readbacks.clear();lastMapping=null;lastPrepared=null;rebaseActual=false;readbackState=State.CONFIRMED;lastReconciled=null;}
     public void types(String... values){types=List.of(values);}
     public void outcomes(String type,String... values){responses.put(type,new ArrayDeque<>(Arrays.stream(values).map(State::valueOf).toList()));}
     public List<String> dispatches(){return List.copyOf(dispatches);}
@@ -28,6 +29,7 @@ public class MarketplaceSubmissionTestGateway implements cc.ataglace.molebutter.
     public String mappedProduct(){return lastMapping==null?null:lastMapping.sellerProductId();}
     public List<String> selectedPaths(){return lastPrepared==null||lastPrepared.editIntent()==null?List.of():lastPrepared.editIntent().changes().stream().map(MarketplaceEditing.Change::path).toList();}
     public void rebaseActualRequest(){rebaseActual=true;}
+    public void readbackOutcome(String state){readbackState=State.valueOf(state);}
     public StepSnapshot lastReconciledStep(){return lastReconciled;}
     @Override public Document projectChanges(Document d,List<MarketplaceEditing.Change> changes){return cc.ataglace.molebutter.marketplacecoupang.internal.ProviderCoupangDocumentsFixture.apply(d,changes);}
     @Override public boolean validateCommonDraft(){return true;}
@@ -67,13 +69,13 @@ public class MarketplaceSubmissionTestGateway implements cc.ataglace.molebutter.
         return new Result(state,mapping,state==State.FAILED?"REJECTED":"SUCCESS",null,Instant.now());
     }
     @Override public Result execute(Long actor,Prepared prepared,Step step,Mapping current,java.util.function.Consumer<Step> beforeDispatch){
-        var actual=rebaseActual?new Step("rebased-"+step.id(),step.type(),step.optionId(),step.method(),step.path(),step.query(),"{\"serverOnly\":\"actual-request\"}","{\"baseline\":\"latest\"}","{\"expected\":\"actual-request\"}"):step;
+        var actual=rebaseActual?new Step("rebased-"+step.id(),step.type(),step.optionId(),step.method(),step.path(),step.query(),"{\"serverOnly\":\"actual-request\"}","{\"baseline\":\"latest\",\"knownSellerProductIds\":[\"555\"]}","{\"expected\":\"actual-request\"}"):step;
         beforeDispatch.accept(actual);return execute(actor,prepared,actual,current);
     }
     @Override public Result reconcile(Long actor,Prepared prepared,Step step,Result previous){
-        lastReconciled=new StepSnapshot(step.id(),step.bodyJson(),step.expectedJson());
-        readbacks.add(step.type().name());Mapping mapping=previous.mapping();if(mapping==null)mapping=new Mapping(prepared.accountKey(),"9001",List.of(new OptionMapping("10000000-1000-4000-8000-000000000001","7001","8001")));
-        return new Result(State.CONFIRMED,mapping,"SUCCESS",null,Instant.now());
+        lastReconciled=new StepSnapshot(step.id(),step.bodyJson(),step.expectedJson(),step.baselineJson());
+        readbacks.add(step.type().name());Mapping mapping=previous.mapping();if(mapping==null&&readbackState!=State.UNKNOWN)mapping=new Mapping(prepared.accountKey(),"9001",List.of(new OptionMapping("10000000-1000-4000-8000-000000000001","7001","8001")));
+        return new Result(readbackState,mapping,readbackState==State.UNKNOWN?"UNRESOLVED":"SUCCESS",null,previous.attemptedAt());
     }
     @TestConfiguration(proxyBeanMethods=false)
     public static class Configuration {
