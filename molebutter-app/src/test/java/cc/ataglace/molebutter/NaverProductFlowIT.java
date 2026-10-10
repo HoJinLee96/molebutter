@@ -132,4 +132,27 @@ class NaverProductFlowIT {
   var expected=json.readTree(json.readTree(request).path("expectedJson").asString());assertThat(expected.path("markets.NAVER.naver.editorInput.fields.originProduct.statusType").asString()).isEqualTo("OUTOFSTOCK");
   var next=saving.observe(admin,"101");assertThat(saving.prepare(admin,"101",new NaverProductSaving.Prepare(next.token(),changed(next.document().input(),"originProduct.salePrice",2000L))).executable()).isTrue();
  }
+ NaverEditor.Input combination(){var before=input();return new NaverEditor.Input(before.fields(),"COMBINATION",List.of("색상"),List.of(new NaverEditor.Option(UUID.randomUUID().toString(),List.of("A"),100L,5L,"A",true),new NaverEditor.Option(UUID.randomUUID().toString(),List.of("B"),200L,5L,"B",true)),before.images(),before.description());}
+ NaverEditor.Input firstOptionStock(NaverEditor.Input before,long stock){var rows=new ArrayList<>(before.options());var a=rows.getFirst();rows.set(0,new NaverEditor.Option(a.id(),a.values(),a.price(),stock,a.sellerManagerCode(),a.usable()));return new NaverEditor.Input(before.fields(),before.optionMode(),before.optionNames(),rows,before.images(),before.description());}
+ long optionStock(int index){return gateway.source().path("originProduct").path("detailAttribute").path("optionInfo").path("optionCombinations").get(index).path("stockQuantity").asLong();}
+ @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+ void optionStockWritesOnlySelectedRowAndRecoversLostResponseWithoutResending(boolean lost){
+  gateway.seed(combination());var observation=saving.observe(admin,"101");var edited=firstOptionStock(observation.document().input(),3);
+  gateway.optionStock(702,4);var preview=saving.prepare(admin,"101",new NaverProductSaving.Prepare(observation.token(),edited));assertThat(preview.executable()).as(preview.targets().toString()).isTrue();
+  var key=UUID.randomUUID().toString();var execution=submissions.execute(admin,preview.id(),key);assertThat(submissions.execute(admin,preview.id(),key).id()).isEqualTo(execution.id());
+  gateway.optionStockBeforeNextPut(702,2);if(lost)gateway.loseNextResponse();worker.runPending();
+  assertThat(optionStock(0)).isEqualTo(3);assertThat(optionStock(1)).isEqualTo(2);
+  if(lost){assertThat(submissions.get(admin,execution.id()).status()).isEqualTo(Status.UNKNOWN);assertThatThrownBy(()->submissions.retry(admin,execution.id())).isInstanceOf(MarketplaceSubmissionFailure.class);gateway.optionStock(702,1);submissions.reconcile(admin,execution.id());worker.runPending();}
+  assertThat(submissions.get(admin,execution.id()).status()).isEqualTo(Status.SUCCEEDED);assertThat(gateway.writes()).containsExactly("PUT /v1/products/origin-products/101/option-stock");
+  String request=db.queryForObject("SELECT request_json FROM marketplace_execution_attempt WHERE execution_id=? AND request_json IS NOT NULL ORDER BY id LIMIT 1",String.class,Long.parseLong(execution.id()));
+  var actual=json.readTree(request);assertThat(actual.path("type").asString()).isEqualTo("STOCK");var rows=json.readTree(actual.path("bodyJson").asString()).path("optionInfo").path("optionCombinations");assertThat(rows.size()).isEqualTo(1);assertThat(rows.get(0).path("id").asLong()).isEqualTo(701);assertThat(rows.get(0).path("stockQuantity").asLong()).isEqualTo(3);
+  var next=saving.observe(admin,"101");assertThat(saving.prepare(admin,"101",new NaverProductSaving.Prepare(next.token(),firstOptionStock(next.document().input(),2))).executable()).isTrue();
+ }
+ @Test void combinationGeneralEditAndSelectedStockConflictDoNotWrite(){
+  gateway.seed(combination());var observation=saving.observe(admin,"101");
+  var blocked=saving.prepare(admin,"101",new NaverProductSaving.Prepare(observation.token(),changed(observation.document().input(),"originProduct.name","unsafe general PUT")));assertThat(blocked.executable()).isFalse();assertThat(blocked.targets().getFirst().issues()).isNotEmpty();
+  var execution=execute(saving.prepare(admin,"101",new NaverProductSaving.Prepare(observation.token(),firstOptionStock(observation.document().input(),3))));gateway.optionStock(701,4);worker.runPending();
+  assertThat(submissions.get(admin,execution.id()).status()).isEqualTo(Status.FAILED);assertThat(gateway.writes()).isEmpty();assertThat(optionStock(0)).isEqualTo(4);
+ }
+
 }

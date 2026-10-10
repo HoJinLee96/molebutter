@@ -63,6 +63,14 @@ class NaverGatewayTest {
         respond=(path,n)->new Reply(500,"{\"message\":\"uncertain\"}");
         assertEquals(500,gateway.write("PUT","/v2/products/origin-products/17",json.createObjectNode()).status());assertEquals(2,paths.size());
     }
+    @Test void optionStockTransportUsesOnlyTheDocumentedPutAndDoesNotRetry(){
+        var body=json.readTree("{\"optionInfo\":{\"useStockManagement\":true,\"optionCombinations\":[{\"id\":7,\"stockQuantity\":0,\"price\":0,\"usable\":true}]}}");
+        respond=(path,n)->new Reply(500,"{\"message\":\"uncertain\"}");
+        assertEquals(500,gateway.write("PUT","/v1/products/origin-products/17/option-stock",body).status());
+        assertEquals(List.of("POST","PUT"),methods);assertEquals("/external/v1/products/origin-products/17/option-stock",paths.get(1));assertEquals(body,json.readTree(bodies.get(1)));
+        for(String method:List.of("GET","POST","DELETE"))assertThrows(InputValidationFailure.class,()->gateway.write(method,"/v1/products/origin-products/17/option-stock",body));
+        assertThrows(InputValidationFailure.class,()->gateway.write("PUT","/v1/products/origin-products/17/option-stock?other=1",body));assertEquals(2,paths.size());
+    }
     @Test void metadataCacheIsCopiedAndRejectsArbitraryPath(){
         respond=(path,n)->new Reply(200,"[{\"id\":\"50000001\",\"name\":\"test\",\"last\":true}]");
         var a=gateway.session(()->gateway.metadata("categories",Map.of("last","true")));a.get(0).asObject().put("name","changed");

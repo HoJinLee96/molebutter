@@ -44,7 +44,12 @@ final class DefaultNaverWriteGateway implements MarketplaceWriteGateway {
     private Prepared selected(Long actor,Document reference,Mapping mapping,Document observed,List<MarketplaceEditing.Change> changes,JsonNode source){
         var view=NaverEditPatch.editor(source);if(view.limits().groupProduct())throw invalid(view.limits().message());
         var latest=NaverDraftAdapter.observed(reference,view,mapping);var old=NaverDraftAdapter.from(observed);var now=NaverDraftAdapter.from(latest);
-        var desired=NaverEditPatch.apply(latest,changes);var input=NaverDraftAdapter.from(desired);checkChanges(old,now,input,changes,view.limits());
+        var desired=NaverEditPatch.apply(latest,changes);var input=NaverDraftAdapter.from(desired);
+        if(!changes.isEmpty()&&now.optionMode().equals("COMBINATION")){
+            var step=new NaverOptionStockUpdates(json).prepare(old,now,input,mapping,changes);
+            return new Prepared(accountKey(),mapping,List.of(step),visible(old,input),Instant.now(),List.of(sellerCode(source)),new EditIntent(observed,List.copyOf(changes)),market());
+        }
+        checkChanges(old,now,input,changes,view.limits());
         var effective=NaverEditPatch.diff(now,input);var originChanges=effective.stream().filter(c->!c.path().contains(".fields.smartstoreChannelProduct.")).toList();var channelChanges=effective.stream().filter(c->c.path().contains(".fields.smartstoreChannelProduct.")).toList();
         if(effective.isEmpty())return new Prepared(accountKey(),mapping,List.of(),List.of(),Instant.now(),List.of(sellerCode(source)),new EditIntent(latest,List.of()),market());
         var steps=new ArrayList<Step>();var finalBody=wire(actor,input,mapping,source,effective,false);validate(finalBody,false,input,effective);
@@ -114,6 +119,12 @@ final class DefaultNaverWriteGateway implements MarketplaceWriteGateway {
                 if(step.type()==Type.CREATE){if(current!=null&&current.sellerProductId()!=null)return failure(current,"ALREADY_REGISTERED");actual=new Step(step.id(),step.type(),step.optionId(),step.method(),step.path(),step.query(),step.bodyJson(),json.writeValueAsString(existingProducts(sellerCode(json.readTree(step.bodyJson())))),step.expectedJson());}
                 else {
                     var source=gateway.product(current.sellerProductId());var view=NaverEditPatch.editor(source);if(view.limits().groupProduct())return failure(current,"GROUP_PRODUCT");
+                    if(NaverOptionStockUpdates.isStep(step)){
+                        var stocks=new NaverOptionStockUpdates(json);var latest=NaverDraftAdapter.from(NaverDraftAdapter.observed(prepared.editIntent().observed(),view,current));executionInput=latest;
+                        var body=stocks.body(latest,current,step);
+                        if(stocks.reflected(latest,current,step))return new Result(State.CONFIRMED,current,"CONFIRMED","재조회에서 선택한 옵션 재고가 확인되었습니다.",Instant.now());
+                        actual=new Step(step.id(),step.type(),step.optionId(),step.method(),step.path(),step.query(),json.writeValueAsString(body),step.baselineJson(),step.expectedJson());
+                    }else{
                     var expected=normalizeExpected(json.readTree(step.expectedJson()).deepCopy().asObject(),json.readTree(step.bodyJson()));
                     var relevant=prepared.editIntent().changes().stream().filter(c->expected.has(c.path())).toList();
                     var latest=NaverDraftAdapter.observed(prepared.editIntent().observed(),view,current);var now=NaverDraftAdapter.from(latest);var old=NaverDraftAdapter.from(prepared.editIntent().observed());
@@ -123,6 +134,7 @@ final class DefaultNaverWriteGateway implements MarketplaceWriteGateway {
                     var imageWire=json.readTree(step.bodyJson()).path("originProduct").path("images");var body=wire(actor,desired,current,source,relevant,false,imageWire);
                     if(relevant.stream().noneMatch(c->c.path().contains(".fields.smartstoreChannelProduct.")))body.set("smartstoreChannelProduct",source.path("smartstoreChannelProduct").deepCopy());
                     clean(body);validate(body,false,desired,relevant);actual=new Step(step.id(),step.type(),null,step.method(),step.path(),step.query(),json.writeValueAsString(body),step.baselineJson(),json.writeValueAsString(expectedValues(desired,relevant,body)));
+                    }
                 }
             }catch(InputValidationFailure e){return failure(current,"BASELINE_CHANGED");}
             beforeDispatch.accept(actual);final Step sent=actual;NaverGateway.Response response;
@@ -145,6 +157,7 @@ final class DefaultNaverWriteGateway implements MarketplaceWriteGateway {
             var source=gateway.product(mapping.sellerProductId());mapping=mapping(source,input,mapping);var current=NaverDraftAdapter.observed(prepared.editIntent().observed(),NaverEditPatch.editor(source),mapping);var latest=NaverDraftAdapter.from(current);
             boolean reflected;
             if(step.type()==Type.CREATE)reflected=createMatches(json.readTree(step.bodyJson()),source);
+            else if(NaverOptionStockUpdates.isStep(step))reflected=new NaverOptionStockUpdates(json).reflected(latest,mapping,step);
             else{var request=json.readTree(previous.requestJson()==null?step.bodyJson():previous.requestJson());var keys=normalizeExpected(json.readTree(step.expectedJson()).deepCopy().asObject(),request);var selected=new ArrayList<MarketplaceEditing.Change>();for(var key:keys.properties())selected.add(new MarketplaceEditing.Change(key.getKey(),null,null));reflected=matches(selectedValues(latest,selected),keys);}
             String status=source.path("originProduct").path("statusType").asString("");boolean approval=Set.of("WAIT","UNADMISSION").contains(status);
             return new Result(reflected&&!approval?State.CONFIRMED:State.ACCEPTED,mapping(source,input,mapping),reflected?approval?"APPROVAL_PENDING":"CONFIRMED":"REFLECTION_PENDING",reflected?approval?"상품 번호가 발급되었으며 승인 결과를 확인하고 있습니다.":"재조회에서 변경 값이 확인되었습니다.":"요청은 접수되었으며 반영 결과를 확인하고 있습니다.",Instant.now(),previous.requestJson());
@@ -175,6 +188,7 @@ final class DefaultNaverWriteGateway implements MarketplaceWriteGateway {
     private void checkAccount(Mapping mapping){if(mapping!=null&&!accountKey().equals(mapping.accountKey()))throw invalid("스마트스토어 연결 계정이 변경되었습니다. 다시 조회해 주세요.");}
     private ObjectNode wire(Long actor,NaverEditor.Input input,Mapping mapping,JsonNode source,List<MarketplaceEditing.Change> changes,boolean create){return wire(actor,input,mapping,source,changes,create,null);}
     private ObjectNode wire(Long actor,NaverEditor.Input input,Mapping mapping,JsonNode source,List<MarketplaceEditing.Change> changes,boolean create,JsonNode resolvedImages){
+        if(!create)NaverOptionStockUpdates.requireGeneralUpdateSafe(source);
         var body=json.createObjectNode();body.set("originProduct",source==null?json.createObjectNode():source.path("originProduct").deepCopy());body.set("smartstoreChannelProduct",source==null?json.createObjectNode():source.path("smartstoreChannelProduct").deepCopy());
         for(var e:input.fields().entrySet())if(create||changes==null||changedField(changes,e.getKey()))NaverEditPatch.put(body,e.getKey(),json.valueToTree(e.getValue()));
         var origin=body.path("originProduct").asObject();if(!origin.path("detailAttribute").isObject())origin.set("detailAttribute",json.createObjectNode());var detail=origin.path("detailAttribute").asObject();
