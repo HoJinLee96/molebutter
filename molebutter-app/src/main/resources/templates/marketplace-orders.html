@@ -12,7 +12,7 @@
 <label class="field"><span>시작일</span><input id="orders-from" type="date" required></label>
 <label class="field"><span>종료일</span><input id="orders-to" type="date" required></label>
 <fieldset class="order-markets"><legend>판매 마켓</legend><label th:each="channel : ${marketplaceChannels}"><input type="checkbox" name="market" th:value="${channel.id}" th:checked="${channel.orderRead}" th:disabled="${!channel.orderRead}"><span th:text="${channel.label + (channel.orderRead ? '' : ' · 준비 중')}">마켓</span></label></fieldset>
-<button id="orders-collect" class="btn primary" type="submit">주문 수집</button>
+<button id="orders-collect" class="btn primary" type="button">주문 수집</button>
 <button id="orders-cancel" class="btn" type="button" hidden>수집 취소</button><button id="orders-retry" class="btn" type="button" hidden>남은·실패 구간 다시 수집</button>
 </form>
 <label class="field"><span>최근 수집 이력</span><select id="orders-job-history"><option value="">수집 이력 조회 중…</option></select></label>
@@ -45,5 +45,5 @@
 <div class="product-dialog-head"><h2 id="orders-detail-title">주문 상세</h2><button id="orders-detail-close" type="button" class="btn">닫기</button></div>
 <p id="orders-detail-loading" role="status" hidden>최신 주문·배송 정보를 조회 중입니다…</p><p id="orders-detail-error" class="form-error" role="alert" hidden></p><button id="orders-detail-retry" class="btn" type="button" hidden>다시 조회</button><div id="orders-detail-content"></div>
 </dialog>
-<script defer th:src="@{/js/api.js}"></script><script defer th:src="@{/js/marketplace-orders.js(v=3)}"></script>
+<script defer th:src="@{/js/form-actions.js}"></script><script defer th:src="@{/js/api.js}"></script><script defer th:src="@{/js/marketplace-orders.js(v=4)}"></script>
 </body></html>

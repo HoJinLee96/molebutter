@@ -32,7 +32,7 @@
     function create(options){
         const {$,escape:e}=AppUI;
         const dialog=$('common-submission-dialog'),section=$('common-submissions');
-        let currentDraft=null,preview=null,key=null,preparing=false,submitting=false,timer=null,disposed=false,generation=0,page=0,totalPages=0,loading=false,refreshAgain=false;
+        let currentDraft=null,preview=null,key=null,preparing=false,submitting=false,timer=null,disposed=false,generation=0,page=0,totalPages=0,loading=false,refreshAgain=false,executions=new Map();
         const names={COUPANG:'쿠팡',NAVER:'네이버',GMARKET:'G마켓',AUCTION:'옥션',LOTTEON:'롯데ON'};
         const mode=value=>value==='CREATE'?'신규 등록':value==='UPDATE'?'수정':value;
         function error(message){for(const id of ['common-submission-error','common-submission-dialog-error']){$(id).textContent=message||'';$(id).hidden=!message;}}
@@ -45,6 +45,7 @@
             $('common-submission-refresh').disabled=loading||submitting;
             $('common-submission-previous').disabled=loading||page===0;
             $('common-submission-next').disabled=loading||page+1>=totalPages;
+            section.querySelectorAll('[data-submission-action]').forEach(button=>{button.disabled=submitting||preparing||loading;});
         }
         function close(){if(submitting)return;dialog.close();preview=null;key=null;}
         function renderPreview(value){
@@ -83,14 +84,16 @@
             }finally{submitting=false;update();}
         }
         function renderExecutions(items,pages){
+            executions=new Map(items.map(execution=>[execution.id,execution]));
             totalPages=pages;
             section.hidden=!currentDraft?.id;
-            $('common-submission-list').innerHTML=items.length?items.map(execution=>`<article class="common-execution" data-execution="${e(execution.id)}"><div class="common-execution-heading"><div><strong>실행 ${e(execution.id)}</strong> · 초안 버전 ${e(String(execution.revision))} ${badge(execution.status)}<p class="product-meta">${e(execution.createdAt||'')}</p></div><div class="common-execution-actions">${retryable(execution,currentDraft?.revision)?`<button type="button" class="btn small" data-submission-action="retry" data-execution-id="${e(execution.id)}">실패 작업 재시도</button>`:''}${reconcilable(execution)?`<button type="button" class="btn small" data-submission-action="reconcile" data-execution-id="${e(execution.id)}">결과 확인</button>`:''}</div></div>${steps(execution).some(step=>step.status==='FAILED')&&!retryable(execution,currentDraft?.revision)&&!reconcilable(execution)?'<p class="product-meta">입력을 확인하고 현재 초안으로 새 변경 확인을 진행해 주세요.</p>':''}${(execution.targets||[]).map(target=>`<div class="common-submission-target"><h3>${e(names[target.market]||target.market)} · ${e(mode(target.mode))} ${badge(target.status)}</h3>${target.externalProductId?`<p class="product-meta">등록상품 ID ${e(target.externalProductId)}</p>`:''}<ul class="common-execution-steps">${(target.steps||[]).map(step=>`<li><span>${e(step.label)}</span>${badge(step.status)}<span class="common-step-message">${e(step.message||'')}</span></li>`).join('')}</ul></div>`).join('')}</article>`).join(''):'<p class="common-empty">전송 기록 없음</p>';
+            $('common-submission-list').innerHTML=items.length?items.map(execution=>`<article class="common-execution" data-execution="${e(execution.id)}"><div class="common-execution-heading"><div><strong>실행 ${e(execution.id)}</strong> · 초안 버전 ${e(String(execution.revision))} ${badge(execution.status)}<p class="product-meta">${e(execution.createdAt||'')}</p></div><div class="common-execution-actions">${retryable(execution,currentDraft?.revision)?`<button type="button" class="btn small" data-submission-action="retry" data-execution-id="${e(execution.id)}">실패 작업 재시도</button>`:''}${revisable(execution)?`<button type="button" class="btn small" data-submission-action="revise" data-execution-id="${e(execution.id)}">입력 수정</button>`:''}${reconcilable(execution)?`<button type="button" class="btn small" data-submission-action="reconcile" data-execution-id="${e(execution.id)}">결과 확인</button>`:''}</div></div>${execution.revised?'<p class="product-meta">기존 처리 결과를 보존했습니다. 입력을 수정한 뒤 새 변경 확인을 진행해 주세요.</p>':revisable(execution)?'<p class="product-meta">입력 수정은 기존 처리 결과를 보존하고 아직 실행하지 않은 작업을 종료합니다. 작성 중인 입력은 유지됩니다.</p>':''}${steps(execution).some(step=>step.status==='FAILED')&&!execution.revised&&!revisable(execution)&&!retryable(execution,currentDraft?.revision)&&!reconcilable(execution)?'<p class="product-meta">입력을 확인하고 현재 초안으로 새 변경 확인을 진행해 주세요.</p>':''}${(execution.targets||[]).map(target=>`<div class="common-submission-target"><h3>${e(names[target.market]||target.market)} · ${e(mode(target.mode))} ${badge(target.status)}</h3>${target.externalProductId?`<p class="product-meta">등록상품 ID ${e(target.externalProductId)}</p>`:''}<ul class="common-execution-steps">${(target.steps||[]).map(step=>`<li><span>${e(step.label)}</span>${badge(step.status)}<span class="common-step-message">${e(step.message||'')}</span></li>`).join('')}</ul></div>`).join('')}</article>`).join(''):'<p class="common-empty">전송 기록 없음</p>';
             $('common-submission-previous').disabled=loading||page===0;
             $('common-submission-next').disabled=loading||page+1>=totalPages;
             $('common-submission-page').textContent=totalPages?`${page+1} / ${totalPages}`:'0 / 0';
             clearTimeout(timer);timer=null;
             if(items.some(active)&&!disposed)timer=setTimeout(refresh,2000);
+            update();
         }
         async function refresh(){
             if(!currentDraft?.id||disposed)return;
@@ -104,11 +107,21 @@
             finally{loading=false;update();if(refreshAgain){refreshAgain=false;refresh();}}
         }
         async function action(button){
-            if(submitting||preparing)return;
-            const type=button.dataset.submissionAction,id=button.dataset.executionId;
-            submitting=true;error('');update();button.disabled=true;
-            try{await apiPost('/api/marketplaces/submissions/'+encodeURIComponent(id)+'/'+type,{});await refresh();}
-            catch(err){error(err.message);}finally{submitting=false;update();}
+            if(disposed||submitting||preparing||loading)return;
+            const type=button.dataset.submissionAction,id=button.dataset.executionId,execution=executions.get(id);
+            if(!execution||!({retry:()=>retryable(execution,currentDraft?.revision),revise:()=>revisable(execution),reconcile:()=>reconcilable(execution)})[type]?.())return;
+            const seq=generation,draftId=currentDraft?.id;
+            submitting=true;error('');options.busy(true);update();
+            try{
+                const result=await apiPost('/api/marketplaces/submissions/'+encodeURIComponent(id)+'/'+type,{});
+                if(disposed||seq!==generation||draftId!==currentDraft?.id)return;
+                if(type==='revise'){
+                    dialog.close();preview=null;key=null;
+                    renderExecutions([...executions.values()].map(item=>item.id===id?result:item),totalPages);
+                }
+                await refresh();
+            }catch(err){if(!disposed&&seq===generation)error(err.message);}
+            finally{submitting=false;options.busy(false);update();}
         }
         $('common-market-save').addEventListener('click',prepare);
         $('common-submission-confirm').addEventListener('click',execute);
@@ -121,7 +134,7 @@
         section.addEventListener('click',event=>{const button=event.target.closest('[data-submission-action]');if(button&&!button.disabled)action(button);});
         window.addEventListener('pagehide',()=>{disposed=true;generation++;clearTimeout(timer);});
         return {
-            draft(value){const changed=currentDraft?.id!==value?.id;currentDraft=value;update();if(changed){generation++;page=0;refresh();}},
+            draft(value){const changed=currentDraft?.id!==value?.id;currentDraft=value;update();if(changed){generation++;page=0;executions.clear();$('common-submission-list').innerHTML='';dialog.close();preview=null;key=null;refresh();}},
             changed(){if(preview&&!submitting)close();update();},
             update
         };

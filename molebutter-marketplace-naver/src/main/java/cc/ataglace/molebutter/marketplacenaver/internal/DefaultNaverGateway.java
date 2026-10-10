@@ -66,7 +66,7 @@ final class DefaultNaverGateway implements NaverGateway {
     public JsonNode channel(String id){checkId(id);return parse(request("GET","/v2/products/channel-products/"+id,"",null,null));}
     public JsonNode search(JsonNode input){return parse(request("POST","/v1/products/search","","application/json",json.writeValueAsBytes(input)));}
     public NaverGateway.Response write(String method,String path,JsonNode input){
-        if(!Set.of("POST","PUT").contains(method)||!path.matches("/v2/products(?:/(?:origin-products|channel-products)/[0-9]{1,19})?"))
+        if(!Set.of("POST","PUT").contains(method)||!(path.matches("/v2/products(?:/(?:origin-products|channel-products)/[0-9]{1,19})?")||method.equals("PUT")&&path.matches("/v1/products/origin-products/[1-9][0-9]{0,18}/option-stock")))
             throw new InputValidationFailure("스마트스토어 상품 전송 경로를 확인해 주세요.");
         byte[] bytes=json.writeValueAsBytes(input);if(bytes.length>5*1024*1024)throw new InputValidationFailure("전송 내용을 5MiB 이하로 줄여 주세요.");
         return request(method,path,"","application/json",bytes);
