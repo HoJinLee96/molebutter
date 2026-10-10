@@ -7,6 +7,8 @@ import java.time.Instant;
 import java.util.*;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -30,6 +32,80 @@ class NaverWriteGatewayTest {
     NaverEditor.Input field(NaverEditor.Input input,String name,Object value){var fields=new LinkedHashMap<>(input.fields());fields.put(name,value);return new NaverEditor.Input(fields,input.optionMode(),input.optionNames(),input.options(),input.images(),input.description());}
     Prepared edit(NaverEditor.Input desired){return writer.prepareSelected(1L,document(),mapping(),false,document(),NaverEditPatch.diff(input(),desired));}
     NaverGateway.Response response(int status,String body){return new NaverGateway.Response(status,body.getBytes(java.nio.charset.StandardCharsets.UTF_8),null,Map.of());}
+    @ParameterizedTest @ValueSource(longs={0,5})
+    void statusReadbackUsesFinalStockAndDoesNotRepeatAConfirmedPut(long stock){
+        base.path("originProduct").asObject().put("statusType","SUSPENSION").put("stockQuantity",stock);
+        var prepared=edit(field(input(),"originProduct.statusType","SALE"));var step=prepared.steps().getFirst();
+        String expected=stock==0?"OUTOFSTOCK":"SALE";
+        assertThat(json.readTree(step.bodyJson()).path("originProduct").path("statusType").asString()).isEqualTo("SALE");
+        assertThat(json.readTree(step.expectedJson()).path(NaverEditPatch.PREFIX+"fields.originProduct.statusType").asString()).isEqualTo(expected);
+        when(gateway.write(any(),any(),any())).thenAnswer(i->{base.path("originProduct").asObject().put("statusType",expected);return response(200,"{\"originProductNo\":123}");});
+        var result=writer.execute(1L,prepared,step,mapping());assertThat(result.state()).isEqualTo(State.CONFIRMED);
+        assertThat(writer.reconcile(1L,prepared,step,result).state()).isEqualTo(State.CONFIRMED);
+        assertThat(writer.execute(1L,prepared,step,mapping()).state()).isEqualTo(State.CONFIRMED);
+        verify(gateway,times(1)).write(any(),any(),any());
+    }
+    @Test void oldZeroStockSnapshotCanBeConfirmedButAnUnreflectedStatusStaysPending(){
+        base.path("originProduct").asObject().put("statusType","SUSPENSION").put("stockQuantity",0);
+        var prepared=edit(field(input(),"originProduct.statusType","SALE"));var step=prepared.steps().getFirst();
+        var oldExpected=json.readTree(step.expectedJson()).asObject().put(NaverEditPatch.PREFIX+"fields.originProduct.statusType","SALE");
+        var legacy=new Step(step.id(),step.type(),step.optionId(),step.method(),step.path(),step.query(),step.bodyJson(),step.baselineJson(),json.writeValueAsString(oldExpected));
+        var accepted=new Result(State.ACCEPTED,mapping(),"ACCEPTED",null,Instant.now(),step.bodyJson());
+        assertThat(writer.reconcile(1L,prepared,legacy,accepted).state()).isEqualTo(State.ACCEPTED);
+        base.path("originProduct").asObject().put("statusType","OUTOFSTOCK");
+        assertThat(writer.reconcile(1L,prepared,legacy,accepted).state()).isEqualTo(State.CONFIRMED);
+        verify(gateway,never()).write(any(),any(),any());
+    }
+    @Test void expectedStatusIsRecomputedFromTheActualRequestAfterStockChanges(){
+        base.path("originProduct").asObject().put("statusType","SUSPENSION").put("stockQuantity",0);
+        var prepared=edit(field(input(),"originProduct.statusType","SALE"));var step=prepared.steps().getFirst();
+        base.path("originProduct").asObject().put("stockQuantity",5);
+        var sent=new java.util.concurrent.atomic.AtomicReference<Step>();
+        when(gateway.write(any(),any(),any())).thenAnswer(i->{base.path("originProduct").asObject().put("statusType","SALE");return response(200,"{\"originProductNo\":123}");});
+        var result=writer.execute(1L,prepared,step,mapping(),sent::set);assertThat(result.state()).isEqualTo(State.CONFIRMED);
+        var persisted=json.readValue(json.writeValueAsString(sent.get()),Step.class);
+        assertThat(json.readTree(persisted.expectedJson()).path(NaverEditPatch.PREFIX+"fields.originProduct.statusType").asString()).isEqualTo("SALE");
+        assertThat(writer.reconcile(1L,prepared,persisted,result).state()).isEqualTo(State.CONFIRMED);
+    }
+    @Test void explicitSuspensionAlsoUsesOutOfStockReadbackWhenZeroStockIsSent(){
+        var prepared=edit(field(field(input(),"originProduct.statusType","SUSPENSION"),"originProduct.stockQuantity",0L));var step=prepared.steps().getFirst();
+        assertThat(json.readTree(step.bodyJson()).path("originProduct").path("statusType").asString()).isEqualTo("SUSPENSION");
+        when(gateway.write(any(),any(),any())).thenAnswer(i->{base.path("originProduct").asObject().put("statusType","OUTOFSTOCK").put("stockQuantity",0);return response(200,"{\"originProductNo\":123}");});
+        assertThat(writer.execute(1L,prepared,step,mapping()).state()).isEqualTo(State.CONFIRMED);
+    }
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    void missingChannelNumberUsesOriginPutForChannelOnlyAndCombinedChanges(boolean combined){
+        base.path("originProduct").asObject().remove("originProductNo");base.put("originProductNo",123);
+        base.path("smartstoreChannelProduct").asObject().remove("channelProductNo");
+        var before=input();var desired=field(before,"smartstoreChannelProduct.channelProductDisplayStatusType","SUSPENSION");
+        if(combined)desired=field(desired,"originProduct.name","원상품명 변경");
+        var d=document();var mapping=new Mapping("naver-account","123",List.of(),null);
+        var prepared=writer.prepareSelected(1L,d,mapping,false,d,NaverEditPatch.diff(before,desired));
+        assertThat(prepared.steps()).hasSize(1);var step=prepared.steps().getFirst();assertThat(step.path()).isEqualTo("/v2/products/origin-products/123");
+        var body=json.readTree(step.bodyJson());assertThat(body.path("originProduct").has("detailContent")).isFalse();assertThat(body.path("smartstoreChannelProduct").has("channelProductNo")).isFalse();
+        when(gateway.write(any(),any(),any())).thenAnswer(i->{var sent=(JsonNode)i.getArgument(2);base.path("smartstoreChannelProduct").asObject().put("channelProductDisplayStatusType",sent.path("smartstoreChannelProduct").path("channelProductDisplayStatusType").asString());base.path("originProduct").asObject().put("name",sent.path("originProduct").path("name").asString());return response(200,combined?"{\"originProductNo\":123,\"smartstoreChannelProductNo\":456}":"{\"originProductNo\":123}");});
+        var result=writer.execute(1L,prepared,step,mapping);assertThat(result.state()).isEqualTo(State.CONFIRMED);assertThat(result.mapping().channelProductId()).isEqualTo(combined?"456":null);
+        assertThat(base.path("smartstoreChannelProduct").path("futureChannel").path("keep").asBoolean()).isTrue();
+        assertThat(base.path("originProduct").path("detailContent").asString()).isEqualTo("<p>SmartEditor 원문</p>");
+        assertThat(writer.reconcile(1L,prepared,step,result).state()).isEqualTo(State.CONFIRMED);verify(gateway,times(1)).write(eq("PUT"),eq("/v2/products/origin-products/123"),any());
+    }
+    @Test void combinedOriginPutStillRejectsExternalChannelConflicts(){
+        base.path("smartstoreChannelProduct").asObject().remove("channelProductNo");var d=document();var mapping=new Mapping("naver-account","123",List.of(),null);
+        var prepared=writer.prepareSelected(1L,d,mapping,false,d,NaverEditPatch.diff(input(),field(input(),"smartstoreChannelProduct.channelProductName","입력한 채널명")));
+        base.path("smartstoreChannelProduct").asObject().put("channelProductName","외부에서 바꾼 채널명");
+        var result=writer.execute(1L,prepared,prepared.steps().getFirst(),mapping);assertThat(result.state()).isEqualTo(State.FAILED);assertThat(result.code()).isEqualTo("BASELINE_CHANGED");verify(gateway,never()).write(any(),any(),any());
+    }
+    @ParameterizedTest @ValueSource(strings={"missing","null","blank"})
+    void firstReleaseDateCanBeEnteredWhenNoDateIsStored(String previous){
+        var detail=base.path("originProduct").path("detailAttribute").asObject();
+        if(previous.equals("null"))detail.putNull("releaseDate");else if(previous.equals("blank"))detail.put("releaseDate","");
+        var prepared=edit(field(input(),"originProduct.detailAttribute.releaseDate","2026-10-10"));var step=prepared.steps().getFirst();
+        when(gateway.write(any(),any(),any())).thenAnswer(i->{detail.put("releaseDate",((JsonNode)i.getArgument(2)).path("originProduct").path("detailAttribute").path("releaseDate").asString());return response(200,"{\"originProductNo\":123}");});
+        assertThat(writer.execute(1L,prepared,step,mapping()).state()).isEqualTo(State.CONFIRMED);
+        assertThatThrownBy(()->edit(field(input(),"originProduct.detailAttribute.releaseDate","2026-10-11"))).isInstanceOf(InputValidationFailure.class).hasMessageContaining("이미 등록된 출시일");
+        assertThatThrownBy(()->edit(field(input(),"originProduct.detailAttribute.releaseDate",null))).isInstanceOf(InputValidationFailure.class).hasMessageContaining("이미 등록된 출시일");
+        assertThat(edit(input()).steps()).isEmpty();verify(gateway,times(1)).write(any(),any(),any());
+    }
     @Test void updatePreservesUneditedFieldsAndOmitsUnchangedSmartEditorContent(){
         var desired=field(input(),"originProduct.salePrice","0");var prepared=edit(desired);assertThat(prepared.steps()).hasSize(1);var step=prepared.steps().getFirst();var body=json.readTree(step.bodyJson());
         assertThat(body.path("originProduct").path("salePrice").isIntegralNumber()).isTrue();assertThat(body.path("originProduct").path("salePrice").asLong()).isZero();assertThat(body.path("originProduct").has("detailContent")).isFalse();assertThat(body.path("originProduct").path("futureField").path("keep").asBoolean()).isTrue();assertThat(body.path("originProduct").has("originProductNo")).isFalse();assertThat(body.path("smartstoreChannelProduct").path("futureChannel").path("keep").asBoolean()).isTrue();assertThat(body.has("requested")).isFalse();

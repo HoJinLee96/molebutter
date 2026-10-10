@@ -25,6 +25,7 @@ public final class NaverProductTestGateway implements NaverGateway {
         writes.add(method+" "+path);var next=body.deepCopy().asObject();
         if(source!=null&&!next.path("originProduct").has("detailContent"))next.path("originProduct").asObject().set("detailContent",source.path("originProduct").path("detailContent").deepCopy());
         next.path("originProduct").asObject().put("originProductNo",101);next.path("smartstoreChannelProduct").asObject().put("channelProductNo",202);
+        if(next.path("originProduct").path("stockQuantity").isIntegralNumber()&&next.path("originProduct").path("stockQuantity").asLong()==0)next.path("originProduct").asObject().put("statusType","OUTOFSTOCK");
         long id=701;for(var option:next.path("originProduct").path("detailAttribute").path("optionInfo").path("optionCombinations"))if(!option.has("id"))option.asObject().put("id",id++);
         source=next;
         if(loseResponse){loseResponse=false;throw new MarketplaceFailure(MarketplaceFailure.Kind.NETWORK,"NAVER");}
@@ -41,6 +42,7 @@ public final class NaverProductTestGateway implements NaverGateway {
         var parts=path.split("\\.");var parent=root;for(int i=0;i<parts.length-1;i++){var next=parent.path(parts[i]);if(!next.isObject())next=parent.putObject(parts[i]);parent=next.asObject();}parent.set(parts[parts.length-1],value);
     }
     public JsonNode source(){return source.deepCopy();}
+    public void omitChannelNumber(){source.asObject().put("originProductNo",101);source.path("smartstoreChannelProduct").asObject().remove("channelProductNo");}
     public void salePrice(long value){source.path("originProduct").asObject().put("salePrice",value);}
     public void loseNextResponse(){loseResponse=true;}
     public List<String> writes(){return List.copyOf(writes);}
