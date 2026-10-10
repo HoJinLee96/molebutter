@@ -70,6 +70,7 @@ public final class ImagingInputs {
     public static void download(DownloadRequestDto request) {
         if (request == null) fail("다운로드 요청이 필요합니다.");
         product(request.productCode(), request.brandCode()); selection(request.sizeGuide());
+        downloadCode(request);
         if (request.images() != null) {
             if (request.images().size() > MAX_DOWNLOAD_ITEMS) fail("한 번에 64개까지 다운로드할 수 있습니다.");
             for (var item : request.images()) {
@@ -83,6 +84,13 @@ public final class ImagingInputs {
             if (request.imageIndexes().size() > MAX_DOWNLOAD_ITEMS) fail("한 번에 64개까지 다운로드할 수 있습니다.");
             for (Integer index : request.imageIndexes()) if (index == null || index < 0) fail("원본 이미지 번호를 확인해주세요.");
         }
+    }
+    public static String downloadCode(DownloadRequestDto request) {
+        String code = request.downloadProductCode() == null ? request.productCode() : request.downloadProductCode();
+        if (code == null || !code.trim().matches("[A-Za-z0-9_-]{4,40}")) {
+            fail("저장용 상품코드는 영문, 숫자, 밑줄, 하이픈 4~40자로 입력해주세요.");
+        }
+        return code.trim().toUpperCase(Locale.ROOT);
     }
     private static void fail(String message) { throw new ImagingFailure(ImagingFailure.Kind.INVALID_INPUT, message); }
 }

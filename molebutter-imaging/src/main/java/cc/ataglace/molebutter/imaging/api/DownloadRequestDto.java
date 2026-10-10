@@ -9,7 +9,8 @@ public record DownloadRequestDto(
         Boolean includeNoticeImage,
         Boolean includeSizeImage,
         SizeGuideSelectionDto sizeGuide,
-        List<DownloadImageItemDto> images) {
+        List<DownloadImageItemDto> images,
+        String downloadProductCode) {
 
     // 선택 옵션은 생략/null 모두 false로 정규화한다. Jackson 3의 primitive null 거부와 분리한다.
     public DownloadRequestDto {
@@ -20,6 +21,12 @@ public record DownloadRequestDto(
     }
 
     // 이전 호출자는 유지하고 새 화면은 images의 혼합 순서를 사용한다.
+    public DownloadRequestDto(String productCode, String brandCode, List<Integer> imageIndexes,
+            Boolean includeNoticeImage, Boolean includeSizeImage, SizeGuideSelectionDto sizeGuide,
+            List<DownloadImageItemDto> images) {
+        this(productCode, brandCode, imageIndexes, includeNoticeImage, includeSizeImage, sizeGuide, images, null);
+    }
+
     public DownloadRequestDto(String productCode, String brandCode, List<Integer> imageIndexes,
             boolean includeNoticeImage, boolean includeSizeImage, SizeGuideSelectionDto sizeGuide) {
         this(productCode, brandCode, imageIndexes, includeNoticeImage, includeSizeImage, sizeGuide, null);

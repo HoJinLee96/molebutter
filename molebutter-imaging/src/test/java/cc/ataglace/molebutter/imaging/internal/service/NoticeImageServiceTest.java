@@ -57,14 +57,14 @@ class NoticeImageServiceTest {
         byte[] size=solidPng(Color.BLUE,780,509);String sizeId=store.put(1L,product,size);var images=mock(ImageDownloadClient.class);var sizes=mock(SizeGuideService.class);
         when(images.downloadProductImage(product.imageUrls().getFirst(),product.productCode())).thenReturn(new ImageDownloadClient.DownloadedImage(solidPng(Color.RED,20,30),"image/png",".png"));
         var downloads=new DownloadService(images,renderer,sizes,store);var request=new DownloadRequestDto("BAG1","DAKS",null,false,false,null,List.of(new DownloadImageItemDto(null,notice.id()),new DownloadImageItemDto(0,null,product.imageUrls().getFirst()),new DownloadImageItemDto(null,sizeId)));
-        var result=downloads.downloadImages(1L,request,product);assertThat(result.metadata().savedFiles()).containsExactly("상품정보.png","02.png","사이즈.png");var archive=unzip(result.archive());
-        assertThat(archive.get("상품정보.png")).isEqualTo(png(notice));assertThat(archive.get("사이즈.png")).isEqualTo(size);
-        assertThat(ImageIO.read(new ByteArrayInputStream(archive.get("02.png"))).getHeight()).isEqualTo(40);verifyNoInteractions(sizes);
+        var result=downloads.downloadImages(1L,request,product);assertThat(result.metadata().savedFiles()).containsExactly("BAG1/processed/상품정보.png","BAG1/official/02.png","BAG1/processed/사이즈.png");var archive=unzip(result.archive());
+        assertThat(archive.get("BAG1/processed/상품정보.png")).isEqualTo(png(notice));assertThat(archive.get("BAG1/processed/사이즈.png")).isEqualTo(size);
+        assertThat(ImageIO.read(new ByteArrayInputStream(archive.get("BAG1/official/02.png"))).getHeight()).isEqualTo(40);verifyNoInteractions(sizes);
     }
     @Test void legacyIncludeNoticeStillRendersUneditedSupplierNotice() throws Exception {
         var product=product();var downloads=new DownloadService(mock(ImageDownloadClient.class),renderer,mock(SizeGuideService.class),store);
         var result=downloads.downloadImages(1L,new DownloadRequestDto("BAG1","DAKS",List.of(),true,false,null),product);
-        assertThat(result.metadata().savedFiles()).containsExactly("상품정보.png");assertThat(unzip(result.archive()).get("상품정보.png")).isEqualTo(renderer.renderPng(product.notificationFields()));
+        assertThat(result.metadata().savedFiles()).containsExactly("BAG1/processed/상품정보.png");assertThat(unzip(result.archive()).get("BAG1/processed/상품정보.png")).isEqualTo(renderer.renderPng(product.notificationFields()));
     }
     @Test void rejectsOversizedEditsAndUnknownEmptyKeysBeforeGenerating() {
         var product=product();assertThatThrownBy(()->service.generate(1L,product,new NoticeImageRequestDto("DAKS",Map.of("종류","x".repeat(8193))))).hasMessageContaining("너무 깁니다");

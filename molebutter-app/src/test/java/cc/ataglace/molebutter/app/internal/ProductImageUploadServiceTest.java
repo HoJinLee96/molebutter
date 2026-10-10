@@ -40,14 +40,18 @@ class ProductImageUploadServiceTest {
     private static List<ExportImageDto> images(int count) {
         List<ExportImageDto> images = new ArrayList<>();
         for (int i = 0; i < count; i++) images.add(new ExportImageDto(i == 0 ? "01.jpg" : i == 1 ? "사이즈.png" : i == 2 ? "상품정보.png" : "%02d.png".formatted(i + 1),
-                i == 0 ? "image/jpeg" : "image/png", i == 0 ? ".jpg" : ".png", new byte[]{(byte) (i + 1), 2, 3}));
+                i == 0 ? "image/jpeg" : "image/png", i == 0 ? ".jpg" : ".png", new byte[]{(byte) (i + 1), 2, 3},
+                i == 1 || i == 2 ? ExportImageCategory.PROCESSED : ExportImageCategory.OFFICIAL));
         return images;
     }
     private static String key(String id, int sequence, String suffix) {
         String name = sequence == 2 ? "사이즈.png" : sequence == 3 ? "상품정보.png" : "%02d%s".formatted(sequence, suffix);
         return key(id, name);
     }
-    private static String key(String id, String fileName) { return "products/HIHO861W2/" + fileName; }
+    private static String key(String id, String fileName) {
+        String directory = fileName.startsWith("사이즈") || fileName.startsWith("상품정보") ? "processed" : "official";
+        return "products/HIHO861W2/" + directory + "/" + fileName;
+    }
 
     @Test void normalizesDestinationAndUploadsMixedOrderOnceWithoutSourceCodeMutation() {
         String id = id();
@@ -72,6 +76,9 @@ class ProductImageUploadServiceTest {
         assertThat(result.status()).isEqualTo("SUCCEEDED");
         assertThat(result.result().files()).extracting(ProductImageUploadJob.File::fileName).containsExactly("01.jpg", "사이즈.png", "상품정보.png");
         assertThat(result.result().files()).extracting(ProductImageUploadJob.File::key).containsExactly(key(id, 1, ".jpg"), key(id, 2, ".png"), key(id, 3, ".png"));
+        assertThat(result.result().files()).extracting(ProductImageUploadJob.File::key).containsExactly(
+                "products/HIHO861W2/official/01.jpg", "products/HIHO861W2/processed/사이즈.png",
+                "products/HIHO861W2/processed/상품정보.png");
         assertThat(result.result().files().getFirst().url()).isEqualTo("https://assets.example.test/" + key(id, 1, ".jpg"));
         assertThat(uploads.start(42L, request)).isEqualTo(result);
         assertThat(queue).hasSize(1);
@@ -82,10 +89,10 @@ class ProductImageUploadServiceTest {
     @Test void duplicateSizeAndNoticeExportsKeepFriendlyNamesAsActualObjectBasenames() {
         String id = id();
         var images = List.of(images(1).getFirst(),
-                new ExportImageDto("사이즈.png", "image/png", ".png", new byte[]{2}),
-                new ExportImageDto("상품정보.png", "image/png", ".png", new byte[]{3}),
-                new ExportImageDto("사이즈_2.png", "image/png", ".png", new byte[]{4}),
-                new ExportImageDto("상품정보_2.png", "image/png", ".png", new byte[]{5}));
+                new ExportImageDto("사이즈.png", "image/png", ".png", new byte[]{2}, ExportImageCategory.PROCESSED),
+                new ExportImageDto("상품정보.png", "image/png", ".png", new byte[]{3}, ExportImageCategory.PROCESSED),
+                new ExportImageDto("사이즈_2.png", "image/png", ".png", new byte[]{4}, ExportImageCategory.PROCESSED),
+                new ExportImageDto("상품정보_2.png", "image/png", ".png", new byte[]{5}, ExportImageCategory.PROCESSED));
         when(workspace.prepareExport(anyLong(), any())).thenReturn(() -> images);
         uploads.start(42L, request(id, 5)); queue.getFirst().run();
         var result = uploads.get(42L, id);
@@ -100,13 +107,40 @@ class ProductImageUploadServiceTest {
     }
 
     @Test void unsafeOrDuplicateExportNamesAreRejectedBeforeAnyObjectWrite() {
-        for (String name : List.of("../사이즈.png", "other/상품정보.png", "사이즈.png")) {
-            var prepared = List.of(new ExportImageDto("사이즈.png", "image/png", ".png", new byte[]{1}),
-                    new ExportImageDto(name, "image/png", ".png", new byte[]{2}));
+        for (String name : List.of("../사이즈.png", "other/상품정보.png", "official/01.png", "processed/상품정보.png", "사이즈.png")) {
+            var prepared = List.of(new ExportImageDto("사이즈.png", "image/png", ".png", new byte[]{1}, ExportImageCategory.PROCESSED),
+                    new ExportImageDto(name, "image/png", ".png", new byte[]{2}, ExportImageCategory.PROCESSED));
             when(workspace.prepareExport(anyLong(), any())).thenReturn(() -> prepared);
             String id = id(); uploads.start(42L, request(id, 2)); queue.getLast().run();
             assertThat(uploads.get(42L, id).status()).isEqualTo("FAILED");
         }
+        verify(storage, never()).create(any(), any(), any(), any(), any());
+    }
+
+    @Test void serverCategorySeparatesOfficialPngAndGeneratedPngWithoutChangingBasenames() {
+        String id = id();
+        when(workspace.prepareExport(anyLong(), any())).thenReturn(() -> List.of(
+                new ExportImageDto("01.png", "image/png", ".png", new byte[]{1}, ExportImageCategory.OFFICIAL),
+                new ExportImageDto("사이즈.png", "image/png", ".png", new byte[]{2}, ExportImageCategory.PROCESSED),
+                new ExportImageDto("03.jpg", "image/jpeg", ".jpg", new byte[]{3}, ExportImageCategory.OFFICIAL)));
+        uploads.start(42L, request(id, 3)); queue.getFirst().run();
+        var result = uploads.get(42L, id);
+        assertThat(result.status()).isEqualTo("SUCCEEDED");
+        assertThat(result.result().files()).extracting(ProductImageUploadJob.File::fileName)
+                .containsExactly("01.png", "사이즈.png", "03.jpg");
+        assertThat(result.result().files()).extracting(ProductImageUploadJob.File::key).containsExactly(
+                "products/HIHO861W2/official/01.png", "products/HIHO861W2/processed/사이즈.png",
+                "products/HIHO861W2/official/03.jpg");
+    }
+
+    @Test void missingServerCategoryIsRejectedBeforeAnyObjectWrite() {
+        var unclassified = new ExportImageDto("02.png", "image/png", ".png", new byte[]{1}, null);
+        when(workspace.prepareExport(anyLong(), any())).thenReturn(() -> List.of(images(1).getFirst(), unclassified));
+        String id = id(); uploads.start(42L, request(id, 2)); queue.getFirst().run();
+        var result = uploads.get(42L, id);
+        assertThat(result.status()).isEqualTo("FAILED");
+        assertThat(result.error()).contains("파일명");
+        assertThat(result.result().files()).isEmpty();
         verify(storage, never()).create(any(), any(), any(), any(), any());
     }
 
@@ -147,7 +181,7 @@ class ProductImageUploadServiceTest {
     @Test void validatesEveryPreparedImageBeforeFirstWriteAndKeepsPreparationFailureSafe() {
         String id = id();
         when(workspace.prepareExport(anyLong(), any())).thenReturn(() -> List.of(images(1).getFirst(),
-                new ExportImageDto("second.png", "image/png", "../png", new byte[]{1})));
+                new ExportImageDto("second.png", "image/png", "../png", new byte[]{1}, ExportImageCategory.OFFICIAL)));
         uploads.start(42L, request(id, 2)); queue.getFirst().run();
         assertThat(uploads.get(42L, id).status()).isEqualTo("FAILED");
         assertThat(uploads.get(42L, id).result().files()).isEmpty();
@@ -156,8 +190,8 @@ class ProductImageUploadServiceTest {
 
     @Test void perFileLimitFailsBeforeAnyWriteEvenWhenAnEarlierFileWouldFit() {
         uploads = new ProductImageUploadService(workspace, storage, queue::add, 2, clock);
-        when(workspace.prepareExport(anyLong(), any())).thenReturn(() -> List.of(new ExportImageDto("01.png", "image/png", ".png", new byte[]{1}),
-                new ExportImageDto("02.png", "image/png", ".png", new byte[]{1, 2, 3})));
+        when(workspace.prepareExport(anyLong(), any())).thenReturn(() -> List.of(new ExportImageDto("01.png", "image/png", ".png", new byte[]{1}, ExportImageCategory.OFFICIAL),
+                new ExportImageDto("02.png", "image/png", ".png", new byte[]{1, 2, 3}, ExportImageCategory.OFFICIAL)));
         String id = id(); uploads.start(42L, request(id, 2)); queue.getFirst().run();
         assertThat(uploads.get(42L, id).status()).isEqualTo("FAILED");
         verify(storage, never()).create(any(), any(), any(), any(), any());
@@ -275,11 +309,12 @@ class ProductImageUploadServiceTest {
         when(storage.list(StorageArea.PUBLIC, "products/TEST0000/", null, 1)).thenReturn(
                 new ObjectPage(List.of(stored("products/TEST0000/01.jpg")), null));
         assertDuplicate(() -> uploads.start(42L, original));
-        verify(storage, times(1)).create(eq(StorageArea.PUBLIC), eq("products/TEST0000/01.jpg"), any(), any(), any());
+        verify(storage, times(1)).create(eq(StorageArea.PUBLIC), eq("products/TEST0000/official/01.jpg"), any(), any(), any());
     }
 
-    @Test void existingFlatOrLegacyNestedProductIsRejectedBeforePreparingOrWriting() {
-        for (String existing : List.of("products/HIHO861W2/01.jpg", "products/HIHO861W2/old-request/01.jpg")) {
+    @Test void existingOfficialProcessedFlatOrLegacyNestedProductIsRejectedBeforePreparingOrWriting() {
+        for (String existing : List.of("products/HIHO861W2/official/01.jpg", "products/HIHO861W2/processed/상품정보.png",
+                "products/HIHO861W2/01.jpg", "products/HIHO861W2/9b198650-68ba-43cc-8306-eccbbda296d9/01.jpg")) {
             when(storage.list(StorageArea.PUBLIC, "products/HIHO861W2/", null, 1)).thenReturn(
                     new ObjectPage(List.of(stored(existing)), null));
             assertDuplicate(() -> uploads.start(42L, request(id(), 2)));

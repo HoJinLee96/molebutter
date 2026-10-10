@@ -5,6 +5,16 @@ import org.junit.jupiter.api.Test;
 import cc.ataglace.molebutter.imaging.api.*;
 
 class ImagingInputsTest {
+    @Test void downloadCodeIsSeparateNormalizedAndOptionalForOldRequests(){
+        var old=new DownloadRequestDto("bag1","DAKS",List.of(0),false,false,null);
+        assertThat(ImagingInputs.downloadCode(old)).isEqualTo("BAG1");
+        var custom=new DownloadRequestDto("BAG1","DAKS",null,null,null,null,List.of()," custom_1-2 ");
+        ImagingInputs.download(custom);
+        assertThat(ImagingInputs.downloadCode(custom)).isEqualTo("CUSTOM_1-2");
+        assertThat(custom.productCode()).isEqualTo("BAG1");
+        assertThat(custom.includeNoticeImage()).isFalse();
+        assertThat(custom.includeSizeImage()).isFalse();
+    }
     @Test void requiresRealActorProductAndSupportedBrand(){
         assertThatThrownBy(()->ImagingInputs.actor(null)).isInstanceOf(ImagingFailure.class);
         assertThatThrownBy(()->ImagingInputs.actor(0L)).isInstanceOf(ImagingFailure.class);

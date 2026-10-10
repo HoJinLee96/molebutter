@@ -67,7 +67,7 @@ class ProductImageControllerTest {
                 Instant.now(), null, null, null));
         http.perform(post("/api/product-images/products/download").contentType("application/json")
                 .content("""
-                    {"productCode":"DCBA870W3","brandCode":"DAKS","actorId":999,
+                    {"productCode":"DCBA870W3","brandCode":"DAKS","actorId":999,"downloadProductCode":" wbba162w3 ",
                      "images":[{"imageIndex":2},{"generatedImageId":"generated-1"},{"imageIndex":0}],
                      "includeNoticeImage":true,"includeSizeImage":false}
                     """))
@@ -76,7 +76,24 @@ class ProductImageControllerTest {
         verify(workspace).startDownload(eq(42L), input.capture());
         assertThat(input.getValue().images()).extracting(DownloadImageItemDto::imageIndex).containsExactly(2, null, 0);
         assertThat(input.getValue().images().get(1).generatedImageId()).isEqualTo("generated-1");
+        assertThat(input.getValue().productCode()).isEqualTo("DCBA870W3");
+        assertThat(input.getValue().downloadProductCode()).isEqualTo(" wbba162w3 ");
         verify(access).productActor(42L, false);
+    }
+
+    @Test void legacyDownloadCanOmitTheStorageCodeAndNullableFlags() throws Exception {
+        when(workspace.startDownload(eq(42L), any())).thenReturn(new JobDto("legacy", "RUNNING", "준비 중",
+                Instant.now(), null, null, null));
+        http.perform(post("/api/product-images/products/download").contentType("application/json")
+                .content("""
+                    {"productCode":"BAG1","brandCode":"DAKS","imageIndexes":[0],"includeNoticeImage":null}
+                    """))
+                .andExpect(status().isAccepted());
+        var input=ArgumentCaptor.forClass(DownloadRequestDto.class);
+        verify(workspace).startDownload(eq(42L),input.capture());
+        assertThat(input.getValue().downloadProductCode()).isNull();
+        assertThat(input.getValue().includeNoticeImage()).isFalse();
+        assertThat(input.getValue().includeSizeImage()).isFalse();
     }
 
     @Test void archiveIsPrivateBrowserAttachmentAndFailuresUseApiContract() throws Exception {
