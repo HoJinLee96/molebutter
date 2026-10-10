@@ -490,3 +490,11 @@ JS 편집·전송·공통 편집 42건 통과. 기존 편집 브라우저 2560·
 별도 `target/credential-filename-verification` 빌드에서 설정 5·R2 설정 4·쿠팡 인증/조회 계약 20·네이버 인증 계약 11, 총 40개 테스트가 통과했다. 처음 실행은 샌드박스의 로컬 socket 제한으로 중단되어 로컬 가짜 HTTP 서버를 허용한 실행에서 다시 검증했다. 실제 마켓 호출은 비활성화했다.
 
 추가로 컴포넌트·DB·스케줄러를 실행하지 않는 임시 Spring ConfigData 진단으로 수정된 일반 설정의 import를 확인했다. 통합 파일 import 및 쿠팡·네이버 필수 설정의 존재 여부만 모두 true로 확인했고 값은 출력하지 않았다. 비밀 파일을 직접 열거나 수정하지 않았으며 마켓 인증 성공·실제 상품 조회는 이 확인에 포함하지 않는다. 실행 중인 개발 서버는 재빌드·재시작 후 새 import를 적용한다.
+
+## PR 32 공통 전송 입력 수정·주문 수집 Enter 회귀 (2026-10-10)
+
+- `node --test src/test/js/*.test.cjs`: 199개 통과. 공통 실행의 확정 실패 후 `/revise`, 현재 입력 보존·중복 클릭 방지·실패 복구·기존 미리보기 폐기·초안 전환 후 지연 응답 차단과 주문 수집의 명시적 제출을 확인했다.
+- `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home MOLEBUTTER_COUPANG_LIVE=false MOLEBUTTER_ORDER_LIVE=false CLOUDFLARE_R2_ENABLED=false bash scripts/test-integration.sh -pl molebutter-app -am -Dtest=MarketplaceSubmissionFlowIT,LayoutViewTest -Dsurefire.failIfNoSpecifiedTests=false`: 격리 MySQL·Redis에서 35개 통과(실행 흐름 32·화면 3). 성공·실패 결과 보존, 미실행 단계 종료, 미확인·실행 중 수정 거절, 권한·CSRF·동시 처리와 새 준비를 검증했다.
+- `node scripts/test-marketplace-submissions.cjs`, `node scripts/test-marketplace-orders-ui.cjs`: 로컬 합성 API와 Chrome 1440px·390px 통과. 입력 수정 후 작성값과 기존 이력 보존·새 미리보기, 날짜 Enter/폼 제출의 수집 차단, 검색 Enter와 버튼 키보드 실행을 확인했다.
+
+실계정 API·운영 DB·R2 쓰기·배포는 수행하지 않았다.
