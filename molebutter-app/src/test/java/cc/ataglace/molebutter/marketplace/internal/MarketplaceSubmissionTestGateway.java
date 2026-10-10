@@ -9,6 +9,9 @@ import cc.ataglace.molebutter.marketplace.api.MarketplaceEditing;
 
 /** Test-only transport: it cannot issue network requests. */
 public class MarketplaceSubmissionTestGateway implements cc.ataglace.molebutter.marketplace.api.MarketplaceWriteGateway {
+    private String currentAccount;
+    public void currentAccount(String vendor){currentAccount=vendor==null?null:DefaultMarketplaceSubmissions.account(vendor);}
+    @Override public String accountKey(){return currentAccount;}
     private List<String> types=List.of("CREATE");
     private final Map<String,Deque<State>> responses=new HashMap<>();
     private final List<String> dispatches=new ArrayList<>(),readbacks=new ArrayList<>();
@@ -17,7 +20,7 @@ public class MarketplaceSubmissionTestGateway implements cc.ataglace.molebutter.
     private boolean rebaseActual;
     private StepSnapshot lastReconciled;
     public record StepSnapshot(String id,String bodyJson,String expectedJson) {}
-    public void reset(){types=List.of("CREATE");responses.clear();dispatches.clear();readbacks.clear();lastMapping=null;lastPrepared=null;rebaseActual=false;lastReconciled=null;}
+    public void reset(){currentAccount=null;types=List.of("CREATE");responses.clear();dispatches.clear();readbacks.clear();lastMapping=null;lastPrepared=null;rebaseActual=false;lastReconciled=null;}
     public void types(String... values){types=List.of(values);}
     public void outcomes(String type,String... values){responses.put(type,new ArrayDeque<>(Arrays.stream(values).map(State::valueOf).toList()));}
     public List<String> dispatches(){return List.copyOf(dispatches);}

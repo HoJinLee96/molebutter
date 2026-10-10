@@ -170,8 +170,10 @@ public class DefaultMarketplaceSubmissions implements MarketplaceSubmissions {
         access.productActor(actor,true);long executionId=id(value);
         return transactions.execute(tx->{
             access.productActor(actor,true);var original=store.execution(executionId,false);var d=draftStore.find(id(original.draftId()),true);var e=store.execution(executionId,true);if(store.unsupportedSnapshotVersion(executionId))throw new MarketplaceSubmissionFailure(CONFLICT);
+            if(e.revised())throw new MarketplaceSubmissionFailure(CONFLICT);
             if(e.status()!=Status.FAILED&&e.status()!=Status.PARTIAL)throw new MarketplaceSubmissionFailure(CONFLICT);
             if(d.revision()!=e.revision())throw new MarketplaceSubmissionFailure(CONFLICT);
+            if(e.targets().stream().flatMap(t->t.steps().stream()).anyMatch(step->Set.of(Status.RUNNING,Status.UNKNOWN,Status.ACCEPTED).contains(step.status())))throw new MarketplaceSubmissionFailure(CONFLICT);
             if(e.targets().size()!=1||accountFor(e.targets().getFirst().market())==null)throw new MarketplaceSubmissionFailure(CONFLICT);
             if(store.active(id(e.draftId()),accountFor(e.targets().getFirst().market()),executionId))throw new MarketplaceSubmissionFailure(CONFLICT);
             // Baseline/account conflicts need a fresh preview, not a replay of an old payload.
@@ -188,6 +190,20 @@ public class DefaultMarketplaceSubmissions implements MarketplaceSubmissions {
             if(e.targets().size()!=1||accountFor(e.targets().getFirst().market())==null)throw new MarketplaceSubmissionFailure(CONFLICT);
             if(store.active(id(e.draftId()),accountFor(e.targets().getFirst().market()),executionId))throw new MarketplaceSubmissionFailure(CONFLICT);
             store.queueReconcile(executionId);return store.execution(executionId,false);
+        });
+    }
+    @Override public Execution revise(Long actor,String value){
+        access.productActor(actor,true);long executionId=id(value);
+        return transactions.execute(tx->{
+            access.productActor(actor,true);var original=store.execution(executionId,false);
+            draftStore.find(id(original.draftId()),true);var e=store.execution(executionId,true);
+            if(e.targets().size()!=1||accountFor(e.targets().getFirst().market())==null||!Objects.equals(accountFor(e.targets().getFirst().market()),store.executionAccount(executionId)))throw new MarketplaceSubmissionFailure(CONFLICT);
+            if(e.revised())return e;
+            if(e.status()!=Status.FAILED&&e.status()!=Status.PARTIAL)throw new MarketplaceSubmissionFailure(CONFLICT);
+            var steps=e.targets().stream().flatMap(t->t.steps().stream()).toList();
+            if(steps.stream().noneMatch(s->s.status()==Status.FAILED)||steps.stream().anyMatch(s->Set.of(Status.RUNNING,Status.UNKNOWN,Status.ACCEPTED).contains(s.status()))||store.pendingRevisionWork(executionId))throw new MarketplaceSubmissionFailure(CONFLICT);
+            if(store.active(id(e.draftId()),accountFor(e.targets().getFirst().market()),executionId))throw new MarketplaceSubmissionFailure(CONFLICT);
+            store.revise(executionId,actor);return store.execution(executionId,false);
         });
     }
     @Scheduled(fixedDelay=1000,initialDelay=15000)

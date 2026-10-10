@@ -96,7 +96,7 @@ export function enableImageUploading({ canOpen, snapshot, onState }) {
     document.getElementById('closeUploadDialog').addEventListener('click', close);
     dialog.addEventListener('cancel', () => { draft = null; });
     dialog.addEventListener('close', sync);
-    form.addEventListener('submit', async event => {
+    FormActions.bindExplicitSubmit(form, document.getElementById('confirmUploadButton'), async event => {
         event.preventDefault();
         if (!draft || pending || working) return;
         const uploadProductCode = code.value.trim().toUpperCase();

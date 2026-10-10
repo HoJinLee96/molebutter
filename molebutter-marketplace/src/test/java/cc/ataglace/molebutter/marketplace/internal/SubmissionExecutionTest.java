@@ -142,5 +142,32 @@ class SubmissionExecutionTest {
         }
         verifyNoInteractions(writer);
     }
+    @Test void revisionRetiresConfirmedFailureWithoutDispatchAndIsIdempotent(){
+        var failed=execution(Status.FAILED,0);var revised=new Execution(failed.id(),failed.draftId(),failed.revision(),failed.status(),failed.createdAt(),failed.updatedAt(),failed.targets(),true);
+        when(store.execution(30,false)).thenReturn(failed,revised);when(store.execution(30,true)).thenReturn(failed,revised);
+        when(store.executionAccount(30)).thenReturn(DefaultMarketplaceSubmissions.account("test-vendor"));when(draftStore.find(10,true)).thenReturn(document(0));
+        assertThat(service.revise(actor,"30").revised()).isTrue();assertThat(service.revise(actor,"30").revised()).isTrue();
+        verify(store,times(1)).revise(30,actor);verifyNoInteractions(writer);
+        when(store.execution(30,false)).thenReturn(revised);when(store.execution(30,true)).thenReturn(revised);
+        assertThatThrownBy(()->service.retry(actor,"30")).isInstanceOf(MarketplaceSubmissionFailure.class);verify(store,never()).queueRetry(anyLong());
+    }
+    @Test void revisionCannotRetireRunningUncertainOrAcceptedWork(){
+        when(draftStore.find(10,true)).thenReturn(document(0));when(store.executionAccount(30)).thenReturn(DefaultMarketplaceSubmissions.account("test-vendor"));
+        for(var state:List.of(Status.QUEUED,Status.RUNNING,Status.UNKNOWN,Status.ACCEPTED,Status.SUCCEEDED)){
+            when(store.execution(30,false)).thenReturn(execution(state,0));when(store.execution(30,true)).thenReturn(execution(state,0));
+            assertThatThrownBy(()->service.revise(actor,"30")).isInstanceOf(MarketplaceSubmissionFailure.class);
+        }
+        var uncertain=new Execution("30","10",0,Status.PARTIAL,"","",List.of(new Target("COUPANG","UPDATE",Status.PARTIAL,"9001",List.of(new Step("failed",StepType.PRICE,null,"",Status.FAILED,1,"REJECTED","",""),new Step("pending",StepType.PRODUCT,null,"",Status.ACCEPTED,1,"","","")))));
+        when(store.execution(30,false)).thenReturn(uncertain);when(store.execution(30,true)).thenReturn(uncertain);
+        assertThatThrownBy(()->service.revise(actor,"30")).isInstanceOf(MarketplaceSubmissionFailure.class);verify(store,never()).revise(anyLong(),any());verifyNoInteractions(writer);
+    }
+    @Test void revisionRejectsChangedAccountOtherActiveExecutionAndAttemptedPendingWork(){
+        var failed=execution(Status.FAILED,0);when(store.execution(30,false)).thenReturn(failed);when(store.execution(30,true)).thenReturn(failed);when(draftStore.find(10,true)).thenReturn(document(0));
+        when(store.executionAccount(30)).thenReturn("different-account");assertThatThrownBy(()->service.revise(actor,"30")).isInstanceOf(MarketplaceSubmissionFailure.class);
+        when(store.executionAccount(30)).thenReturn(DefaultMarketplaceSubmissions.account("test-vendor"));when(store.active(10,DefaultMarketplaceSubmissions.account("test-vendor"),30)).thenReturn(true);
+        assertThatThrownBy(()->service.revise(actor,"30")).isInstanceOf(MarketplaceSubmissionFailure.class);
+        when(store.active(10,DefaultMarketplaceSubmissions.account("test-vendor"),30)).thenReturn(false);when(store.pendingRevisionWork(30)).thenReturn(true);
+        assertThatThrownBy(()->service.revise(actor,"30")).isInstanceOf(MarketplaceSubmissionFailure.class);verify(store,never()).revise(anyLong(),any());verifyNoInteractions(writer);
+    }
 
 }

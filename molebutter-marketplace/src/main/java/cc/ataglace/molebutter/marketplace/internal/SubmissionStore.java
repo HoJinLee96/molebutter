@@ -76,8 +76,8 @@ class SubmissionStore {
         return id;
     }
     Execution execution(long id,boolean lock){
-        var rows=db.query("SELECT draft_id,draft_revision,status,created_at,updated_at FROM marketplace_execution WHERE id=?"+(lock?" FOR UPDATE":""),
-            (r,n)->new Execution(Long.toString(id),r.getString(1),r.getLong(2),Status.valueOf(r.getString(3)),r.getTimestamp(4).toInstant().toString(),r.getTimestamp(5).toInstant().toString(),targets(id,lock)),id);
+        var rows=db.query("SELECT draft_id,draft_revision,status,created_at,updated_at,revised_at FROM marketplace_execution WHERE id=?"+(lock?" FOR UPDATE":""),
+            (r,n)->new Execution(Long.toString(id),r.getString(1),r.getLong(2),Status.valueOf(r.getString(3)),r.getTimestamp(4).toInstant().toString(),r.getTimestamp(5).toInstant().toString(),targets(id,lock),r.getTimestamp(6)!=null),id);
         if(rows.isEmpty())throw new MarketplaceSubmissionFailure(NOT_FOUND);return rows.getFirst();
     }
     private List<Target> targets(long id,boolean lock){return db.query("SELECT market,mode,status,external_product_id FROM marketplace_execution_target WHERE execution_id=? ORDER BY market"+(lock?" FOR UPDATE":""),
@@ -97,6 +97,15 @@ class SubmissionStore {
     void queueRetry(long id){
         db.update("UPDATE marketplace_execution_step SET status='QUEUED',action='WRITE',updated_at=CURRENT_TIMESTAMP(6) WHERE execution_id=? AND status='FAILED'",id);aggregate(id);
     }
+    void revise(long id,Long actor){
+        // Preserve all attempted outcomes. Only never-started writes are retired.
+        db.update("UPDATE marketplace_execution_step SET status='FAILED',result_code='NOT_EXECUTED',result_message='입력 수정으로 이전 요청을 종료했습니다. 실행하지 않은 단계입니다.',updated_at=CURRENT_TIMESTAMP(6) WHERE execution_id=? AND status='QUEUED' AND action='WRITE' AND attempts=0",id);
+        db.update("UPDATE marketplace_execution SET revised_at=CURRENT_TIMESTAMP(6),revised_by=? WHERE id=? AND revised_at IS NULL",actor,id);aggregate(id);
+    }
+    boolean pendingRevisionWork(long id){
+        return !db.queryForList("SELECT step_id FROM marketplace_execution_step WHERE execution_id=? AND status='QUEUED' AND (action<>'WRITE' OR attempts<>0) FOR UPDATE",String.class,id).isEmpty();
+    }
+    String executionAccount(long id){return db.queryForObject("SELECT account_key FROM marketplace_execution_target WHERE execution_id=?",String.class,id);}
     void queueReconcile(long id){
         db.update("UPDATE marketplace_execution_step SET status='QUEUED',action='RECONCILE',updated_at=CURRENT_TIMESTAMP(6) WHERE execution_id=? AND status IN ('UNKNOWN','ACCEPTED')",id);aggregate(id);
     }
@@ -148,6 +157,19 @@ class SubmissionStore {
         db.queryForList("SELECT account_key FROM marketplace_submission_account WHERE account_key=? FOR UPDATE",String.class,job.prepared().accountKey());
         if(!owns(job))return;
         db.queryForList("SELECT id FROM marketplace_draft WHERE id=? FOR UPDATE",Long.class,job.draftId());execution(job.executionId(),true);
+        if(job.action().equals("RECONCILE") && result.state()==MarketplaceWriteGateway.State.FAILED
+                && Set.of("ACCESS_DENIED","ACCOUNT_CHANGED","UNSUPPORTED_SNAPSHOT_VERSION").contains(publicCode(result.code()))){
+            // A failed check is not evidence that the previously dispatched write failed.
+            var previous=job.previous();
+            var retained=previous!=null && (previous.state()==MarketplaceWriteGateway.State.UNKNOWN || previous.state()==MarketplaceWriteGateway.State.ACCEPTED)
+                    ? previous : new MarketplaceWriteGateway.Result(MarketplaceWriteGateway.State.UNKNOWN,job.mapping(),"INTERRUPTED",null,Instant.now());
+            String retainedState=retained.state()==MarketplaceWriteGateway.State.ACCEPTED?"ACCEPTED":"UNKNOWN";
+            db.update("UPDATE marketplace_execution_step SET status=?,result_json=?,result_code=?,result_message=?,updated_at=CURRENT_TIMESTAMP(6) WHERE execution_id=? AND step_id=? AND status='RUNNING'",retainedState,json.writeValueAsString(retained),publicCode(retained.code()),"기존 전송 결과는 미확인 상태로 유지됩니다. 최근 결과 확인 실패: "+publicCode(result.code()),job.executionId(),job.step().id());
+            db.update("UPDATE marketplace_execution_attempt SET status='FAILED',result_code=?,completed_at=CURRENT_TIMESTAMP(6) WHERE id=?",publicCode(result.code()),job.attemptId());
+            aggregate(job.executionId());
+            db.update("UPDATE marketplace_submission_account SET lease_owner=NULL,lease_until=NULL WHERE account_key=? AND lease_owner=?",job.prepared().accountKey(),job.leaseOwner());
+            return;
+        }
         String state=switch(result.state()){case CONFIRMED->"SUCCEEDED";case ACCEPTED->"ACCEPTED";case FAILED->"FAILED";case UNKNOWN->"UNKNOWN";};
         String code=publicCode(result.code()),message=publicMessage(state,code,job.prepared().market());
         db.update("UPDATE marketplace_execution_step SET status=?,result_json=?,result_code=?,result_message=?,updated_at=CURRENT_TIMESTAMP(6) WHERE execution_id=? AND step_id=? AND status='RUNNING'",state,json.writeValueAsString(result),code,message,job.executionId(),job.step().id());
@@ -156,7 +178,7 @@ class SubmissionStore {
             saveMapping(job.draftId(),job.revision(),job.prepared().market(),result.mapping(),false);
             db.update("UPDATE marketplace_execution_target SET external_product_id=? WHERE execution_id=? AND market=?",result.mapping().sellerProductId(),job.executionId(),job.prepared().market());
         }
-        if(result.state()==MarketplaceWriteGateway.State.FAILED&&Set.of("BASELINE_CHANGED","ACCOUNT_CHANGED","ACCESS_DENIED","MAPPING_CHANGED","ALREADY_CREATED","ALREADY_REGISTERED","LEGACY_INTENT").contains(code)){
+        if(result.state()==MarketplaceWriteGateway.State.FAILED&&Set.of("BASELINE_CHANGED","ACCOUNT_CHANGED","ACCESS_DENIED","MAPPING_CHANGED","ALREADY_CREATED","ALREADY_REGISTERED","LEGACY_INTENT","UNSUPPORTED_SNAPSHOT_VERSION").contains(code)){
             // This intent cannot safely be replayed. Release only never-started writes for a fresh preview.
             db.update("UPDATE marketplace_execution_step SET status='FAILED',result_code='NOT_EXECUTED',result_message='앞 단계 충돌로 실행하지 않았습니다. 새 변경 확인이 필요합니다.',updated_at=CURRENT_TIMESTAMP(6) WHERE execution_id=? AND status='QUEUED' AND action='WRITE'",job.executionId());
         }

@@ -15,6 +15,8 @@ public interface MarketplaceSubmissions {
     PageResponse<Execution> list(Long actor, String draftId, int page, int size);
     Execution retry(Long actor, String executionId);
     Execution reconcile(Long actor, String executionId);
+    /** Retire only a confirmed failed intent before preparing corrected inputs. No external write. */
+    Execution revise(Long actor, String executionId);
 
     enum Status { QUEUED, RUNNING, SUCCEEDED, ACCEPTED, PARTIAL, FAILED, UNKNOWN }
     enum StepType { CREATE, PRODUCT, DELIVERY, ORIGINAL_PRICE, PRICE, STOCK, VERIFY }
@@ -34,5 +36,9 @@ public interface MarketplaceSubmissions {
     record Target(String market, String mode, Status status, String externalProductId,
                   List<Step> steps) {}
     record Execution(String id, String draftId, long revision, Status status,
-                     String createdAt, String updatedAt, List<Target> targets) {}
+                     String createdAt, String updatedAt, List<Target> targets, boolean revised) {
+        public Execution(String id,String draftId,long revision,Status status,String createdAt,String updatedAt,List<Target> targets){
+            this(id,draftId,revision,status,createdAt,updatedAt,targets,false);
+        }
+    }
 }

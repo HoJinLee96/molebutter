@@ -160,13 +160,14 @@
                 <p class="form-error" id="uploadDialogError" role="alert" hidden></p>
                 <div class="upload-dialog-actions">
                     <button class="btn" id="cancelUploadButton" type="button">취소</button>
-                    <button class="btn primary" id="confirmUploadButton" type="submit">공개 버킷에 업로드</button>
+                    <button class="btn primary" id="confirmUploadButton" type="button">공개 버킷에 업로드</button>
                 </div>
             </form>
         </dialog>
     </div>
 </main>
 <script th:src="@{/js/api.js}" src="/js/api.js"></script>
+<script th:src="@{/js/form-actions.js}" src="/js/form-actions.js"></script>
 <script type="module" th:src="@{/js/product-images/app.js}" src="/js/product-images/app.js"></script>
 </body>
 </html>
