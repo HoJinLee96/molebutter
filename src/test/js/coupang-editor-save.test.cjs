@@ -47,3 +47,13 @@ test('a stale result refresh cannot lock the editor after revision, and reentry 
 test('expired original observation blocks new transmission after revision while preserving edits',async()=>{
  const h=harness({stored:'execution'});h.save.observe({token:'expired',expiresAt:'2000-01-01T00:00:00Z'},draft());await flush();h.edited.options[0].attributes[0].value='KEPT';await h.action('revise');await h.save.prepare();assert.equal(h.edited.options[0].attributes[0].value,'KEPT');assert(!h.requests.some(r=>r.url.endsWith('/save-preparation')));assert.match(h.node('editor-save-error').textContent,/만료/);
 });
+test('new tab restores the first execution with an allowed page size and blocks writes until history resolves',async()=>{
+ let release;const h=harness({get:url=>new Promise(resolve=>{release=resolve;})});h.save.observe({token:'original',expiresAt:'2099-01-01T00:00:00Z',draftId:'draft'},draft());assert(h.requests.at(-1).url.endsWith('&size=10'));assert.equal(h.locks.at(-1),true);h.edited.options[0].attributes[0].value='CHANGED';await h.save.prepare();assert(!h.requests.some(r=>r.method==='POST'));release({items:[execution('UNKNOWN',['UNKNOWN'])]});await flush();assert(h.node('editor-save-results').innerHTML.includes('data-save-action="reconcile"'));assert.equal(h.storage.get('coupang-save-1'),'execution');assert.equal(h.locks.at(-1),true);
+});
+test('empty execution history permits new changes while a failed history lookup preserves input and blocks writes',async()=>{
+ const empty=harness({get:async()=>({items:[]})});empty.save.observe({token:'original',expiresAt:'2099-01-01T00:00:00Z',draftId:'draft'},draft());await flush();assert.equal(empty.locks.at(-1),false);empty.edited.options[0].attributes[0].value='NEW';await empty.save.prepare();assert(empty.requests.some(r=>r.url.endsWith('/save-preparation')));
+ const failed=harness({get:async()=>{throw Error('합성 이력 조회 실패');}});failed.save.observe({token:'original',draftId:'draft'},draft());await flush();assert.equal(failed.locks.at(-1),true);assert.equal(failed.node('editor-save-error').textContent,'합성 이력 조회 실패');assert.equal(failed.edited.options[0].attributes[0].value,'MPN');
+});
+test('history from an older observation cannot replace a newer execution view',async()=>{
+ let release;const h=harness({get:url=>url.includes('draftId=old')?new Promise(r=>release=r):Promise.resolve({items:[{...execution(),revised:true,id:'latest'}]})});h.save.observe({token:'old',draftId:'old'},draft());h.save.observe({token:'new',draftId:'new'},draft());await flush();release({items:[execution('UNKNOWN',['UNKNOWN'])]});await flush();assert.equal(h.storage.get('coupang-save-1'),'latest');assert.equal(h.locks.at(-1),false);
+});
