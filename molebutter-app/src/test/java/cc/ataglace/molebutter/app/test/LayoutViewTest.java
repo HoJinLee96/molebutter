@@ -22,7 +22,7 @@ class LayoutViewTest {
         if(role==UserRole.VIEWER){assertThat(home).doesNotContain("/settings","/products","/user-manage","/product-images");return;}
         var images=render("product-images","/product-images",role);
         assertThat(home).contains("/product-images");
-        assertThat(images).contains("상품 이미지 도구","id=\"lookupForm\"","/js/product-images/app.js");
+        assertThat(images).contains("상품 정보 도구","id=\"lookupForm\"","id=\"storageProductCodeInput\"","/js/form-actions.js","/js/product-images/app.js");
         Files.createDirectories(Path.of("target/ui-fixtures"));
         Files.writeString(Path.of("target/ui-fixtures/product-images-"+role.name()+".html"),images);
         if(role==UserRole.ADMIN) {

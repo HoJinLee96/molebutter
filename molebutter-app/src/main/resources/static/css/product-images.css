@@ -448,15 +448,18 @@
 .product-image-workspace .download-buttons {
     display: flex;
     flex-wrap: wrap;
+    align-items: end;
     gap: 8px;
 }
+.product-image-workspace .storage-code-field { --field-width: 260px; --control-width: 100%; width: var(--field-width); max-width: 100%; }
+.product-image-workspace #storageProductCodeInput { width: 100%; text-transform: uppercase; }
+.product-image-workspace .download-main > .upload-hint { margin: 0; }
 .product-image-workspace .image-upload-dialog { width: min(560px, calc(100vw - 32px)); }
 .product-image-workspace .image-upload-dialog .product-dialog-head { padding-top: 0; position: static; }
-.product-image-workspace .image-upload-dialog .upload-code-field { --field-width: 100%; --control-width: 100%; width: 100%; margin-top: 16px; }
 .product-image-workspace .upload-summary { margin: 16px 0; color: var(--text-sub); overflow-wrap: anywhere; }
 .product-image-workspace .upload-hint { color: var(--text-muted); font-size: 13px; margin: 8px 0; }
 .product-image-workspace .upload-path { margin: 12px 0; font-size: 13px; overflow-wrap: anywhere; }
-.product-image-workspace #uploadProductCodeInput { text-transform: uppercase; }
+.product-image-workspace .upload-path p { margin: 6px 0; }
 .product-image-workspace .upload-dialog-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 20px; }
 .product-image-workspace .upload-result { display: grid; gap: 8px; min-width: 0; margin-top: 16px; }
 .product-image-workspace .upload-result > .btn { justify-self: start; }

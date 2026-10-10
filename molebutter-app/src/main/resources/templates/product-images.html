@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org">
-<head th:replace="~{fragments/head :: common('상품 이미지 도구')}"></head>
+<head th:replace="~{fragments/head :: common('상품 정보 도구')}"></head>
 <body class="app-layout">
 <header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
 <main id="main-content" tabindex="-1" class="page product-images-page">
-    <h1>상품 이미지 도구</h1>
+    <h1>상품 정보 도구</h1>
     <link rel="stylesheet" th:href="@{/css/product-images.css}" href="/css/product-images.css">
     <div class="product-image-workspace">
         <div class="lookup-shell">
@@ -124,11 +124,18 @@
 
                 <div class="download-actions">
                     <div class="download-main">
-                        <div class="download-title">이미지 다운로드</div>
+                        <div class="download-title">이미지 저장</div>
                         <div class="download-buttons">
+                            <div class="field storage-code-field">
+                                <label for="storageProductCodeInput">저장용 상품코드</label>
+                                <input id="storageProductCodeInput" type="text" autocomplete="off" maxlength="40"
+                                       aria-describedby="storageProductCodeHint storageProductCodeError">
+                            </div>
                             <button class="btn primary" id="downloadImagesButton" type="button">다운로드</button>
                             <button class="btn" id="uploadImagesButton" type="button">업로드</button>
                         </div>
+                        <p class="upload-hint" id="storageProductCodeHint">영문·숫자·밑줄(_)·하이픈(-) 4~40자. 조회 상품정보는 바뀌지 않습니다.</p>
+                        <p class="form-error" id="storageProductCodeError" role="alert" hidden></p>
                     </div>
                     <div class="download-result hidden" id="downloadResult">
                         <p class="download-status" id="downloadStatus" role="status"></p>
@@ -151,12 +158,12 @@
             </div>
             <form id="imageUploadForm">
                 <p class="upload-summary">조회 상품코드 <strong id="uploadSourceCode"></strong> · 이미지 <strong id="uploadImageCount"></strong>개</p>
-                <div class="field upload-code-field">
-                    <label for="uploadProductCodeInput">저장할 상품코드</label>
-                    <input id="uploadProductCodeInput" type="text" autocomplete="off" maxlength="40" aria-describedby="uploadCodeHint uploadPathPreview" required>
+                <p class="upload-summary">저장용 상품코드 <strong id="uploadSelectedCode"></strong></p>
+                <p class="upload-hint">다른 상품코드로 저장하려면 취소한 후 저장용 상품코드를 수정해주세요.</p>
+                <div class="upload-path" id="uploadPathPreview">
+                    <p>원본 이미지 <code id="uploadOfficialPathPreview"></code></p>
+                    <p>가공 이미지 <code id="uploadProcessedPathPreview"></code></p>
                 </div>
-                <p class="upload-hint" id="uploadCodeHint">영문·숫자·밑줄(_)·하이픈(-) 4~40자. 조회 상품정보는 바뀌지 않습니다.</p>
-                <p class="upload-path">공개 저장 경로 <code id="uploadPathPreview"></code></p>
                 <p class="form-error" id="uploadDialogError" role="alert" hidden></p>
                 <div class="upload-dialog-actions">
                     <button class="btn" id="cancelUploadButton" type="button">취소</button>

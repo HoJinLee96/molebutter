@@ -4,13 +4,20 @@ const JOBS = '/api/product-images/products/upload/jobs/';
 const STORAGE_KEY = 'product-images.pending-upload';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export function normalizeStorageProductCode(value) {
+    const code = String(value ?? '').trim();
+    if (!/^[A-Za-z0-9_-]{4,40}$/.test(code)) {
+        throw new Error('저장용 상품코드를 영문·숫자·밑줄(_)·하이픈(-) 4~40자로 입력해주세요.');
+    }
+    return code.toUpperCase();
+}
+
 /** The request ID and immutable input survive response loss and a page refresh. */
 export function enableImageUploading({ canOpen, snapshot, onState }) {
     const button = document.getElementById('uploadImagesButton');
     const dialog = document.getElementById('imageUploadDialog');
     const form = document.getElementById('imageUploadForm');
-    const code = document.getElementById('uploadProductCodeInput');
-    const preview = document.getElementById('uploadPathPreview');
+    const confirm = document.getElementById('confirmUploadButton');
     const error = document.getElementById('uploadDialogError');
     const resultPanel = document.getElementById('uploadResult');
     const status = document.getElementById('uploadStatus');
@@ -66,47 +73,43 @@ export function enableImageUploading({ canOpen, snapshot, onState }) {
     function open() {
         if (pending) { checkPending(); return; }
         if (!canOpen() || document.querySelector('dialog[open]')) return;
-        const value = snapshot();
+        let value;
+        try {
+            value = snapshot();
+            if (value) value = { ...value, uploadProductCode: normalizeStorageProductCode(value.uploadProductCode) };
+        }
+        catch (failure) { showStatus(failure.message, true); return; }
         if (!value?.images.length) {
             showStatus('업로드할 사진이 없습니다. 휴지통에서 복구하거나 이미지를 추가해주세요.', true);
             return;
         }
         draft = structuredClone(value);
-        document.getElementById('uploadSourceCode').textContent = draft.productCode;
-        document.getElementById('uploadImageCount').textContent = draft.images.length;
-        code.value = draft.productCode;
         error.hidden = true;
-        updatePreview();
-        dialog.showModal();
-        sync();
-        code.focus();
-        code.select();
+        showDraft();
+        confirm.focus();
     }
 
     function close() { dialog.close(); draft = null; sync(); button.focus({ preventScroll: true }); }
-    function updatePreview() {
-        const value = code.value.trim().toUpperCase();
-        preview.textContent = `molebutter/products/${value || '{상품코드}'}/`;
+    function showDraft() {
+        document.getElementById('uploadSourceCode').textContent = draft.productCode;
+        document.getElementById('uploadImageCount').textContent = draft.images.length;
+        document.getElementById('uploadSelectedCode').textContent = draft.uploadProductCode;
+        document.getElementById('uploadOfficialPathPreview').textContent = `molebutter/products/${draft.uploadProductCode}/official/`;
+        document.getElementById('uploadProcessedPathPreview').textContent = `molebutter/products/${draft.uploadProductCode}/processed/`;
+        dialog.showModal();
+        sync();
     }
 
     button.addEventListener('click', open);
     check.addEventListener('click', checkPending);
-    code.addEventListener('input', () => { error.hidden = true; updatePreview(); });
     document.getElementById('cancelUploadButton').addEventListener('click', close);
     document.getElementById('closeUploadDialog').addEventListener('click', close);
     dialog.addEventListener('cancel', () => { draft = null; });
     dialog.addEventListener('close', sync);
-    FormActions.bindExplicitSubmit(form, document.getElementById('confirmUploadButton'), async event => {
+    FormActions.bindExplicitSubmit(form, confirm, async event => {
         event.preventDefault();
         if (!draft || pending || working) return;
-        const uploadProductCode = code.value.trim().toUpperCase();
-        if (!/^[A-Z0-9_-]{4,40}$/.test(uploadProductCode)) {
-            error.textContent = '저장할 상품코드를 영문·숫자·밑줄(_)·하이픈(-) 4~40자로 입력해주세요.';
-            error.hidden = false;
-            code.focus();
-            return;
-        }
-        pending = { status: 'RUNNING', request: { ...draft, requestId: AppUI.uuid(), uploadProductCode } };
+        pending = { status: 'RUNNING', request: { ...draft, requestId: AppUI.uuid() } };
         storePending();
         dialog.close();
         draft = null;
@@ -135,17 +138,12 @@ export function enableImageUploading({ canOpen, snapshot, onState }) {
                     if ((failure.status === 409 && failure.code === 'IMAGING_UPLOAD_DUPLICATE')
                             || failure.code === 'IMAGING_UPLOAD_CHECK_FAILED') {
                         // Preflight rejection occurred before any write. Keep the input and immutable selection.
-                        const { requestId, uploadProductCode, ...selection } = rejected;
+                        const { requestId, ...selection } = rejected;
                         draft = selection;
-                        document.getElementById('uploadSourceCode').textContent = draft.productCode;
-                        document.getElementById('uploadImageCount').textContent = draft.images.length;
-                        code.value = uploadProductCode;
                         error.textContent = failure.message;
                         error.hidden = false;
-                        updatePreview();
-                        dialog.showModal();
-                        code.focus();
-                        code.select();
+                        showDraft();
+                        document.getElementById('cancelUploadButton').focus();
                     }
                 } else {
                     showStatus('업로드 요청의 응답을 받지 못했습니다. 같은 요청의 결과를 확인하고 있습니다.');

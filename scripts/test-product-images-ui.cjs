@@ -14,6 +14,15 @@ const imageSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="780" height="50
 const imageDataUrl = 'data:image/svg+xml;base64,' + Buffer.from(imageSvg).toString('base64');
 const zip = Buffer.from('504b0506000000000000000000000000000000000000', 'hex');
 const generatedId = index => '00000000-0000-4000-8000-' + String(index).padStart(12, '0');
+const storedImages = images => {
+    let sizeNumber = 0, noticeNumber = 0;
+    return images.map((item, index) => {
+        if (!item.generatedImageId) return { folder: 'official', fileName: String(index + 1).padStart(2, '0') + '.png' };
+        const notice = Number(item.generatedImageId.split('-').at(-1)) > 1000;
+        const number = notice ? ++noticeNumber : ++sizeNumber;
+        return { folder: 'processed', fileName: (notice ? '상품정보' : '사이즈') + (number === 1 ? '' : `_${number}`) + '.png' };
+    });
+};
 const normalizedNoticeLabel = label => label.normalize('NFC').replace(/[^0-9A-Za-z가-힣]/g, '').toLowerCase();
 const product = {
     productCode: 'TEST-BAG', brandCode: 'DAKS', productName: '합성 테스트 토트백',
@@ -157,15 +166,8 @@ const server = http.createServer((req, res) => {
                         lostUploadOnce = true;
                         return route.abort('connectionreset');
                     }
-                    let sizeNumber = 0, noticeNumber = 0;
-                    const result = { uploadProductCode: body.uploadProductCode, totalCount: body.images.length, files: body.images.map((item, index) => {
-                        let fileName = String(index + 1).padStart(2, '0') + '.png';
-                        if (item.generatedImageId) {
-                            const notice = Number(item.generatedImageId.split('-').at(-1)) > 1000;
-                            const number = notice ? ++noticeNumber : ++sizeNumber;
-                            fileName = (notice ? '상품정보' : '사이즈') + (number === 1 ? '' : `_${number}`) + '.png';
-                        }
-                        const key = `products/${body.uploadProductCode}/${fileName}`;
+                    const result = { uploadProductCode: body.uploadProductCode, totalCount: body.images.length, files: storedImages(body.images).map(({ folder, fileName }) => {
+                        const key = `products/${body.uploadProductCode}/${folder}/${fileName}`;
                         return { fileName, key, url: 'https://assets.molebutter.link/' + key.split('/').map(encodeURIComponent).join('/') };
                     }) };
                     if (['failed', 'unknown'].includes(uploadMode)) result.files = result.files.slice(0, 1);
@@ -193,6 +195,8 @@ const server = http.createServer((req, res) => {
                 }
                 if (p === '/api/product-images/products/download') {
                     const body = request.postDataJSON();
+                    assert.equal(body.productCode, 'TEST-BAG');
+                    assert.match(body.downloadProductCode, /^[A-Z0-9_-]{4,40}$/);
                     for (const item of body.images) {
                         if (item.imageIndex !== undefined) assert.equal(item.sourceImageUrl, lookedUpImageUrls[item.imageIndex]);
                         else assert.deepEqual(Object.keys(item), ['generatedImageId']);
@@ -203,12 +207,15 @@ const server = http.createServer((req, res) => {
                 if (/\/products\/download\/jobs\/job-\d+\/archive$/.test(p)) {
                     if (expiredArchive) { expiredArchive = false; return route.fulfill({ status: 401, json: { code: 'UNAUTHORIZED' } }); }
                     if (holdArchive) await new Promise(resolve => { releaseArchive = resolve; });
-                    return route.fulfill({ contentType: 'application/zip', headers: { 'Content-Length': String(zip.length), 'Content-Disposition': 'attachment; filename="TEST-BAG.zip"' }, body: zip });
+                    const code = downloads[Number(p.match(/job-(\d+)/)[1]) - 1].downloadProductCode;
+                    return route.fulfill({ contentType: 'application/zip', headers: { 'Content-Length': String(zip.length), 'Content-Disposition': `attachment; filename="${code}.zip"` }, body: zip });
                 }
                 if (/\/products\/download\/jobs\/job-\d+$/.test(p)) {
                     polls++;
+                    const body = downloads[Number(p.match(/job-(\d+)/)[1]) - 1];
                     return ok({ id: p.split('/').at(-1), status: 'SUCCEEDED', result: {
-                        downloadName: 'TEST-BAG.zip', savedFiles: ['01.jpg', '상품정보.png']
+                        downloadName: body.downloadProductCode + '.zip',
+                        savedFiles: storedImages(body.images).map(({ folder, fileName }) => `${body.downloadProductCode}/${folder}/${fileName}`)
                     } });
                 }
                 if (p === '/api/product-images/products/TEST-BAG') {
@@ -223,7 +230,7 @@ const server = http.createServer((req, res) => {
             assert.equal(await page.evaluate(() => isSecureContext), !httpLan);
             if (width === 390) {
                 await page.locator('#menu-open').click();
-                await page.locator('#app-sidebar').getByRole('link', { name: '상품 이미지 도구', exact: true }).waitFor();
+                await page.locator('#app-sidebar').getByRole('link', { name: '상품 정보 도구', exact: true }).waitFor();
                 await page.locator('#menu-close').click();
             } else assert.equal(await page.locator('#app-sidebar').isVisible(), true);
             const lookup = async () => {
@@ -232,6 +239,7 @@ const server = http.createServer((req, res) => {
                 await page.waitForFunction(() => !document.querySelector('#lookupButton').disabled && !document.querySelector('#sizeTemplateSelect').disabled && !document.querySelector('#resultPanel').classList.contains('hidden'));
                 await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
                 await page.locator('#notificationGrid .info-item.full-width').first().waitFor();
+                assert.equal(await page.locator('#storageProductCodeInput').inputValue(), 'TEST-BAG');
             };
             const checkUiConventions = async () => {
                 await page.mouse.move(0, 0);
@@ -244,8 +252,8 @@ const server = http.createServer((req, res) => {
                     const result = document.querySelector('#resultPanel');
                     const mainStyle = getComputedStyle(main), mainRect = main.getBoundingClientRect();
                     const rect = element => {
-                        const { left, right, width, height } = element.getBoundingClientRect();
-                        return { left, right, width, height };
+                        const { left, right, top, bottom, width, height } = element.getBoundingClientRect();
+                        return { left, right, top, bottom, width, height };
                     };
                     const keys = ['backgroundColor', 'color', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderRadius', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'fontSize', 'fontWeight', 'minHeight'];
                     const styles = element => Object.fromEntries(keys.map(key => [key, getComputedStyle(element)[key]]));
@@ -278,10 +286,12 @@ const server = http.createServer((req, res) => {
                             const button = document.getElementById(id);
                             return { id, primary: button.matches('.btn.primary'), styles: styles(button) };
                         }),
-                        inputs: ['brandSelect', 'productCodeInput', 'dimWidthInput', 'dimDepthInput', 'dimHeightInput', 'sizeLabelInput'].map(id => {
+                        inputs: ['brandSelect', 'productCodeInput', 'storageProductCodeInput', 'dimWidthInput', 'dimDepthInput', 'dimHeightInput', 'sizeLabelInput'].map(id => {
                             const input = document.getElementById(id);
                             return { id, styles: styles(input) };
                         }),
+                        storageCode: rect(document.querySelector('#storageProductCodeInput')),
+                        storageButtons: ['downloadImagesButton', 'uploadImagesButton'].map(id => ({ id, ...rect(document.getElementById(id)) })),
                         details: rect(details),
                         sizeControls: ['sizeLabelInput', 'dimWidthInput', 'dimDepthInput', 'dimHeightInput', 'editPhotoButton', 'sizeTemplateSelect', 'addSizeImageButton'].map(id => {
                             const control = document.getElementById(id);
@@ -311,6 +321,14 @@ const server = http.createServer((req, res) => {
                 for (const input of metrics.inputs) {
                     const shared = ['brandSelect', 'productCodeInput'].includes(input.id) ? metrics.sharedToolbarInput : metrics.sharedInput;
                     for (const key of inputKeys) assert.equal(input.styles[key], shared[key], `${width}px ${input.id} shared input ${key}`);
+                }
+                if (width >= 1440) {
+                    for (const button of metrics.storageButtons) {
+                        assert(button.left >= metrics.storageCode.right,
+                            `${width}px ${button.id} must be beside the shared storage code`);
+                        assert(Math.min(button.bottom, metrics.storageCode.bottom) > Math.max(button.top, metrics.storageCode.top),
+                            `${width}px ${button.id} and storage code must share a row: ${JSON.stringify({ input: metrics.storageCode, button })}`);
+                    }
                 }
                 for (const control of metrics.sizeControls) {
                     assert(control.insideDetails && control.insideSizeSection, `${width}px ${control.id} must be in the sidebar size section`);
@@ -544,50 +562,67 @@ const server = http.createServer((req, res) => {
             assert.equal(await page.locator('.primary-image').getAttribute('data-image-id'), '5');
             assert.equal(await card(5).locator('img').getAttribute('src'), noticeSnapshot);
             holdArchive = true;
+            await page.locator('#storageProductCodeInput').fill(' test-download ');
+            const beforeDownloadEnter = downloads.length;
+            await page.locator('#storageProductCodeInput').press('Enter');
+            assert.equal(downloads.length, beforeDownloadEnter);
             const downloadEvent = page.waitForEvent('download'); await page.locator('#downloadImagesButton').click();
             await waitMock(() => releaseArchive);
             assert.equal(await material.isDisabled(), true);
             assert.equal(await page.locator('#sizeLabelInput').isDisabled(), true);
+            assert.equal(await page.locator('#storageProductCodeInput').isDisabled(), true);
             releaseArchive(); holdArchive = false;
-            const download = await downloadEvent; assert.equal(download.suggestedFilename(), 'TEST-BAG.zip');
+            const download = await downloadEvent; assert.equal(download.suggestedFilename(), 'TEST-DOWNLOAD.zip');
             await page.waitForFunction(() => !document.querySelector('#downloadImagesButton').disabled);
             assert.deepEqual(downloads.at(-1), {
-                productCode: 'TEST-BAG', brandCode: 'DAKS', images: [{ generatedImageId: generatedId(1002) }, { imageIndex: 1, sourceImageUrl: '/test-image/1.svg' }, { imageIndex: 2, sourceImageUrl: '/test-image/2.svg' }, { generatedImageId: generatedId(2) }], includeNoticeImage: false, includeSizeImage: false
+                productCode: 'TEST-BAG', downloadProductCode: 'TEST-DOWNLOAD', brandCode: 'DAKS', images: [{ generatedImageId: generatedId(1002) }, { imageIndex: 1, sourceImageUrl: '/test-image/1.svg' }, { imageIndex: 2, sourceImageUrl: '/test-image/2.svg' }, { generatedImageId: generatedId(2) }], includeNoticeImage: false, includeSizeImage: false
             });
             assert.equal(polls, 1); assert.equal(refreshCount, 2); assert.equal(csrfCount, 1);
             const again = page.waitForEvent('download'); await page.locator('#downloadArchiveButton').click();
-            assert.equal((await again).suggestedFilename(), 'TEST-BAG.zip');
+            assert.equal((await again).suggestedFilename(), 'TEST-DOWNLOAD.zip');
             assert.equal(downloads.length, 1); assert.equal(calls.some(call => call.path.includes('open-folder')), false);
 
             // Upload the same immutable mixed selection under a different folder, preserving source data.
             const openUpload = async folder => {
+                await page.locator('#storageProductCodeInput').fill(folder);
                 await page.locator('#uploadImagesButton').click();
-                await page.locator('#uploadProductCodeInput').waitFor();
-                assert.equal(await page.locator('#uploadProductCodeInput').inputValue(), 'TEST-BAG');
-                await page.locator('#uploadProductCodeInput').fill(folder);
+                await page.locator('#uploadSelectedCode').waitFor();
+                assert.equal(await page.locator('#uploadSelectedCode').textContent(), folder.trim().toUpperCase());
+                assert.equal(await page.locator('#storageProductCodeInput').isDisabled(), true);
                 await page.locator('#confirmUploadButton').click();
             };
             const waitUploadDone = () => page.waitForFunction(() => !document.querySelector('#uploadImagesButton').disabled && document.querySelector('#uploadStatus').textContent.includes('업로드 완료'));
             const beforeUploadOrder = await order();
             uploadMode = 'hold';
+            await page.locator('#storageProductCodeInput').fill('../bad');
+            await page.locator('#uploadImagesButton').click();
+            assert.match(await page.locator('#storageProductCodeError').textContent(), /4~40자/);
+            assert.equal(await page.locator('#imageUploadDialog').evaluate(dialog => dialog.open), false);
+            assert.equal(uploadPosts.length, 0);
+            await page.locator('#storageProductCodeInput').fill(' test-folder ');
+            const postsBeforeEnter = uploadPosts.length;
+            await page.locator('#storageProductCodeInput').press('Enter');
+            assert.equal(uploadPosts.length, postsBeforeEnter);
             await page.locator('#uploadImagesButton').click();
             assert.equal(await page.locator('#uploadSourceCode').textContent(), 'TEST-BAG');
             assert.equal(await page.locator('#uploadImageCount').textContent(), '4');
-            await page.locator('#uploadProductCodeInput').fill('../bad');
-            await page.locator('#confirmUploadButton').click();
-            assert.match(await page.locator('#uploadDialogError').textContent(), /4~40자/);
-            assert.equal(uploadPosts.length, 0);
-            await page.locator('#uploadProductCodeInput').fill(' test-folder ');
-            assert.equal(await page.locator('#uploadPathPreview').textContent(), 'molebutter/products/TEST-FOLDER/');
+            assert.equal(await page.locator('#uploadProductCodeInput').count(), 0);
+            assert.equal(await page.locator('#uploadSelectedCode').textContent(), 'TEST-FOLDER');
+            assert.equal(await page.locator('#uploadOfficialPathPreview').textContent(), 'molebutter/products/TEST-FOLDER/official/');
+            assert.equal(await page.locator('#uploadProcessedPathPreview').textContent(), 'molebutter/products/TEST-FOLDER/processed/');
+            await page.locator('#imageUploadForm').evaluate(form => form.requestSubmit());
+            assert.equal(uploadPosts.length, postsBeforeEnter);
             const dialogMetrics = await page.locator('#imageUploadDialog').evaluate(dialog => {
                 const r = dialog.getBoundingClientRect();
                 return { shared: dialog.classList.contains('attendance-dialog'), left: r.left, right: r.right, width: r.width, viewport: innerWidth };
             });
             assert(dialogMetrics.shared && dialogMetrics.left >= 0 && dialogMetrics.right <= dialogMetrics.viewport + 1);
             await page.screenshot({ path: path.join(root, `target/ui-check/product-images-upload-dialog-${width}.png`) });
-            await page.locator('#confirmUploadButton').click();
+            // Keyboard activation of the explicitly focused button is allowed.
+            await page.locator('#confirmUploadButton').press('Enter');
             await waitMock(() => releaseUpload);
             assert.equal(await page.locator('#lookupButton').isDisabled(), true);
+            assert.equal(await page.locator('#storageProductCodeInput').isDisabled(), true);
             assert.equal(await page.locator('#downloadImagesButton').isDisabled(), true);
             assert.equal(await material.isDisabled(), true);
             assert.equal(await page.locator('#sizeLabelInput').isDisabled(), true);
@@ -610,31 +645,33 @@ const server = http.createServer((req, res) => {
             assert.match(await page.locator('#uploadFiles a').first().getAttribute('href'), /products\/TEST-FOLDER\//);
             assert.deepEqual(await page.locator('#uploadFiles a').allTextContents(), ['상품정보.png', '02.png', '03.png', '사이즈.png']);
             const noticeUrl = new URL(await page.locator('#uploadFiles a').first().getAttribute('href'));
-            assert.equal(decodeURIComponent(noticeUrl.pathname), '/products/TEST-FOLDER/상품정보.png');
+            assert.equal(decodeURIComponent(noticeUrl.pathname), '/products/TEST-FOLDER/processed/상품정보.png');
             assert.equal(await page.evaluate(() => sessionStorage.getItem('product-images.pending-upload')), null);
 
-            // A duplicate folder is definitively rejected before writing, preserving the editable code and selected images.
+            // A duplicate folder keeps its immutable code and selected images until the dialog is cancelled.
             uploadMode = 'duplicate';
             const beforeDuplicate = uploadPosts.length;
             await openUpload('TEST-FOLDER');
             await page.waitForFunction(() => document.querySelector('#imageUploadDialog').open && !document.querySelector('#uploadDialogError').hidden);
             assert.equal(uploadPosts.length, beforeDuplicate + 1);
             assert.match(await page.locator('#uploadDialogError').textContent(), /이미 업로드된 상품/);
-            assert.equal(await page.locator('#uploadProductCodeInput').inputValue(), 'TEST-FOLDER');
-            assert.equal(await page.locator('#uploadPathPreview').textContent(), 'molebutter/products/TEST-FOLDER/');
+            assert.equal(await page.locator('#storageProductCodeInput').inputValue(), 'TEST-FOLDER');
+            assert.equal(await page.locator('#storageProductCodeInput').isDisabled(), true);
+            assert.equal(await page.locator('#uploadSelectedCode').textContent(), 'TEST-FOLDER');
+            assert.equal(await page.locator('#uploadProcessedPathPreview').textContent(), 'molebutter/products/TEST-FOLDER/processed/');
             assert.equal(await page.evaluate(() => sessionStorage.getItem('product-images.pending-upload')), null);
             assert.equal(await material.inputValue(), '이미지 추가 이후 변경값');
             assert.equal(await page.locator('#sizeLabelInput').inputValue(), 'L');
             assert.deepEqual(await order(), beforeUploadOrder);
             uploadMode = 'success';
-            await page.locator('#uploadProductCodeInput').fill('OTHER-FOLDER');
-            await page.locator('#confirmUploadButton').click();
+            await page.locator('#cancelUploadButton').click();
+            await openUpload('OTHER-FOLDER');
             await waitUploadDone();
             assert.equal(uploadPosts.length, beforeDuplicate + 2);
             assert.notEqual(uploadPosts.at(-1).requestId, uploadPosts.at(-2).requestId);
             assert.equal(uploadPosts.at(-1).uploadProductCode, 'OTHER-FOLDER');
             assert.deepEqual(uploadPosts.at(-1).images, uploadPosts.at(-2).images);
-            assert.equal(decodeURIComponent(new URL(await page.locator('#uploadFiles a').first().getAttribute('href')).pathname), '/products/OTHER-FOLDER/상품정보.png');
+            assert.equal(decodeURIComponent(new URL(await page.locator('#uploadFiles a').first().getAttribute('href')).pathname), '/products/OTHER-FOLDER/processed/상품정보.png');
             assert.deepEqual(await order(), beforeUploadOrder);
 
             // A known preflight outage accepts no write and must not enter UNKNOWN or automatically repeat POST.
@@ -643,7 +680,9 @@ const server = http.createServer((req, res) => {
             await openUpload('CHECK-FOLDER');
             await page.waitForFunction(() => document.querySelector('#imageUploadDialog').open && !document.querySelector('#uploadDialogError').hidden);
             assert.match(await page.locator('#uploadDialogError').textContent(), /기존 업로드 확인에 실패/);
-            assert.equal(await page.locator('#uploadProductCodeInput').inputValue(), 'CHECK-FOLDER');
+            assert.equal(await page.locator('#storageProductCodeInput').inputValue(), 'CHECK-FOLDER');
+            assert.equal(await page.locator('#storageProductCodeInput').isDisabled(), true);
+            assert.equal(await page.locator('#uploadSelectedCode').textContent(), 'CHECK-FOLDER');
             assert.equal(await page.locator('#uploadSourceCode').textContent(), 'TEST-BAG');
             assert.equal(await page.locator('#uploadImageCount').textContent(), '4');
             assert.equal(await page.evaluate(() => sessionStorage.getItem('product-images.pending-upload')), null);
@@ -730,7 +769,7 @@ const server = http.createServer((req, res) => {
             const retryAfterError = page.waitForEvent('download');
             await page.locator('#downloadArchiveButton').click();
             await retryAfterError;
-            assert.match(await page.locator('#downloadStatus').textContent(), /파일 준비 완료: TEST-BAG.zip/);
+            assert.match(await page.locator('#downloadStatus').textContent(), /파일 준비 완료: TEST-DOWNLOAD.zip/);
             // An uncertain write exposes partial links and only checks the existing ID, including after reload.
             uploadMode = 'unknown';
             await openUpload('UNCERTAIN');
@@ -752,7 +791,7 @@ const server = http.createServer((req, res) => {
             await page.locator('h1').click();
             fs.mkdirSync(path.join(root, 'target/ui-check'), { recursive: true });
             await page.screenshot({ path: path.join(root, `target/ui-check/product-images-${width}.png`), fullPage: true });
-            console.log(`PASS product images ${width}px: shared UI/mobile modal, mixed snapshots/order/trash, download, flat public upload paths/source-folder separation, duplicate folder rejection/retained edits/new code retry, known preflight outage without auto-retry/retained input/manual retry, upload locks/duplicate click, stable-ID lost-response/reload recovery, partial failure/UNKNOWN links, auth refresh/CSRF`);
+            console.log(`PASS product information tool ${width}px: shared UI/mobile modal, mixed snapshots/order/trash, shared storage code, official/processed archive and public paths, immutable upload confirmation/Enter blocking, duplicate folder rejection/cancel/new code, preflight outage/manual retry, upload locks/duplicate click, stable-ID lost-response/reload recovery, partial failure/UNKNOWN links, auth refresh/CSRF`);
             await context.close();
         }
     } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }

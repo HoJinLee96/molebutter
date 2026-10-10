@@ -2,13 +2,15 @@ import { copyText, escapeAttribute, escapeHtml, formatWon, sendJson, showToast, 
 import { openSizeGuideEditor } from './size-guide-editor.js';
 import { ImageOrder } from './image-order.js';
 import { enableImageDragging } from './image-drag.js';
-import { enableImageUploading } from './upload-dialog.js';
+import { enableImageUploading, normalizeStorageProductCode } from './upload-dialog.js';
 
 const workspace = document.querySelector('.product-image-workspace');
 const lookupForm = document.getElementById('lookupForm');
 const lookupButton = document.getElementById('lookupButton');
 const brandSelect = document.getElementById('brandSelect');
 const productCodeInput = document.getElementById('productCodeInput');
+const storageProductCodeInput = document.getElementById('storageProductCodeInput');
+const storageProductCodeError = document.getElementById('storageProductCodeError');
 const lookupStatus = document.getElementById('lookupStatus');
 const resultPanel = document.getElementById('resultPanel');
 const imageStrip = document.getElementById('imageStrip');
@@ -110,6 +112,7 @@ const imageDragging = enableImageDragging({
 enableImageUploading({
     canOpen: () => Boolean(currentProduct) && !workspaceBusy(),
     snapshot: () => currentProduct && ({
+        uploadProductCode: readStorageProductCode(),
         productCode: currentProduct.productCode,
         brandCode: currentProduct.brandCode || brandSelect.value,
         images: selectedImageItems(imageOrder.order)
@@ -181,7 +184,8 @@ lookupForm.addEventListener('submit', async (event) => {
     }
 });
 
-FormActions.bindEnterSubmit(lookupForm, lookupButton);
+FormActions.bindEnterSubmit(lookupForm, document.getElementById('lookupButton'));
+storageProductCodeInput.addEventListener('input', () => { storageProductCodeError.hidden = true; });
 
 downloadImagesButton.addEventListener('click', () => {
     if (!currentProduct || workspaceBusy()) return;
@@ -189,7 +193,18 @@ downloadImagesButton.addEventListener('click', () => {
         setDownloadStatus('다운로드할 사진이 없습니다. 휴지통에서 복구하거나 상품정보 이미지를 추가해주세요.', true);
         return;
     }
-    downloadImages([...imageOrder.order], '현재 사진 순서대로 다운로드 중입니다.');
+    try {
+        const request = {
+            downloadProductCode: readStorageProductCode(),
+            productCode: currentProduct.productCode,
+            brandCode: currentProduct.brandCode || brandSelect.value,
+            images: selectedImageItems(imageOrder.order),
+            includeNoticeImage: false,
+            // 이전 서버에도 명시적인 boolean 값을 보낸다.
+            includeSizeImage: false
+        };
+        downloadImages(request, '현재 사진 순서대로 다운로드 중입니다.');
+    } catch (error) { setDownloadStatus(error.message, true); }
 });
 
 downloadArchiveButton.addEventListener('click', async () => {
@@ -208,7 +223,9 @@ sizeTemplateSelect.addEventListener('change', () => {
     syncBusyControls();
 });
 
+FormActions.bindEnter(sizeLabelInput, addSizeImageButton);
 for (const input of [dimWidthInput, dimDepthInput, dimHeightInput]) {
+    FormActions.bindEnter(input, addSizeImageButton);
     input.addEventListener('keydown', event => {
         if (event.key === 'ArrowUp' || event.key === 'ArrowDown') event.preventDefault();
     });
@@ -309,6 +326,7 @@ function syncBusyControls() {
     lookupButton.disabled = busy;
     brandSelect.disabled = busy;
     productCodeInput.disabled = busy;
+    storageProductCodeInput.disabled = busy;
     sizeTemplateSelect.disabled = busy || !sizeTemplateSelect.options.length;
     for (const input of [sizeLabelInput, dimWidthInput, dimDepthInput, dimHeightInput]) input.disabled = busy;
     addSizeImageButton.disabled = busy || !sizeTemplateSelect.value;
@@ -332,20 +350,13 @@ async function waitForImageDownloadJob(job, { maxAttempts = 120, intervalMs = 10
     throw new Error('이미지 다운로드 작업 완료 확인 시간이 초과되었습니다.');
 }
 
-async function downloadImages(imageIndexes, progressMessage) {
+async function downloadImages(request, progressMessage) {
     setDownloadLoading(true);
     lastArchive = null;
     downloadArchiveButton.classList.add('hidden');
     setDownloadStatus(progressMessage);
     try {
-        const job = await sendJson('/api/product-images/products/download', 'POST', {
-            productCode: currentProduct.productCode,
-            brandCode: currentProduct.brandCode || brandSelect.value,
-            images: selectedImageItems(imageIndexes),
-            includeNoticeImage: false,
-            // 현재 실행 중인 이전 서버에서도 누락된 boolean 때문에 요청 파싱이 실패하지 않게 한다.
-            includeSizeImage: false,
-        });
+        const job = await sendJson('/api/product-images/products/download', 'POST', request);
         const result = await waitForImageDownloadJob(job);
         if (!job?.id || !result?.downloadName) throw new Error('다운로드 파일 정보를 받지 못했습니다. 다시 시도해주세요.');
         // Use the authenticated archive endpoint for this job; never accept an external URL.
@@ -360,6 +371,20 @@ async function downloadImages(imageIndexes, progressMessage) {
         setDownloadStatus(error.message, true);
     } finally {
         setDownloadLoading(false);
+    }
+}
+
+function readStorageProductCode() {
+    try {
+        const value = normalizeStorageProductCode(storageProductCodeInput.value);
+        storageProductCodeInput.value = value;
+        storageProductCodeError.hidden = true;
+        return value;
+    } catch (error) {
+        storageProductCodeError.textContent = error.message;
+        storageProductCodeError.hidden = false;
+        storageProductCodeInput.focus();
+        throw error;
     }
 }
 
@@ -425,6 +450,8 @@ function setDownloadLoading(isLoading) {
 
 function renderProduct(product) {
     currentProduct = product;
+    storageProductCodeInput.value = product.productCode || '';
+    storageProductCodeError.hidden = true;
     imageDragging.cancel();
     imageOrder = new ImageOrder((product.imageUrls || []).length);
     imageEntries = new Map((product.imageUrls || []).map((url, imageIndex) => [imageIndex, { kind: 'original', url, imageIndex }]));
@@ -607,7 +634,7 @@ function revealImage(id) {
     if (position >= 0) imagePage = Math.floor(position / imagePageSize);
 }
 
-// 입력 노드를 유지하고 폭만 갱신하므로, 응답 중에도 포커스와 수정 내용이 보존된다.
+// 입력 노드를 유지하므로, 레이아웃 응답 중에도 수정 내용이 보존된다.
 function renderNoticeFields(product) {
     window.clearTimeout(noticePreviewTimer);
     const sequence = ++noticePreviewSequence;
@@ -662,6 +689,40 @@ function noticeRequest(product) {
     return { brandCode: product.brandCode || brandSelect.value, fields: Object.fromEntries(noticeFields) };
 }
 
+function applyNoticeLayout(cards) {
+    const items = [...notificationGrid.querySelectorAll('.info-item')];
+    const byLabel = new Map(items.map(item => [item.dataset.noticeLabel, item]));
+    const ordered = [], seen = new Set();
+    const add = label => {
+        const item = byLabel.get(label);
+        if (item && !seen.has(item)) { seen.add(item); ordered.push(item); }
+    };
+    cards.forEach(card => add(card.label));
+    // 빈값은 이미지에 나오지 않아도 다시 입력할 수 있도록 원래 순서로 뒤에 남긴다.
+    noticeFields.forEach((value, label) => add(label));
+    const focused = notificationGrid.contains(document.activeElement) ? document.activeElement : null;
+    const selection = focused ? [focused.selectionStart, focused.selectionEnd, focused.selectionDirection] : null;
+    const scrolls = [];
+    for (let node = notificationGrid.parentElement; node; node = node.parentElement) {
+        scrolls.push([node, node.scrollTop, node.scrollLeft]);
+    }
+    ordered.forEach((item, index) => {
+        if (notificationGrid.children[index] !== item) {
+            notificationGrid.insertBefore(item, notificationGrid.children[index] || null);
+        }
+    });
+    const widths = new Map(cards.map(card => [card.label, card.fullWidth === true]));
+    items.forEach(item => {
+        item.classList.toggle('full-width', widths.get(item.dataset.noticeLabel) === true);
+        resizeNoticeInput(item.querySelector('textarea'));
+    });
+    if (focused) {
+        if (document.activeElement !== focused) focused.focus({ preventScroll: true });
+        focused.setSelectionRange(...selection);
+    }
+    scrolls.forEach(([node, top, left]) => { node.scrollTop = top; node.scrollLeft = left; });
+}
+
 async function refreshNoticeLayout(product, sequence) {
     if (currentProduct !== product || sequence !== noticePreviewSequence) return;
     try {
@@ -669,12 +730,7 @@ async function refreshNoticeLayout(product, sequence) {
             `/api/product-images/products/${encodeURIComponent(product.productCode)}/notice-image/preview`,
             'POST', noticeRequest(product));
         if (currentProduct !== product || sequence !== noticePreviewSequence) return;
-        const widths = new Map((result.cards || []).map(card => [card.label, card.fullWidth === true]));
-        notificationGrid.querySelectorAll('.info-item').forEach(item => {
-            // 빈값으로 서버 카드가 사라져도 입력칸은 남겨 다시 채울 수 있게 한다.
-            item.classList.toggle('full-width', widths.get(item.dataset.noticeLabel) === true);
-            resizeNoticeInput(item.querySelector('textarea'));
-        });
+        applyNoticeLayout(result.cards || []);
         noticePreviewStatus.textContent = '';
     } catch (error) {
         if (currentProduct !== product || sequence !== noticePreviewSequence) return;

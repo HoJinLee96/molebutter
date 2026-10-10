@@ -498,3 +498,12 @@ JS 편집·전송·공통 편집 42건 통과. 기존 편집 브라우저 2560·
 - `node scripts/test-marketplace-submissions.cjs`, `node scripts/test-marketplace-orders-ui.cjs`: 로컬 합성 API와 Chrome 1440px·390px 통과. 입력 수정 후 작성값과 기존 이력 보존·새 미리보기, 날짜 Enter/폼 제출의 수집 차단, 검색 Enter와 버튼 키보드 실행을 확인했다.
 
 실계정 API·운영 DB·R2 쓰기·배포는 수행하지 않았다.
+
+### 상품 정보 도구 저장 화면 분리 검증 (2026-10-10)
+
+PR #33이 머지된 main에서 화면·메뉴·관련 테스트와 문서만 분리해 검증했다. 공통 저장용 상품코드와 ZIP·업로드 확인창의 연결, official/processed 경로 표시, 고시정보 카드 순서 변경 시 기존 입력 노드·초점·커서·스크롤 보존을 포함한다.
+
+- `node --test src/test/js/*.test.cjs`: 212개 통과. 이 분리 범위에 포함하지 않은 미커밋 마켓·모듈 변경은 사용하지 않았다.
+- `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home ./mvnw -o -pl molebutter-app -am -Dtest=LayoutViewTest,ProductImageControllerTest,ProductImageUploadServiceTest,ProductImageUploadHttpTest -Dsurefire.failIfNoSpecifiedTests=false test`: 39개 통과. 화면 접근·렌더링, 업로드 권한·스냅샷·예약과 응답 유실 회귀를 확인했다.
+- `NODE_PATH=<Playwright 설치 경로> node scripts/test-product-images-ui.cjs`: Chrome 2560px·1440px·390px 통과. 코드와 선택 목록 고정, 모달 취소 후 다른 코드 선택, 중복 업로드·접수 전 조회 실패·응답 유실·새로고침 복원·CSRF를 로컬 합성 API로 검증했다. 저장용 코드 입력의 Enter와 폼 submit은 쓰기를 실행하지 않으며, 확인 버튼에 초점을 둔 Enter는 업로드를 한 번 실행한다.
+- `git diff --check` 통과. 실계정 LF몰·판매 마켓·R2 요청과 배포는 수행하지 않았다.
