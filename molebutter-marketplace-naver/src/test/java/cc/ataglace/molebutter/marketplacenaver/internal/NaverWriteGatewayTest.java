@@ -49,8 +49,9 @@ class NaverWriteGatewayTest {
         base.path("originProduct").asObject().put("statusType","SUSPENSION").put("stockQuantity",0);
         var prepared=edit(field(input(),"originProduct.statusType","SALE"));var step=prepared.steps().getFirst();
         var oldExpected=json.readTree(step.expectedJson()).asObject().put(NaverEditPatch.PREFIX+"fields.originProduct.statusType","SALE");
-        var legacy=new Step(step.id(),step.type(),step.optionId(),step.method(),step.path(),step.query(),step.bodyJson(),step.baselineJson(),json.writeValueAsString(oldExpected));
-        var accepted=new Result(State.ACCEPTED,mapping(),"ACCEPTED",null,Instant.now(),step.bodyJson());
+        var oldBody=json.readTree(step.bodyJson()).asObject();oldBody.path("originProduct").asObject().put("stockQuantity",0);var oldRequest=json.writeValueAsString(oldBody);
+        var legacy=new Step(step.id(),step.type(),step.optionId(),step.method(),step.path(),step.query(),oldRequest,step.baselineJson(),json.writeValueAsString(oldExpected));
+        var accepted=new Result(State.ACCEPTED,mapping(),"ACCEPTED",null,Instant.now(),oldRequest);
         assertThat(writer.reconcile(1L,prepared,legacy,accepted).state()).isEqualTo(State.ACCEPTED);
         base.path("originProduct").asObject().put("statusType","OUTOFSTOCK");
         assertThat(writer.reconcile(1L,prepared,legacy,accepted).state()).isEqualTo(State.CONFIRMED);
@@ -113,8 +114,8 @@ class NaverWriteGatewayTest {
     @Test void soldOutProductNameCanBeUpdatedWithoutRestockingOrForcingApprovalStateToSale(){
         base.path("originProduct").asObject().put("statusType","OUTOFSTOCK").put("stockQuantity",0);
         var prepared=edit(field(input(),"originProduct.name","품절 상품명 수정"));var step=prepared.steps().getFirst();var body=json.readTree(step.bodyJson());
-        assertThat(body.path("originProduct").path("statusType").asString()).isEqualTo("SALE");assertThat(body.path("originProduct").path("stockQuantity").asLong()).isZero();
-        when(gateway.write(any(),any(),any())).thenAnswer(i->{var sent=(JsonNode)i.getArgument(2);assertThat(sent.path("originProduct").path("statusType").asString()).isEqualTo("SALE");assertThat(sent.path("originProduct").path("stockQuantity").asLong()).isZero();base.path("originProduct").asObject().put("name",sent.path("originProduct").path("name").asString());return response(200,"{\"originProductNo\":123,\"smartstoreChannelProductNo\":456}");});
+        assertThat(body.path("originProduct").path("statusType").asString()).isEqualTo("SALE");assertThat(body.path("originProduct").has("stockQuantity")).isFalse();
+        when(gateway.write(any(),any(),any())).thenAnswer(i->{var sent=(JsonNode)i.getArgument(2);assertThat(sent.path("originProduct").path("statusType").asString()).isEqualTo("SALE");assertThat(sent.path("originProduct").has("stockQuantity")).isFalse();base.path("originProduct").asObject().put("name",sent.path("originProduct").path("name").asString());return response(200,"{\"originProductNo\":123,\"smartstoreChannelProductNo\":456}");});
         assertThat(writer.execute(1L,prepared,step,mapping()).state()).isEqualTo(State.CONFIRMED);assertThat(base.path("originProduct").path("statusType").asString()).isEqualTo("OUTOFSTOCK");verify(gateway,times(1)).write(any(),any(),any());
         base.path("originProduct").asObject().put("statusType","UNADMISSION");assertThat(edit(input()).steps()).isEmpty();assertThatThrownBy(()->edit(field(input(),"originProduct.name","검수 대기 상품명 수정"))).isInstanceOf(InputValidationFailure.class).hasMessageContaining("UNADMISSION").hasMessageContaining("강제 변경하지 않습니다");verify(gateway,times(1)).write(any(),any(),any());
     }
@@ -152,7 +153,7 @@ class NaverWriteGatewayTest {
         assertThat(result.state()).isEqualTo(State.ACCEPTED);assertThat(result.code()).isEqualTo("REFLECTION_PENDING");verify(gateway,never()).write(any(),any(),any());
     }
     @ParameterizedTest @ValueSource(booleans={false,true})
-    void lostCreateWithShoppingNormalizationStillRequiresOneNewMatchingProduct(boolean ambiguous){
+    void lostCreateWithShoppingNormalizationCannotIdentifyTheCreatingRequest(boolean ambiguous){
         var desired=field(input(),"smartstoreChannelProduct.naverShoppingRegistration",true);
         var prepared=writer.prepare(1L,NaverDraftAdapter.document("1",0L,desired),null,false);var step=prepared.steps().getFirst();
         var registered=json.readTree(step.bodyJson()).deepCopy().asObject();registered.path("originProduct").asObject().put("originProductNo",789);registered.path("smartstoreChannelProduct").asObject().put("naverShoppingRegistration",false);
@@ -160,8 +161,7 @@ class NaverWriteGatewayTest {
         if(ambiguous){var other=registered.deepCopy();other.path("originProduct").asObject().put("originProductNo",790);when(gateway.product("790")).thenReturn(other);rows.add(json.createObjectNode().put("originProductNo",790));}
         when(gateway.search(any())).thenReturn(json.createObjectNode().put("totalPages",1).put("last",true).set("contents",rows));
         var result=writer.reconcile(1L,prepared,step,new Result(State.UNKNOWN,null,"NETWORK",null,Instant.now()));
-        assertThat(result.state()).isEqualTo(ambiguous?State.UNKNOWN:State.CONFIRMED);
-        if(ambiguous)assertThat(result.mapping()).isNull();else assertThat(result.mapping().sellerProductId()).isEqualTo("789");
+        assertThat(result.state()).isEqualTo(State.UNKNOWN);assertThat(result.mapping()).isNull();
         verify(gateway,never()).write(any(),any(),any());
     }
     @Test void pathIdentityProjectionKeepsExistingMappingsWithoutSendingIdentifiersInPut(){
@@ -199,10 +199,39 @@ class NaverWriteGatewayTest {
         assertThat(writer.execute(1L,prepared,step,result.mapping()).state()).isEqualTo(State.FAILED);verify(gateway,times(1)).write(any(),any(),any());
         base.path("originProduct").asObject().put("statusType","SALE");assertThat(writer.reconcile(1L,prepared,step,result).state()).isEqualTo(State.CONFIRMED);
     }
-    @Test void lostCreateResponseCanOnlyLinkOneNewMatchingIdAndSellerCodeSearchUsesDocumentedField(){
+    @Test void lostCreateResponseNeverLinksAnUnrelatedMatchingId(){
         var prepared=writer.prepare(1L,document(),null,false);var step=prepared.steps().getFirst();var registered=json.readTree(step.bodyJson()).deepCopy().asObject();registered.path("originProduct").asObject().put("originProductNo",789);registered.path("smartstoreChannelProduct").asObject().put("channelProductNo",987);
         when(gateway.product("789")).thenReturn(registered);when(gateway.search(any())).thenAnswer(i->{var query=(JsonNode)i.getArgument(0);assertThat(query.path("sellerManagementCode").asString()).isEqualTo("SKU");assertThat(query.has("searchKeyword")).isFalse();return json.readTree("{\"contents\":[{\"originProductNo\":789}],\"totalPages\":1,\"last\":true}");});
-        var result=writer.reconcile(1L,prepared,step,new Result(State.UNKNOWN,null,"NETWORK",null,Instant.now()));assertThat(result.state()).isEqualTo(State.CONFIRMED);assertThat(result.mapping().sellerProductId()).isEqualTo("789");verify(gateway,never()).write(any(),any(),any());
+        var result=writer.reconcile(1L,prepared,step,new Result(State.UNKNOWN,null,"NETWORK",null,Instant.now()));assertThat(result.state()).isEqualTo(State.UNKNOWN);assertThat(result.mapping()).isNull();verify(gateway,never()).write(any(),any(),any());
+    }
+    @Test void unknownCreateDoesNotLinkAConcurrentIdenticalProductAfterDispatch(){
+        var prepared=writer.prepare(1L,document(),null,false);var step=prepared.steps().getFirst();
+        var other=json.readTree(step.bodyJson()).deepCopy().asObject();other.path("originProduct").asObject().put("originProductNo",789);
+        when(gateway.write(any(),any(),any())).thenAnswer(i->{
+            when(gateway.product("789")).thenReturn(other);
+            when(gateway.search(any())).thenReturn(json.readTree("{\"contents\":[{\"originProductNo\":789}],\"totalPages\":1,\"last\":true}"));
+            throw new MarketplaceFailure(MarketplaceFailure.Kind.NETWORK,"NAVER");
+        });
+        var recorded=new java.util.concurrent.atomic.AtomicReference<Step>();
+        var result=writer.execute(1L,prepared,step,null,recorded::set);
+        assertThat(result.state()).isEqualTo(State.UNKNOWN);
+        for(int i=0;i<3;i++)result=writer.reconcile(1L,prepared,recorded.get(),result);
+        assertThat(result.state()).isEqualTo(State.UNKNOWN);assertThat(result.mapping()).isNull();
+        assertThat(result.code()).isEqualTo("CREATE_UNCONFIRMED");verify(gateway,times(1)).write(any(),any(),any());
+    }
+    @Test void nameOnlyUpdatePreservesStockReducedByAnOrderImmediatelyBeforePut(){
+        var prepared=edit(field(input(),"originProduct.name","updated name"));var step=prepared.steps().getFirst();
+        assertThat(json.readTree(step.bodyJson()).path("originProduct").has("stockQuantity")).isFalse();
+        when(gateway.write(any(),any(),any())).thenAnswer(i->{
+            base.path("originProduct").asObject().put("stockQuantity",4);
+            var origin=((JsonNode)i.getArgument(2)).path("originProduct");
+            if(origin.has("stockQuantity"))base.path("originProduct").asObject().set("stockQuantity",origin.path("stockQuantity"));
+            base.path("originProduct").asObject().put("name",origin.path("name").asString());
+            return response(200,"{\"originProductNo\":123}");
+        });
+        var recorded=new java.util.concurrent.atomic.AtomicReference<Step>();var result=writer.execute(1L,prepared,step,mapping(),recorded::set);
+        assertThat(result.state()).isEqualTo(State.CONFIRMED);assertThat(base.path("originProduct").path("stockQuantity").asLong()).isEqualTo(4);
+        assertThat(json.readTree(recorded.get().bodyJson()).path("originProduct").has("stockQuantity")).isFalse();
     }
     @Test void httpRejectionAndLostSuccessRemainDifferentAndNoChangeSendsNothing(){
         var prepared=edit(field(input(),"originProduct.stockQuantity",0L));var step=prepared.steps().getFirst();assertThat(writer.parseOutcome(response(400,"{}"),step,mapping(),input()).state()).isEqualTo(State.FAILED);assertThat(writer.parseOutcome(response(500,"{}"),step,mapping(),input()).state()).isEqualTo(State.UNKNOWN);assertThat(writer.parseOutcome(response(200,"bad-json"),step,mapping(),input()).state()).isEqualTo(State.UNKNOWN);assertThat(edit(input()).steps()).isEmpty();

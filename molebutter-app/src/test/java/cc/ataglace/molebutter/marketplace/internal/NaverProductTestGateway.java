@@ -15,6 +15,7 @@ public final class NaverProductTestGateway implements NaverGateway {
     private JsonNode source;
     private final List<String> writes=new ArrayList<>();
     private boolean loseResponse;
+    private Long stockBeforePut;
     private boolean shoppingAdvertiser=true;
     public String accountKey(){return DefaultMarketplaceSubmissions.account("NAVER:synthetic-product-flow");}
     public <T>T session(Supplier<T> work){return work.get();}
@@ -24,6 +25,8 @@ public final class NaverProductTestGateway implements NaverGateway {
     public JsonNode metadata(String kind,Map<String,String> query){return kind.equals("category")?json.createObjectNode().put("id","50000001").put("last",true):json.createArrayNode();}
     public NaverGateway.Response write(String method,String path,JsonNode body){
         writes.add(method+" "+path);var next=body.deepCopy().asObject();
+        if(method.equals("PUT")&&stockBeforePut!=null){source.path("originProduct").asObject().put("stockQuantity",stockBeforePut);stockBeforePut=null;}
+        if(source!=null&&!next.path("originProduct").has("stockQuantity"))next.path("originProduct").asObject().set("stockQuantity",source.path("originProduct").path("stockQuantity").deepCopy());
         if(source!=null&&!next.path("originProduct").has("detailContent"))next.path("originProduct").asObject().set("detailContent",source.path("originProduct").path("detailContent").deepCopy());
         next.path("originProduct").asObject().put("originProductNo",101);next.path("smartstoreChannelProduct").asObject().put("channelProductNo",202);
         if(next.path("originProduct").path("stockQuantity").isIntegralNumber()&&next.path("originProduct").path("stockQuantity").asLong()==0)next.path("originProduct").asObject().put("statusType","OUTOFSTOCK");
@@ -35,7 +38,7 @@ public final class NaverProductTestGateway implements NaverGateway {
     }
     public String uploadImage(Long actor,NaverEditor.Image image){return "https://shop-phinf.pstatic.net/"+image.id()+".jpg";}
     public JsonNode parse(NaverGateway.Response response){return json.readTree(response.body());}
-    public void reset(){source=null;writes.clear();loseResponse=false;shoppingAdvertiser=true;}
+    public void reset(){source=null;writes.clear();loseResponse=false;stockBeforePut=null;shoppingAdvertiser=true;}
     public void seed(NaverEditor.Input input){source=json.createObjectNode();var origin=json.createObjectNode().put("originProductNo",101).put("detailContent",input.description());var channel=json.createObjectNode().put("channelProductNo",202);source.asObject().set("originProduct",origin);source.asObject().set("smartstoreChannelProduct",channel);
         for(var e:input.fields().entrySet())put(source.asObject(),e.getKey(),json.valueToTree(e.getValue()));var images=origin.putObject("images");images.putObject("representativeImage").put("url","https://shop-phinf.pstatic.net/existing.jpg");images.putArray("optionalImages");
         origin.putObject("preservedRemote").put("value","keep-this-remote-field");
@@ -48,6 +51,7 @@ public final class NaverProductTestGateway implements NaverGateway {
     public void shoppingAdvertiser(boolean enabled){shoppingAdvertiser=enabled;}
     public void channelNumber(long value){source.path("smartstoreChannelProduct").asObject().put("channelProductNo",value);}
     public void salePrice(long value){source.path("originProduct").asObject().put("salePrice",value);}
+    public void stockBeforeNextPut(long quantity){stockBeforePut=quantity;}
     public void loseNextResponse(){loseResponse=true;}
     public List<String> writes(){return List.copyOf(writes);}
     @TestConfiguration(proxyBeanMethods=false)

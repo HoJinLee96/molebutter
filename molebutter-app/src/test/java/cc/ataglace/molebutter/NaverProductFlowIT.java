@@ -68,11 +68,14 @@ class NaverProductFlowIT {
   assertThat(gateway.writes()).hasSize(2);
  }
  @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
- void nonAdvertiserCreateFinishesAndAllowsNextEditEvenAfterLostResponse(boolean loseResponse){
+ void nonAdvertiserCreateRequiresTheResponseIdBeforeMappingAndNextEdit(boolean loseResponse){
   gateway.shoppingAdvertiser(false);var draft=registrations.create(admin,input());
   var created=execute(registrations.prepare(admin,draft.id(),new NaverProductRegistrations.Prepare(draft.revision())));
   if(loseResponse)gateway.loseNextResponse();worker.runPending();
-  if(loseResponse){assertThat(submissions.get(admin,created.id()).status()).isEqualTo(Status.UNKNOWN);submissions.reconcile(admin,created.id());worker.runPending();}
+  if(loseResponse){
+   assertThat(submissions.get(admin,created.id()).status()).isEqualTo(Status.UNKNOWN);submissions.reconcile(admin,created.id());worker.runPending();
+   assertUnknownAndLocked(draft,created);return;
+  }
   assertThat(submissions.get(admin,created.id()).status()).isEqualTo(Status.SUCCEEDED);
   assertThat(gateway.source().path("smartstoreChannelProduct").path("naverShoppingRegistration").asBoolean()).isFalse();
   gateway.omitChannelNumber();var observation=saving.observe(admin,"101");
@@ -84,7 +87,24 @@ class NaverProductFlowIT {
   var d=registrations.create(admin,input());var e=execute(registrations.prepare(admin,d.id(),new NaverProductRegistrations.Prepare(d.revision())));gateway.loseNextResponse();worker.runPending();
   assertThat(submissions.get(admin,e.id()).status()).isEqualTo(Status.UNKNOWN);assertThatThrownBy(()->submissions.retry(admin,e.id())).isInstanceOf(MarketplaceSubmissionFailure.class);
   assertThatThrownBy(()->registrations.prepare(admin,d.id(),new NaverProductRegistrations.Prepare(d.revision()))).isInstanceOf(MarketplaceDraftFailure.class);
-  submissions.reconcile(admin,e.id());worker.runPending();assertThat(gateway.writes()).containsExactly("POST /v2/products");
+  for(int i=0;i<3;i++){submissions.reconcile(admin,e.id());worker.runPending();assertUnknownAndLocked(d,e);}
+  assertThat(gateway.writes()).containsExactly("POST /v2/products");
+ }
+ void assertUnknownAndLocked(NaverProductRegistrations.Draft draft,Execution execution){
+  assertThat(submissions.get(admin,execution.id()).status()).isEqualTo(Status.UNKNOWN);
+  assertThat(db.queryForObject("SELECT COUNT(*) FROM marketplace_listing_mapping WHERE draft_id=?",Integer.class,Long.parseLong(draft.id()))).isZero();
+  assertThat(registrations.get(admin,draft.id()).blocked()).isTrue();
+  assertThatThrownBy(()->submissions.retry(admin,execution.id())).isInstanceOf(MarketplaceSubmissionFailure.class);
+  assertThatThrownBy(()->registrations.prepare(admin,draft.id(),new NaverProductRegistrations.Prepare(draft.revision()))).isInstanceOf(MarketplaceDraftFailure.class);
+ }
+ @Test void nameOnlyUpdateDoesNotRestoreStockSoldImmediatelyBeforePut(){
+  gateway.seed(changed(input(),"originProduct.stockQuantity",5L));var observation=saving.observe(admin,"101");
+  var edited=changed(observation.document().input(),"originProduct.name","name changed without stock edit");
+  var e=execute(saving.prepare(admin,"101",new NaverProductSaving.Prepare(observation.token(),edited)));gateway.stockBeforeNextPut(4);worker.runPending();
+  assertThat(submissions.get(admin,e.id()).status()).isEqualTo(Status.SUCCEEDED);
+  assertThat(gateway.source().path("originProduct").path("stockQuantity").asLong()).isEqualTo(4);
+  String request=db.queryForObject("SELECT request_json FROM marketplace_execution_attempt WHERE execution_id=?",String.class,Long.parseLong(e.id()));
+  var body=json.readTree(json.readTree(request).path("bodyJson").asString());assertThat(body.path("originProduct").has("stockQuantity")).isFalse();
  }
  @Test void editPreservesUnchangedDescriptionAndUnmappedRemoteFieldsAndZeroStock(){
   gateway.seed(input());var observation=saving.observe(admin,"101");var edited=changed(observation.document().input(),"originProduct.salePrice",2000L);
