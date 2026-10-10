@@ -55,6 +55,31 @@ class NaverProductFlowIT {
   assertThat(db.queryForObject("SELECT mapping_json FROM marketplace_listing_mapping WHERE draft_id=? AND market='NAVER'",String.class,Long.parseLong(d.id()))).contains("\"sellerProductId\":\"101\"","\"channelProductId\":\"202\"");
   assertThatThrownBy(()->registrations.prepare(admin,d.id(),new NaverProductRegistrations.Prepare(d.revision()))).isInstanceOf(MarketplaceDraftFailure.class);
  }
+ @Test void mappedProductReopensWithoutChannelNumberAndStillRejectsAnotherChannel(){
+  var draft=registrations.create(admin,input());var created=execute(registrations.prepare(admin,draft.id(),new NaverProductRegistrations.Prepare(draft.revision())));worker.runPending();
+  assertThat(submissions.get(admin,created.id()).status()).isEqualTo(Status.SUCCEEDED);
+  gateway.omitChannelNumber();var observation=saving.observe(admin,"101");assertThat(observation.document().channelProductNo()).isNull();
+  var modified=execute(saving.prepare(admin,"101",new NaverProductSaving.Prepare(observation.token(),changed(observation.document().input(),"originProduct.salePrice",2000L))));worker.runPending();
+  assertThat(submissions.get(admin,modified.id()).status()).isEqualTo(Status.SUCCEEDED);
+  assertThat(gateway.writes()).containsExactly("POST /v2/products","PUT /v2/products/origin-products/101");
+  assertThat(db.queryForObject("SELECT mapping_json FROM marketplace_listing_mapping WHERE draft_id=? AND market='NAVER'",String.class,Long.parseLong(draft.id()))).contains("\"channelProductId\":\"202\"");
+  gateway.channelNumber(999);var conflict=saving.observe(admin,"101");
+  assertThatThrownBy(()->saving.prepare(admin,"101",new NaverProductSaving.Prepare(conflict.token(),changed(conflict.document().input(),"originProduct.salePrice",3000L)))).isInstanceOf(MarketplaceEditingFailure.class);
+  assertThat(gateway.writes()).hasSize(2);
+ }
+ @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+ void nonAdvertiserCreateFinishesAndAllowsNextEditEvenAfterLostResponse(boolean loseResponse){
+  gateway.shoppingAdvertiser(false);var draft=registrations.create(admin,input());
+  var created=execute(registrations.prepare(admin,draft.id(),new NaverProductRegistrations.Prepare(draft.revision())));
+  if(loseResponse)gateway.loseNextResponse();worker.runPending();
+  if(loseResponse){assertThat(submissions.get(admin,created.id()).status()).isEqualTo(Status.UNKNOWN);submissions.reconcile(admin,created.id());worker.runPending();}
+  assertThat(submissions.get(admin,created.id()).status()).isEqualTo(Status.SUCCEEDED);
+  assertThat(gateway.source().path("smartstoreChannelProduct").path("naverShoppingRegistration").asBoolean()).isFalse();
+  gateway.omitChannelNumber();var observation=saving.observe(admin,"101");
+  var modified=execute(saving.prepare(admin,"101",new NaverProductSaving.Prepare(observation.token(),changed(observation.document().input(),"originProduct.salePrice",2000L))));worker.runPending();
+  assertThat(submissions.get(admin,modified.id()).status()).isEqualTo(Status.SUCCEEDED);
+  assertThat(gateway.writes()).containsExactly("POST /v2/products","PUT /v2/products/origin-products/101");
+ }
  @Test void responseLossBlocksNewPostAndOnlyAllowsReadReconciliation(){
   var d=registrations.create(admin,input());var e=execute(registrations.prepare(admin,d.id(),new NaverProductRegistrations.Prepare(d.revision())));gateway.loseNextResponse();worker.runPending();
   assertThat(submissions.get(admin,e.id()).status()).isEqualTo(Status.UNKNOWN);assertThatThrownBy(()->submissions.retry(admin,e.id())).isInstanceOf(MarketplaceSubmissionFailure.class);

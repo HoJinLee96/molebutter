@@ -59,7 +59,8 @@ public final class DefaultMarketplaceEditing implements MarketplaceEditing {
         access.productActor(actor,true);
         return tx.execute(t->{
             var d=draftStore.find(id(draftId),true);checkRegistration(actor,d);var mapping=ensureMapping(d);
-            if(!market.equals(market(d))||mapping==null||!mapping.sellerProductId().equals(productId)||mapping.channelProductId()!=null&&!Objects.equals(mapping.channelProductId(),channelId))throw new MarketplaceEditingFailure(CONFLICT);
+            // Naver origin GET may omit the channel number; an absent value cannot contradict a trusted mapping.
+            if(!market.equals(market(d))||mapping==null||!mapping.sellerProductId().equals(productId)||mapping.channelProductId()!=null&&(channelId!=null||!"NAVER".equals(market))&&!Objects.equals(mapping.channelProductId(),channelId))throw new MarketplaceEditingFailure(CONFLICT);
             var observed=project.apply(d,mapping);
             var session=new Session(Long.toString(BusinessIds.next()),draftId,d.revision(),expiresAt,List.of(new Target(market,"UPDATE","READY",Instant.now().toString(),null,observed)));
             store.insert(actor,accountFor(d),mapping,session);return session;
