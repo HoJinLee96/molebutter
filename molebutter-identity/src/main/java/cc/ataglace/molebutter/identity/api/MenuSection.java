@@ -23,7 +23,7 @@ public enum MenuSection {
     MARKETPLACES("판매 마켓", pages("/marketplaces", "/marketplaces/**"), apis("/api/marketplaces/**")),
     INVENTORY("재고", pages("/inventory"), apis("/api/inventory/**")),
     PRODUCTS("상품", pages("/products"), apis("/api/products/**")),
-    PRODUCT_IMAGES("상품 이미지 도구", pages("/product-images"), apis("/api/product-images/**")),
+    PRODUCT_IMAGES("상품 정보 도구", pages("/product-images"), apis("/api/product-images/**")),
     PRODUCT_REFRESH("상품 최신화", pages("/product-refresh"), apis("/api/product-refresh/**")),
     SETTINGS("공통 설정", pages("/settings"), apis("/api/settings/**")),
     VERSION_HISTORY("버전 기록", pages("/version-history"));
