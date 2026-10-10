@@ -54,7 +54,7 @@ class ProductImageWorkspaceTest {
 
         var finished = workspace.job(1L, accepted.id());
         assertThat(finished.status()).isEqualTo(JobDto.STATUS_SUCCEEDED);
-        assertThat(finished.result().savedFiles()).containsExactly("01.png", "상품정보.png", "사이즈.png");
+        assertThat(finished.result().savedFiles()).containsExactly("BAG1/official/01.png", "BAG1/processed/상품정보.png", "BAG1/processed/사이즈.png");
         var artifact = workspace.download(1L, accepted.id());
         assertThat(artifact.downloadName()).isEqualTo("BAG1.zip");
         Map<String, byte[]> zipFiles = new LinkedHashMap<>();
@@ -63,9 +63,9 @@ class ProductImageWorkspaceTest {
                 zipFiles.put(entry.getName(), zip.readAllBytes());
             }
         }
-        assertThat(zipFiles.keySet()).containsExactly("01.png", "상품정보.png", "사이즈.png");
-        assertThat(zipFiles.get("상품정보.png")).isEqualTo(noticePng);
-        assertThat(zipFiles.get("사이즈.png")).isEqualTo(sizePng);
+        assertThat(zipFiles.keySet()).containsExactly("BAG1/official/01.png", "BAG1/processed/상품정보.png", "BAG1/processed/사이즈.png");
+        assertThat(zipFiles.get("BAG1/processed/상품정보.png")).isEqualTo(noticePng);
+        assertThat(zipFiles.get("BAG1/processed/사이즈.png")).isEqualTo(sizePng);
         verify(images).downloadProductImage(old.imageUrls().getFirst(), old.productCode());
         verifyNoMoreInteractions(images);
     }
@@ -133,7 +133,7 @@ class ProductImageWorkspaceTest {
         var request=new DownloadRequestDto("BAG1","DAKS",null,false,false,null,List.of(new DownloadImageItemDto(0,null,first.imageUrls().getFirst())));
         var snapshot=new DownloadService.ExportSnapshot(request,first,request.images(),Map.of());
         when(downloads.capture(eq(1L),eq(request),same(first))).thenReturn(snapshot);
-        var images=List.of(new ExportImageDto("01.png","image/png",".png",new byte[]{1}));when(downloads.exportImages(same(snapshot))).thenReturn(images);
+        var images=List.of(new ExportImageDto("01.png","image/png",".png",new byte[]{1},ExportImageCategory.OFFICIAL));when(downloads.exportImages(same(snapshot))).thenReturn(images);
         var plan=workspace.prepareExport(1L,request);workspace.lookup(1L,"BAG1","DAKS");assertThat(plan.prepare()).isSameAs(images);
         verify(downloads).capture(eq(1L),eq(request),same(first));verify(downloads).exportImages(same(snapshot));
         verify(cache,times(2)).refreshProduct("BAG1","DAKS");

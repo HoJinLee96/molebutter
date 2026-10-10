@@ -67,7 +67,7 @@ class NoticeImageRendererTest {
             NoticeImageCardDto exposed = layout.cards().get(index);
             assertThat(exposed.label()).isEqualTo(card.label());
             assertThat(exposed.value()).isEqualTo(card.value());
-            assertThat(exposed.fullWidth()).isEqualTo(card.width() == 944);
+            assertThat(exposed.fullWidth()).isEqualTo(card.width() == 1248);
         }
         assertThat(layout.cards().get(2).value()).contains("\n").startsWith("  ").endsWith("  ");
     }
@@ -96,7 +96,7 @@ class NoticeImageRendererTest {
         assertThat(renderer.layout(fields).cards()).containsExactly(
                 new NoticeImageCardDto("색상", "블랙", true),
                 new NoticeImageCardDto("주의사항", longValue, true));
-        assertThat(renderer.layoutCards(fields)).extracting(NoticeImageRenderer.NoticeCard::width).containsOnly(944);
+        assertThat(renderer.layoutCards(fields)).extracting(NoticeImageRenderer.NoticeCard::width).containsOnly(1248);
     }
 
     @Test
@@ -169,25 +169,73 @@ class NoticeImageRendererTest {
     }
 
     @Test
-    void placesTitleInItsOwnLeftColumn() {
+    void usesTheFormerTitleColumnForCardsWithSymmetricOuterMargins() {
         BufferedImage image = renderer.render(Map.of());
-        int left = image.getWidth();
-        int right = -1;
-        for (int y = 80; y < 165; y++) {
-            for (int x = 0; x < 400; x++) {
-                if (image.getRGB(x, y) != Color.WHITE.getRGB()) {
-                    left = Math.min(left, x);
-                    right = Math.max(right, x);
-                }
-            }
-        }
-        assertThat(right).isGreaterThan(left);
-        assertThat(left).isBetween(95, 97);
-        assertThat(right).isLessThan(350);
-        // The removed second title line must stay blank.
-        assertThat(image.getRGB(0, 165, 398, 53, null, 0, 398))
-                .containsOnly(Color.WHITE.getRGB());
-        assertThat(renderer.layoutCards(Map.of()).getFirst().y()).isEqualTo(72);
+        NoticeImageRenderer.NoticeCard card = renderer.layoutCards(Map.of()).getFirst();
+        assertThat(card.x()).isEqualTo(96);
+        assertThat(card.width()).isEqualTo(1248);
+        assertThat(card.y()).isEqualTo(72);
+        assertThat(image.getRGB(96, 72)).isEqualTo(new Color(246, 246, 246).getRGB());
+        assertThat(image.getRGB(0, 0, 1440, 72, null, 0, 1440)).containsOnly(Color.WHITE.getRGB());
+        assertWhiteMargins(image);
+    }
+
+    @Test
+    void placesKindBesideManufacturerInTheSecondRowWithoutChangingSourceFields() {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("제품 소재(제품 주소재)", "라미네이팅가죽(소가죽)");
+        fields.put("색상", "블랙");
+        fields.put("제조사(공식수입/병행수입)", "LF");
+        fields.put("제조국", "중국 * 제조국 정보는 최초 생산지 기준이며, 추가 생산이 이루어질 경우 제조국이 달라질 수 있습니다. ".repeat(2));
+        fields.put("취급시 주의사항", "제품의 기본 용도 이외에는 사용하지 마십시오. ".repeat(5));
+        fields.put("종류", "크로스백");
+
+        List<String> originalOrder = List.copyOf(fields.keySet());
+        List<NoticeImageRenderer.NoticeCard> cards = renderer.layoutCards(fields);
+
+        assertThat(cards).extracting(NoticeImageRenderer.NoticeCard::label).containsExactly(
+                "제품 소재(제품 주소재)", "색상", "제조사(공식수입/병행수입)", "종류", "제조국", "취급시 주의사항");
+        assertThat(cards.get(0).y()).isEqualTo(cards.get(1).y());
+        assertThat(cards.get(2).y()).isEqualTo(cards.get(3).y()).isGreaterThan(cards.get(0).y());
+        assertThat(cards.get(2).width()).isEqualTo(615);
+        assertThat(cards.get(3).x()).isEqualTo(cards.get(2).x() + cards.get(2).width() + 18);
+        assertThat(renderer.layout(fields).cards().subList(2, 4)).containsExactly(
+                new NoticeImageCardDto("제조사(공식수입/병행수입)", "LF", false),
+                new NoticeImageCardDto("종류", "크로스백", false));
+        assertThat(fields.keySet()).containsExactlyElementsOf(originalOrder);
+        assertWhiteMargins(renderer.render(fields));
+    }
+
+    @Test
+    void keepsManufacturerAndKindTogetherAfterAnOddFieldAndWrapsLongValues() {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("색상", "블랙");
+        fields.put("종 류", "크로스백");
+        fields.put(java.text.Normalizer.normalize("제조사 (공식수입/병행수입)", java.text.Normalizer.Form.NFD),
+                "긴 제조사명과 수입자 정보 ".repeat(10));
+        List<NoticeImageRenderer.NoticeCard> cards = renderer.layoutCards(fields);
+
+        assertThat(cards.get(0).width()).isEqualTo(1248);
+        assertThat(cards.get(1).y()).isEqualTo(cards.get(2).y());
+        assertThat(cards.get(1).height()).isEqualTo(cards.get(2).height()).isGreaterThan(144);
+        assertThat(cards.get(2).label()).isEqualTo("종 류");
+        assertThat(String.join("", cards.get(1).valueLines()).replace(" ", ""))
+                .isEqualTo(fields.values().stream().toList().get(2).replace(" ", ""));
+        assertWhiteMargins(renderer.render(fields));
+    }
+
+    @Test
+    void keepsRemainingFieldOrderWhenManufacturerOrKindHasNoValue() {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("종류", "크로스백");
+        fields.put("색상", "블랙");
+        fields.put("제조사", " ");
+        assertThat(renderer.layout(fields).cards()).extracting(NoticeImageCardDto::label)
+                .containsExactly("종류", "색상");
+        fields.put("제조사", "LF");
+        fields.put("종류", " ");
+        assertThat(renderer.layout(fields).cards()).extracting(NoticeImageCardDto::label)
+                .containsExactly("색상", "제조사");
     }
 
     @Test
@@ -228,7 +276,7 @@ class NoticeImageRendererTest {
         assertThat(cards.get(0).height()).isEqualTo(cards.get(1).height());
         assertThat(cards.get(1).x()).isGreaterThan(cards.get(0).x() + cards.get(0).width());
         assertThat(cards.get(2).y()).isGreaterThan(cards.get(0).y() + cards.get(0).height());
-        assertThat(cards.get(2).width()).isEqualTo(944);
+        assertThat(cards.get(2).width()).isEqualTo(1248);
     }
 
     @Test
@@ -239,7 +287,7 @@ class NoticeImageRendererTest {
         fields.put("제조국", "대한민국");
         List<NoticeImageRenderer.NoticeCard> cards = renderer.layoutCards(fields);
 
-        assertThat(cards).extracting(NoticeImageRenderer.NoticeCard::width).containsOnly(944);
+        assertThat(cards).extracting(NoticeImageRenderer.NoticeCard::width).containsOnly(1248);
         assertThat(cards).extracting(card -> String.join("", card.labelLines()))
                 .containsExactly("색상", "주의사항", "제조국");
         assertThat(cards.get(1).height()).isGreaterThan(cards.get(0).height());
@@ -339,9 +387,9 @@ class NoticeImageRendererTest {
     }
 
     private void assertWhiteMargins(BufferedImage image) {
-        assertThat(image.getRGB(0, 218, 398, image.getHeight() - 218, null, 0, 398))
+        assertThat(image.getRGB(0, 0, 96, image.getHeight(), null, 0, 96))
                 .containsOnly(Color.WHITE.getRGB());
-        assertThat(image.getRGB(1346, 96, 94, image.getHeight() - 96, null, 0, 94))
+        assertThat(image.getRGB(1344, 0, 96, image.getHeight(), null, 0, 96))
                 .containsOnly(Color.WHITE.getRGB());
         assertThat(image.getRGB(0, image.getHeight() - 60, 1440, 60, null, 0, 1440))
                 .containsOnly(Color.WHITE.getRGB());

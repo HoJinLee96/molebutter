@@ -68,7 +68,7 @@ public class ProductImageUploadService {
         // Unexpired IDs are never evicted to make room: they prevent duplicate writes after a lost response.
         if (jobs.size() >= MAX_JOBS) throw new ProductImageUploadFailure(ProductImageUploadFailure.Kind.BUSY,
                 "업로드 결과 보관 공간이 가득 찼습니다. 잠시 후 다시 시도해주세요.");
-        publicUrl(key(request, "01.png")); // Pure configuration check: no S3 request or source-image download.
+        publicUrl(key(request, ExportImageCategory.OFFICIAL, "01.png")); // Pure configuration check: no S3 request or source-image download.
         requireEmptyDestination(request);
         DownloadRequestDto selection = new DownloadRequestDto(request.productCode(), request.brandCode(), null, false, false, null, request.images());
         ImageExportPlan plan = workspace.prepareExport(actor, selection);
@@ -117,14 +117,14 @@ public class ProductImageUploadService {
             long bytes = 0;
             for (int i = 0; i < images.size(); i++) {
                 ExportImageDto image = images.get(i);
-                if (image == null || image.byteSize() == 0 || image.byteSize() > maxObjectBytes
+                if (image == null || image.category() == null || image.byteSize() == 0 || image.byteSize() > maxObjectBytes
                         || !validFormat(image.contentType(), image.fileExtension())
                         || !validFileName(image.fileName(), image.fileExtension()) || !fileNames.add(image.fileName())) {
                     throw new ImagingFailure(ImagingFailure.Kind.INVALID_INPUT, "업로드 이미지 파일명, 형식 또는 파일 크기 제한을 확인해주세요.");
                 }
                 bytes += image.byteSize();
                 if (bytes > MAX_CONTENT_BYTES) throw new ImagingFailure(ImagingFailure.Kind.INVALID_INPUT, "전체 업로드 이미지 크기는 64MB 이하여야 합니다.");
-                String key = key(request, image.fileName());
+                String key = key(request, image.category(), image.fileName());
                 destinations.add(new ExpectedFile(new ProductImageUploadJob.File(image.fileName(), key, publicUrl(key).toString()),
                         image.contentType(), image.byteSize(), digest(image.bytes())));
             }
@@ -277,8 +277,8 @@ public class ProductImageUploadService {
     private static void actor(Long actor) { if (actor == null || actor <= 0) invalid("로그인이 필요합니다."); }
     private static void invalid(String message) { throw new ProductImageUploadFailure(ProductImageUploadFailure.Kind.INVALID_INPUT, message); }
     private static ProductImageUploadFailure notFound() { return new ProductImageUploadFailure(ProductImageUploadFailure.Kind.NOT_FOUND, "업로드 작업을 찾을 수 없습니다."); }
-    private static String key(ProductImageUploadRequest request, String fileName) {
-        return prefix(request) + fileName;
+    private static String key(ProductImageUploadRequest request, ExportImageCategory category, String fileName) {
+        return prefix(request) + category.directory() + "/" + fileName;
     }
     private static String prefix(ProductImageUploadRequest request) { return "products/" + request.uploadProductCode() + "/"; }
 

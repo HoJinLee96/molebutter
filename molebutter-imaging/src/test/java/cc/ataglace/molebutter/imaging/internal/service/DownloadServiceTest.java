@@ -31,18 +31,18 @@ class DownloadServiceTest {
         when(images.downloadProductImage(p.imageUrls().getFirst(),"BAG1")).thenReturn(new ImageDownloadClient.DownloadedImage(solidPng(Color.RED,20,30),"image/png",".png"));
         var result=service.downloadImages(1L,request(List.of(new DownloadImageItemDto(null,id),new DownloadImageItemDto(0,null),new DownloadImageItemDto(0,null)),true),product());
         assertThat(result.metadata().downloadName()).isEqualTo("BAG1.zip");
-        assertThat(result.metadata().savedFiles()).containsExactly("사이즈.png","02.png","03.png","상품정보.png");
+        assertThat(result.metadata().savedFiles()).containsExactly("BAG1/processed/사이즈.png","BAG1/official/02.png","BAG1/official/03.png","BAG1/processed/상품정보.png");
         var archive=unzip(result.archive());assertThat(archive.keySet()).containsExactlyElementsOf(result.metadata().savedFiles());
-        assertThat(archive.get("사이즈.png")).isEqualTo(frozen);
-        assertThat(archive.get("02.png")).isEqualTo(archive.get("03.png"));
-        BufferedImage padded=ImageIO.read(new ByteArrayInputStream(archive.get("02.png")));
+        assertThat(archive.get("BAG1/processed/사이즈.png")).isEqualTo(frozen);
+        assertThat(archive.get("BAG1/official/02.png")).isEqualTo(archive.get("BAG1/official/03.png"));
+        BufferedImage padded=ImageIO.read(new ByteArrayInputStream(archive.get("BAG1/official/02.png")));
         assertThat(padded.getHeight()).isEqualTo(40);assertThat(padded.getRGB(10,37)).isEqualTo(Color.WHITE.getRGB());
         verify(images,never()).downloadProductImage(eq(p.imageUrls().get(1)),any());verify(sizes,never()).render(any(),any());
     }
     @Test void emptyMixedListOverridesAllLegacyOptionsExceptNotice() throws Exception {
         when(cache.product("BAG1","DAKS")).thenReturn(product());
         var result=service.downloadImages(1L,request(List.of(),true),product());
-        assertThat(unzip(result.archive()).keySet()).containsExactly("상품정보.png");verifyNoInteractions(images,sizes);
+        assertThat(unzip(result.archive()).keySet()).containsExactly("BAG1/processed/상품정보.png");verifyNoInteractions(images,sizes);
     }
     @Test void validatesAllReferencesAndActorBeforeFirstDownload() {
         var p=product();when(cache.product("BAG1","DAKS")).thenReturn(p);String id=generated.put(2L,p,new byte[]{1});
@@ -80,15 +80,15 @@ class DownloadServiceTest {
         var selected=List.of(new DownloadImageItemDto(null,firstId),new DownloadImageItemDto(1,null,p.imageUrls().get(1)),new DownloadImageItemDto(null,notice.id()),
                 new DownloadImageItemDto(null,secondId),new DownloadImageItemDto(null,firstId),new DownloadImageItemDto(0,null,p.imageUrls().get(0)),new DownloadImageItemDto(null,notice.id()));
         var result=service.downloadImages(1L,request(selected,true),p);var archive=unzip(result.archive());
-        assertThat(result.metadata().savedFiles()).containsExactly("사이즈.png","02.png","상품정보.png","사이즈_2.png","사이즈_3.png","06.png","상품정보_2.png","상품정보_3.png");
+        assertThat(result.metadata().savedFiles()).containsExactly("BAG1/processed/사이즈.png","BAG1/official/02.png","BAG1/processed/상품정보.png","BAG1/processed/사이즈_2.png","BAG1/processed/사이즈_3.png","BAG1/official/06.png","BAG1/processed/상품정보_2.png","BAG1/processed/상품정보_3.png");
         assertThat(archive.keySet()).containsExactlyElementsOf(result.metadata().savedFiles());
-        assertThat(archive.get("사이즈.png")).isEqualTo(first);assertThat(archive.get("사이즈_2.png")).isEqualTo(second);assertThat(archive.get("사이즈_3.png")).isEqualTo(first);
-        assertThat(archive.get("상품정보.png")).isEqualTo(noticeBytes);assertThat(archive.get("상품정보_2.png")).isEqualTo(noticeBytes);
-        assertThat(archive.get("상품정보_3.png")).isEqualTo(noticeRenderer.renderPng(p.notificationFields()));
+        assertThat(archive.get("BAG1/processed/사이즈.png")).isEqualTo(first);assertThat(archive.get("BAG1/processed/사이즈_2.png")).isEqualTo(second);assertThat(archive.get("BAG1/processed/사이즈_3.png")).isEqualTo(first);
+        assertThat(archive.get("BAG1/processed/상품정보.png")).isEqualTo(noticeBytes);assertThat(archive.get("BAG1/processed/상품정보_2.png")).isEqualTo(noticeBytes);
+        assertThat(archive.get("BAG1/processed/상품정보_3.png")).isEqualTo(noticeRenderer.renderPng(p.notificationFields()));
         var exported=service.exportImages(service.capture(1L,request(selected,true),p));
-        assertThat(exported).extracting(ExportImageDto::fileName).containsExactlyElementsOf(result.metadata().savedFiles());
-        for (ExportImageDto file:exported) assertThat(file.bytes()).isEqualTo(archive.get(file.fileName()));
-        assertThat(ImageIO.read(new ByteArrayInputStream(archive.get("02.png"))).getHeight()).isEqualTo(40);assertThat(ImageIO.read(new ByteArrayInputStream(archive.get("06.png"))).getHeight()).isEqualTo(40);
+        assertThat(exported).extracting(file -> "BAG1/" + file.category().directory() + "/" + file.fileName()).containsExactlyElementsOf(result.metadata().savedFiles());
+        for (ExportImageDto file:exported) assertThat(file.bytes()).isEqualTo(archive.get("BAG1/" + file.category().directory() + "/" + file.fileName()));
+        assertThat(ImageIO.read(new ByteArrayInputStream(archive.get("BAG1/official/02.png"))).getHeight()).isEqualTo(40);assertThat(ImageIO.read(new ByteArrayInputStream(archive.get("BAG1/official/06.png"))).getHeight()).isEqualTo(40);
         verifyNoInteractions(sizes);
     }
     @Test void legacyIncludedSizeUsesTheSameFilenameWithoutPadding() throws Exception {
@@ -96,8 +96,8 @@ class DownloadServiceTest {
         when(images.downloadProductImage(p.imageUrls().get(1),p.productCode())).thenReturn(new ImageDownloadClient.DownloadedImage(solidPng(Color.RED,20,30),"image/png",".png"));
         when(sizes.render(p,null)).thenReturn(new SizeGuideService.RenderedSizeGuide(cc.ataglace.molebutter.imaging.internal.policy.SizeGuidePolicy.SizeGuideTemplate.TOTE,size,null));
         var result=service.downloadImages(1L,new DownloadRequestDto("BAG1","DAKS",List.of(1),false,true,null),p);var archive=unzip(result.archive());
-        assertThat(result.metadata().savedFiles()).containsExactly("01.png","사이즈.png");assertThat(archive.keySet()).containsExactly("01.png","사이즈.png");
-        assertThat(archive.get("사이즈.png")).isEqualTo(size);assertThat(ImageIO.read(new ByteArrayInputStream(archive.get("사이즈.png"))).getHeight()).isEqualTo(509);
+        assertThat(result.metadata().savedFiles()).containsExactly("BAG1/official/01.png","BAG1/processed/사이즈.png");assertThat(archive.keySet()).containsExactly("BAG1/official/01.png","BAG1/processed/사이즈.png");
+        assertThat(archive.get("BAG1/processed/사이즈.png")).isEqualTo(size);assertThat(ImageIO.read(new ByteArrayInputStream(archive.get("BAG1/processed/사이즈.png"))).getHeight()).isEqualTo(509);
     }
     @Test void exportCaptureFreezesOwnedGeneratedBytesAndDoesNoNetworkWorkUntilPreparation() throws Exception {
         var p=product();byte[] size=solidPng(Color.BLUE,12,16);String id=generated.put(1L,p,size);
@@ -123,6 +123,47 @@ class DownloadServiceTest {
                 .isInstanceOf(ImagingFailure.class);
         assertThatThrownBy(()->service.capture(1L,request(List.of(new DownloadImageItemDto(0,null,"https://nimg.lfmall.co.kr/stale.jpg")),false),p))
                 .hasMessageContaining("다시 조회");
+        verifyNoInteractions(images,sizes);
+    }
+    @Test void customStorageCodeNamesTheZipAndCategoriesWithoutChangingObservedSource() throws Exception {
+        var p=product();byte[] size=solidPng(Color.BLUE,12,16);
+        String id=generated.put(1L,p,size,GeneratedImageStore.ImageKind.SIZE);
+        byte[] jpeg;
+        try(var out=new ByteArrayOutputStream()) {
+            ImageIO.write(ImageIO.read(new ByteArrayInputStream(solidPng(Color.RED,20,30))),"jpg",out);
+            jpeg=out.toByteArray();
+        }
+        when(images.downloadProductImage(p.imageUrls().getFirst(),"BAG1"))
+                .thenReturn(new ImageDownloadClient.DownloadedImage(jpeg,"image/jpeg",".jpg"));
+        var items=List.of(new DownloadImageItemDto(0,null,p.imageUrls().getFirst()),new DownloadImageItemDto(null,id));
+        var request=new DownloadRequestDto("BAG1","DAKS",null,false,false,null,items," wbba162w3 ");
+        var snapshot=service.capture(1L,request,p);
+        var result=service.downloadImages(snapshot);var zip=unzip(result.archive());
+        assertThat(result.metadata().downloadName()).isEqualTo("WBBA162W3.zip");
+        assertThat(zip.keySet()).containsExactly("WBBA162W3/official/01.jpg","WBBA162W3/processed/사이즈.png");
+        assertThat(zip.get("WBBA162W3/official/01.jpg")).isEqualTo(ProductPhotoMargin.apply(
+                new ImageDownloadClient.DownloadedImage(jpeg,"image/jpeg",".jpg")).bytes());
+        assertThat(zip.get("WBBA162W3/processed/사이즈.png")).isEqualTo(size);
+        assertThat(snapshot.request().productCode()).isEqualTo("BAG1");
+        assertThat(service.exportImages(snapshot)).extracting(ExportImageDto::category)
+                .containsExactly(ExportImageCategory.OFFICIAL,ExportImageCategory.PROCESSED);
+        verify(images,times(2)).downloadProductImage(p.imageUrls().getFirst(),"BAG1");
+    }
+    @Test void storageCodeCannotOverrideGeneratedImageSourceOwnership() {
+        var another=new ProductLookupDto("OTHER1","DAKS","닥스","다른 상품",null,null,List.of(),List.of(),Map.of(),
+                "FREE",null,Map.of(),false,null,null,null);
+        String id=generated.put(1L,another,new byte[]{1});
+        var request=new DownloadRequestDto("BAG1","DAKS",null,false,false,null,
+                List.of(new DownloadImageItemDto(null,id)),"OTHER1");
+        assertThatThrownBy(()->service.capture(1L,request,product())).isInstanceOf(ImagingFailure.class);
+        verifyNoInteractions(images,sizes);
+    }
+    @Test void invalidStorageCodesFailBeforePreparingAnyImage() {
+        for(String code:List.of("", "abc", "../BAG1", "BAG1/official", "한글상품", "BAG1\\other", "A".repeat(41))) {
+            var request=new DownloadRequestDto("BAG1","DAKS",null,false,false,null,
+                    List.of(new DownloadImageItemDto(0,null)),code);
+            assertThatThrownBy(()->service.capture(1L,request,product())).isInstanceOf(ImagingFailure.class);
+        }
         verifyNoInteractions(images,sizes);
     }
     private static byte[] solidPng(Color color,int width,int height)throws Exception{var image=new BufferedImage(width,height,BufferedImage.TYPE_INT_RGB);var g=image.createGraphics();g.setColor(color);g.fillRect(0,0,width,height);g.dispose();var bytes=new ByteArrayOutputStream();ImageIO.write(image,"png",bytes);return bytes.toByteArray();}

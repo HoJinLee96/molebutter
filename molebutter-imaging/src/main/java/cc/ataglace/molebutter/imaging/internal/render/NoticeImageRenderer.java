@@ -4,7 +4,6 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
-import java.awt.font.TextLayout;
 import java.awt.image.BufferedImage;
 import java.text.Normalizer;
 import java.util.ArrayList;
@@ -23,7 +22,7 @@ import lombok.RequiredArgsConstructor;
 /**
  * 상품 정보 고시 이미지(폭 1440) 렌더러.
  * 항목명이 위, 내용이 아래에 놓이는 카드형 고시. 짧은 항목은 두 카드씩,
- * 긴 항목은 전체 너비로 배치한다. 원래 항목 순서를 유지하며 가로 격자선은 사용하지 않는다.
+ * 긴 항목은 전체 너비로 배치한다. 종류는 제조사 오른쪽에 배치하고 나머지 항목 순서는 유지한다.
  * 상품코드와 "A/S 책임자" 항목은 이미지에서 제외한다.
  */
 @Component
@@ -35,8 +34,7 @@ public class NoticeImageRenderer {
     private static final Color INK = new Color(34, 34, 34);
     private static final Color LABEL_INK = new Color(90, 90, 90);
     private static final Color CARD_BACKGROUND = new Color(246, 246, 246);
-    private static final int TITLE_X = 96;
-    private static final int CONTENT_X = 400;
+    private static final int CONTENT_X = 96;
     private static final int RIGHT_MARGIN = 96;
     private static final int CONTENT_WIDTH = RenderSupport.NOTICE_IMAGE_WIDTH - CONTENT_X - RIGHT_MARGIN;
     private static final int CONTENT_TOP = 72;
@@ -46,7 +44,7 @@ public class NoticeImageRenderer {
     private static final int MIN_CARD_HEIGHT = 144;
     private static final int BOTTOM_MARGIN = 64;
     private static final int LINE_GAP = 6;
-    // 작업 캔버스가 아닌 최종 780px PNG에서 제목·라벨·내용을 각각 2px 줄인다.
+    // 작업 캔버스가 아닌 최종 780px PNG에서 라벨·내용을 각각 2px 줄인다.
     private static final float FONT_REDUCTION = (float) (2.0 / RenderSupport.OUTPUT_SCALE);
     private static final int LABEL_FONT_SIZE = 28;
     private static final int VALUE_FONT_SIZE = 32;
@@ -77,7 +75,6 @@ public class NoticeImageRenderer {
     public BufferedImage render(Map<String, String> fields, double scale) {
         RenderSupport.validateScale(scale);
         int width = RenderSupport.NOTICE_IMAGE_WIDTH;
-        Font titleFont = noticeFont(Font.BOLD, 52);
         Font labelFont = noticeFont(Font.PLAIN, LABEL_FONT_SIZE);
         Font valueFont = noticeFont(Font.PLAIN, VALUE_FONT_SIZE);
         List<NoticeCard> cards = layoutCards(fields);
@@ -89,11 +86,6 @@ public class NoticeImageRenderer {
 
         graphics.setColor(Color.WHITE);
         graphics.fillRect(0, 0, width, height);
-        graphics.setColor(INK);
-        graphics.fillRect(TITLE_X, 64, 44, 5);
-        TextLayout title = new TextLayout("상품정보", titleFont, graphics.getFontRenderContext());
-        title.draw(graphics, (float) (TITLE_X - title.getBounds().getX()), 136);
-
         FontMetrics labelMetrics = graphics.getFontMetrics(labelFont);
         FontMetrics valueMetrics = graphics.getFontMetrics(valueFont);
         int labelLineHeight = labelMetrics.getHeight() + LINE_GAP;
@@ -117,9 +109,10 @@ public class NoticeImageRenderer {
     /** 왼쪽→오른쪽, 위→아래 순서. 긴 항목 앞의 홀수 카드도 넓혀 빈 반쪽을 남기지 않는다. */
     List<NoticeCard> layoutCards(Map<String, String> fields) {
         validateFields(fields);
-        List<NoticeField> entries = noticeImageFields(fields).entrySet().stream()
+        List<NoticeField> entries = new ArrayList<>(noticeImageFields(fields).entrySet().stream()
                 .filter(entry -> entry.getValue() != null && !entry.getValue().isBlank())
-                .map(entry -> new NoticeField(entry.getKey(), entry.getValue())).toList();
+                .map(entry -> new NoticeField(entry.getKey(), entry.getValue())).toList());
+        pairManufacturerAndKind(entries);
         if (entries.isEmpty()) {
             entries = List.of(new NoticeField("정보", "표시할 정보가 없습니다."));
         }
@@ -136,7 +129,13 @@ public class NoticeImageRenderer {
                 MeasuredCard left = measureCard(entries.get(index), halfWidth, graphics, labelFont, valueFont);
                 MeasuredCard right = index + 1 < entries.size()
                         ? measureCard(entries.get(index + 1), halfWidth, graphics, labelFont, valueFont) : null;
-                if (left.needsFullWidth() || right == null || right.needsFullWidth()) {
+                boolean manufacturerPair = right != null
+                        && isManufacturerAndKind(entries.get(index), entries.get(index + 1));
+                // 앞 항목이 짧아도 제조사·종류의 두 칸을 갈라 놓지 않는다.
+                boolean nextManufacturerPair = index + 2 < entries.size()
+                        && isManufacturerAndKind(entries.get(index + 1), entries.get(index + 2));
+                if (!manufacturerPair && (left.needsFullWidth() || right == null
+                        || right.needsFullWidth() || nextManufacturerPair)) {
                     MeasuredCard full = measureCard(entries.get(index), fullWidth, graphics, labelFont, valueFont);
                     cards.add(full.place(CONTENT_X, y, fullWidth, full.height()));
                     y += full.height() + CARD_GAP;
@@ -157,6 +156,25 @@ public class NoticeImageRenderer {
         } finally {
             graphics.dispose();
         }
+    }
+
+    private void pairManufacturerAndKind(List<NoticeField> entries) {
+        NoticeField manufacturer = entries.stream()
+                .filter(field -> isManufacturer(field.label())).findFirst().orElse(null);
+        NoticeField kind = entries.stream()
+                .filter(field -> normalizeLabel(field.label()).equals("종류")).findFirst().orElse(null);
+        if (manufacturer != null && kind != null) {
+            entries.remove(kind);
+            entries.add(entries.indexOf(manufacturer) + 1, kind);
+        }
+    }
+
+    private boolean isManufacturerAndKind(NoticeField left, NoticeField right) {
+        return isManufacturer(left.label()) && normalizeLabel(right.label()).equals("종류");
+    }
+
+    private boolean isManufacturer(String label) {
+        return normalizeLabel(label).startsWith("제조사");
     }
 
     private void validateFields(Map<String, String> fields) {
@@ -220,10 +238,14 @@ public class NoticeImageRenderer {
     }
 
     private static boolean isExcludedNotice(String label) {
-        String normalized = Normalizer.normalize(label == null ? "" : label, Normalizer.Form.NFC)
+        String normalized = normalizeLabel(label);
+        return normalized.contains(AS_RESPONSIBILITY_NOTICE_KEY) || normalized.equals(PRODUCT_CODE_NOTICE_KEY);
+    }
+
+    private static String normalizeLabel(String label) {
+        return Normalizer.normalize(label == null ? "" : label, Normalizer.Form.NFC)
                 .replaceAll("[^0-9A-Za-z가-힣]", "")
                 .toLowerCase(Locale.ROOT);
-        return normalized.contains(AS_RESPONSIBILITY_NOTICE_KEY) || normalized.equals(PRODUCT_CODE_NOTICE_KEY);
     }
 
     private record NoticeField(String label, String value) {
