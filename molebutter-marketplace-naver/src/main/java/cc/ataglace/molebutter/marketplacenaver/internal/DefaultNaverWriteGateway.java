@@ -67,6 +67,13 @@ final class DefaultNaverWriteGateway implements MarketplaceWriteGateway {
     private ObjectNode expectedValues(NaverEditor.Input input,List<MarketplaceEditing.Change> changes,JsonNode body){
         var expected=selectedValues(input,changes);
         if(changed(changes,"images"))expected.set(NaverEditPatch.PREFIX+"images",imageValues(body.path("originProduct").path("images")));
+        // With omitted stock, the latest observed quantity is retained by Naver.
+        // Normalize the expected status without putting that quantity back into the request.
+        if(!body.path("originProduct").has("stockQuantity")){
+            var stock=json.valueToTree(input.fields().get("originProduct.stockQuantity"));
+            String status=NaverEditPatch.PREFIX+"fields.originProduct.statusType";
+            if(expected.path(status).asString("").equals("SALE")&&stock.isIntegralNumber()&&stock.asLong()==0)expected.put(status,"OUTOFSTOCK");
+        }
         return normalizeExpected(expected,body);
     }
     private ObjectNode normalizeExpected(ObjectNode expected,JsonNode body){
@@ -131,11 +138,9 @@ final class DefaultNaverWriteGateway implements MarketplaceWriteGateway {
         if(step.type()!=Type.CREATE)input=NaverDraftAdapter.from(NaverEditPatch.apply(prepared.editIntent().observed(),prepared.editIntent().changes()));
         try{
             if(mapping==null||mapping.sellerProductId()==null){
-                String code=sellerCode(json.readTree(step.bodyJson()));if(code.isBlank())return pending(previous,"CREATE_UNCONFIRMED");
-                var baseline=step.baselineJson()==null?json.createArrayNode():json.readTree(step.baselineJson());var known=new HashSet<String>();for(var id:baseline)known.add(id.asString());
-                var matches=new ArrayList<JsonNode>();for(String id:existingProducts(code)){if(!known.contains(id)){var source=gateway.product(id);if(createMatches(json.readTree(step.bodyJson()),source))matches.add(source);}}
-                // Seller management codes are not unique. No result is not proof that POST did not register.
-                if(matches.size()!=1)return pending(previous,"CREATE_UNCONFIRMED");mapping=mapping(matches.getFirst(),input,null);
+                // Seller codes and matching content cannot prove which request created a product.
+                // Keep the unconfirmed write locked until a causally verified product ID is available.
+                return pending(previous,"CREATE_UNCONFIRMED");
             }
             var source=gateway.product(mapping.sellerProductId());mapping=mapping(source,input,mapping);var current=NaverDraftAdapter.observed(prepared.editIntent().observed(),NaverEditPatch.editor(source),mapping);var latest=NaverDraftAdapter.from(current);
             boolean reflected;
@@ -192,9 +197,12 @@ final class DefaultNaverWriteGateway implements MarketplaceWriteGateway {
                 if(option.price()!=null)row.put("price",option.price());if(option.stockQuantity()!=null)row.put("stockQuantity",option.stockQuantity());row.put("sellerManagerCode",option.sellerManagerCode());row.put("usable",option.usable()==null||option.usable());rows.add(row);if(option.usable()==null||option.usable())total=Math.addExact(total,option.stockQuantity()==null?0:option.stockQuantity());
             }info.set("optionCombinations",rows);detail.set("optionInfo",info);origin.put("stockQuantity",total);
         }else if(create&&"NONE".equals(input.optionMode()))detail.remove("optionInfo");
-        // The update contract accepts SALE/SUSPENSION, but stock 0 takes precedence and preserves OUTOFSTOCK.
+        // The update contract accepts SALE/SUSPENSION; existing zero stock can be retained by omission.
         // Do not silently turn approval/closed/prohibited states into SALE while editing an unrelated field.
         if(!create&&!changedField(changes,"originProduct.statusType")&&origin.path("statusType").asString("").equals("OUTOFSTOCK")&&origin.path("stockQuantity").isIntegralNumber()&&origin.path("stockQuantity").asLong()==0)origin.put("statusType","SALE");
+        // Sending a copied quantity can undo an order placed between our GET and PUT.
+        // Combination edits intentionally send their recomputed total; unrelated edits do not.
+        if(!create&&!changedField(changes,"originProduct.stockQuantity")&&!(optionChanged&&"COMBINATION".equals(input.optionMode())))origin.remove("stockQuantity");
         clean(body);return body;
     }
     private String description(Long actor,String value){if(value.contains("blob:"))throw invalid("이미지 업로드가 완료된 뒤 저장해 주세요.");var matcher=Pattern.compile("/api/marketplaces/assets/([0-9a-fA-F-]{36})").matcher(value);return matcher.replaceAll(m->java.util.regex.Matcher.quoteReplacement(assets.submissionUrl(actor,m.group(1))));}
@@ -246,7 +254,7 @@ final class DefaultNaverWriteGateway implements MarketplaceWriteGateway {
         String status=origin.path("statusType").asString("");
         if(create&&!status.equals("SALE"))throw invalid("신규 상품은 판매 중으로 등록됩니다. 노출을 중지하려면 채널 전시를 중지해 주세요.");
         if(!create&&!Set.of("SALE","SUSPENSION").contains(status))throw invalid(changedField(changes,"originProduct.statusType")?"상품 수정의 판매 상태는 판매 중 또는 판매 중지만 선택할 수 있습니다.":"현재 판매 상태("+status+")를 유지하는 상품 수정은 지원하지 않습니다. 스마트스토어센터에서 상태를 확인해 주세요. 저장 과정에서 판매 중으로 강제 변경하지 않습니다.");
-        number(origin.path("salePrice"),0,999999990,"판매가");number(origin.path("stockQuantity"),0,99999999,"재고");
+        number(origin.path("salePrice"),0,999999990,"판매가");if(create||origin.has("stockQuantity"))number(origin.path("stockQuantity"),0,99999999,"재고");
         var images=origin.path("images");required(images.path("representativeImage"),"url");if(input.images().stream().filter(NaverEditor.Image::representative).count()!=1||images.path("optionalImages").size()>9)throw invalid("대표 이미지는 1개, 추가 이미지는 9개까지 등록할 수 있습니다.");
         var after=detail.path("afterServiceInfo");required(after,"afterServiceTelephoneNumber");required(after,"afterServiceGuideContent");
         var area=detail.path("originAreaInfo");required(area,"originAreaCode");if(area.path("originAreaCode").asString("").startsWith("02"))required(area,"importer");if(area.path("originAreaCode").asString("").startsWith("04"))required(area,"content");
