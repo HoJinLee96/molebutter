@@ -25,6 +25,10 @@
         <module>molebutter-procurement</module>
         <module>molebutter-inventory</module>
         <module>molebutter-attendance</module>
+        <module>molebutter-media</module>
+        <module>molebutter-marketplace</module>
+        <module>molebutter-marketplace-coupang</module>
+        <module>molebutter-marketplace-naver</module>
         <module>molebutter-imaging</module>
         <module>molebutter-app</module>
     </modules>
@@ -69,6 +73,11 @@
             </dependency>
             <dependency>
                 <groupId>cc.ataglace</groupId>
+                <artifactId>molebutter-storage</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>cc.ataglace</groupId>
                 <artifactId>molebutter-identity</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -99,12 +108,12 @@
             </dependency>
             <dependency>
                 <groupId>cc.ataglace</groupId>
-                <artifactId>molebutter-app</artifactId>
+                <artifactId>molebutter-marketplace</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>cc.ataglace</groupId>
-                <artifactId>molebutter-storage</artifactId>
+                <artifactId>molebutter-app</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -112,6 +121,9 @@
                 <artifactId>molebutter-imaging</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-media</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-marketplace-coupang</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-marketplace-naver</artifactId><version>${project.version}</version></dependency>
         </dependencies>
     </dependencyManagement>
     <build>

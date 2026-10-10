@@ -9,6 +9,13 @@
     </parent>
     <artifactId>molebutter-app</artifactId>
     <dependencies>
+        <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-media</artifactId></dependency>
+        <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-marketplace-coupang</artifactId></dependency>
+        <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-marketplace-naver</artifactId></dependency>
+
+        <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-storage</artifactId></dependency>
+        <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-imaging</artifactId></dependency>
+        <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-marketplace</artifactId></dependency>
         <dependency>
             <groupId>cc.ataglace</groupId>
             <artifactId>molebutter-common</artifactId>

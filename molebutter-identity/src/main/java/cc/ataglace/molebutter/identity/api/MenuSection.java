@@ -19,8 +19,11 @@ public enum MenuSection {
     /** 대표 전용 직원 계정 관리(가입 승인·역할 지정·정지·잠금 해제). */
     USER_MANAGE("직원 관리", pages("/user-manage"), apis("/api/admin/users/**")),
 
+    MARKETPLACE_ORDERS("판매 주문", pages("/marketplace-orders"), apis("/api/marketplace-orders", "/api/marketplace-orders/**")),
+    MARKETPLACES("판매 마켓", pages("/marketplaces", "/marketplaces/**"), apis("/api/marketplaces/**")),
     INVENTORY("재고", pages("/inventory"), apis("/api/inventory/**")),
     PRODUCTS("상품", pages("/products"), apis("/api/products/**")),
+    PRODUCT_IMAGES("상품 이미지 도구", pages("/product-images"), apis("/api/product-images/**")),
     PRODUCT_REFRESH("상품 최신화", pages("/product-refresh"), apis("/api/product-refresh/**")),
     SETTINGS("공통 설정", pages("/settings"), apis("/api/settings/**")),
     VERSION_HISTORY("버전 기록", pages("/version-history"));

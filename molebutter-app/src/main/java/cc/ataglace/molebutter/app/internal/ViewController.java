@@ -26,11 +26,12 @@ public class ViewController {
 
     /** 페이지가 구현된 섹션 — 홈 카드·좌측 메뉴에서 실링크로 노출된다. 챕터가 진행되며 하나씩 추가한다. */
     private static final Set<MenuSection> READY_SECTIONS = EnumSet.of(
-            MenuSection.PRODUCTS, MenuSection.PRODUCT_REFRESH, MenuSection.INVENTORY, MenuSection.USER_MANAGE, MenuSection.AUTH_LOGS, MenuSection.ATTENDANCE, MenuSection.ATTENDANCE_MANAGE, MenuSection.SETTINGS);
+            MenuSection.MARKETPLACES, MenuSection.MARKETPLACE_ORDERS, MenuSection.PRODUCTS, MenuSection.PRODUCT_IMAGES, MenuSection.PRODUCT_REFRESH, MenuSection.INVENTORY, MenuSection.USER_MANAGE, MenuSection.AUTH_LOGS, MenuSection.ATTENDANCE, MenuSection.ATTENDANCE_MANAGE, MenuSection.SETTINGS);
 
     public record MenuGroup(String label, List<MenuSection> items) {}
     private static final List<MenuGroup> GROUPS = List.of(
-        new MenuGroup("상품 업무",List.of(MenuSection.PRODUCTS,MenuSection.PRODUCT_REFRESH,MenuSection.INVENTORY)),
+        new MenuGroup("상품 업무",List.of(MenuSection.PRODUCTS,MenuSection.PRODUCT_REFRESH,MenuSection.INVENTORY,MenuSection.PRODUCT_IMAGES)),
+        new MenuGroup("판매 업무",List.of(MenuSection.MARKETPLACES,MenuSection.MARKETPLACE_ORDERS)),
         new MenuGroup("근태",List.of(MenuSection.ATTENDANCE,MenuSection.ATTENDANCE_MANAGE)),
         new MenuGroup("운영 관리",List.of(MenuSection.USER_MANAGE,MenuSection.AUTH_LOGS)),
         new MenuGroup("설정",List.of(MenuSection.SETTINGS)));
@@ -42,6 +43,12 @@ public class ViewController {
     }
 
     private final IdentityAccounts userRepository;
+
+    @GetMapping("/product-images")
+    public String productImages(@AuthenticationPrincipal UserPrincipal principal, Model model) {
+        if (addLayoutModel(principal, model) == null) return "redirect:/signin";
+        return "product-images";
+    }
 
     @GetMapping("/settings")
     public String settings(@AuthenticationPrincipal UserPrincipal principal, Model model) {
@@ -56,6 +63,40 @@ public class ViewController {
         model.addAttribute("productPage", request.getRequestURI().substring(1));
         model.addAttribute("productAdmin", principal.userRole() == cc.ataglace.molebutter.identity.api.UserRole.ADMIN);
         return "products";
+    }
+
+    @GetMapping("/marketplace-orders")
+    public String marketplaceOrders(@AuthenticationPrincipal UserPrincipal principal, Model model) {
+        if(addLayoutModel(principal,model)==null)return "redirect:/signin";
+        return "marketplace-orders";
+    }
+
+    @GetMapping("/marketplaces")
+    public String marketplaces(@AuthenticationPrincipal UserPrincipal principal, Model model) {
+        if(addLayoutModel(principal,model)==null)return "redirect:/signin";
+        return "marketplaces";
+    }
+
+    @GetMapping("/marketplaces/coupang/products/{sellerProductId}/edit")
+    public String marketplaceEditor(@AuthenticationPrincipal UserPrincipal principal,Model model) {
+        if(addLayoutModel(principal,model)==null)return "redirect:/signin";
+        return "marketplace-editor";
+    }
+
+    @GetMapping("/marketplaces/coupang/products/new")
+    public String legacyMarketplaceRegistration(@AuthenticationPrincipal UserPrincipal principal,Model model){
+        if(addLayoutModel(principal,model)==null)return "redirect:/signin";
+        return "marketplace-editor";
+    }
+    @GetMapping({"/marketplaces/naver/products/new","/marketplaces/naver/products/{originProductNo}/edit"})
+    public String naverProductEditor(@AuthenticationPrincipal UserPrincipal principal, Model model) {
+        if(addLayoutModel(principal,model)==null)return "redirect:/signin";
+        return "naver-product-editor";
+    }
+    @GetMapping({"/marketplaces/products/new","/marketplaces/products/{draftId}/edit"})
+    public String commonMarketplaceEditor(@AuthenticationPrincipal UserPrincipal principal,Model model){
+        if(addLayoutModel(principal,model)==null)return "redirect:/signin";
+        return "common-marketplace-editor";
     }
 
     @GetMapping("/inventory")
@@ -154,6 +195,7 @@ public class ViewController {
         if (user == null) {
             return null;
         }
+        model.addAttribute("marketplaceChannels", cc.ataglace.molebutter.marketplace.api.MarketplaceChannels.all());
         model.addAttribute("userName", user.getName());
         model.addAttribute("menuItems", principal.userRole().getSections());
         model.addAttribute("readySections", READY_SECTIONS);

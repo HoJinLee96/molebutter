@@ -1,0 +1,61 @@
+.common-marketplace-editor{padding-bottom:110px}
+.common-market-picker{border:1px solid #e2e8f0;border-radius:12px;padding:14px 18px;margin-top:20px}
+.common-market-picker legend{font-weight:700;padding:0 6px}
+.common-market-picker>div{display:flex;flex-wrap:wrap;gap:14px 22px}
+.common-market-picker label{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.common-market-picker input{width:18px;height:18px;flex:none}
+.common-subheading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:24px 0 14px}
+.common-subheading h3{margin:0}.common-source{margin-top:16px;color:#475569}
+.common-option-values{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.common-option-values .field{flex:1;min-width:120px}
+.common-market-state{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:16px 0}
+.common-market-state .badge{white-space:normal}
+.common-override{padding:14px;border:1px solid #e2e8f0;border-radius:10px;min-width:0}
+.common-override-toggle{display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:13px;color:#475569}
+.common-override-toggle input{width:17px;height:17px;margin:0}
+.common-override .field{margin:0}.common-inherited{color:#64748b;font-size:12px;margin:6px 0 0;overflow-wrap:anywhere}
+.common-row{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin:12px 0}
+.common-row>.field{flex:1;min-width:150px}.common-row .btn{flex:none}
+.common-profile-fields{margin-top:20px}.common-profile-fields legend{font-size:14px;font-weight:700}
+.common-map-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 100px;gap:10px;align-items:end;margin-bottom:10px}
+.common-validation-list{padding-left:20px;margin:10px 0}.common-validation-list li{margin:6px 0;overflow-wrap:anywhere}
+.common-grid-note{grid-column:1/-1;font-size:13px;color:#64748b;margin:0}
+.common-market-fields fieldset{border:0;padding:0;margin:16px 0}.common-market-fields input,.common-market-fields textarea,.common-market-fields select{min-width:0}
+.common-inline-label{display:flex;align-items:center;gap:8px}.common-inline-label input{width:17px;height:17px}
+.common-upload-status{margin:10px 0;font-size:13px;color:#475569}
+.common-local-error{color:#b91c1c}.common-settings-table{min-width:700px}
+.common-tab-list{display:flex;gap:6px;overflow-x:auto;margin:16px 0;border-bottom:1px solid #e2e8f0}
+.common-tab-list button{border:0;border-bottom:3px solid transparent;padding:12px 16px;background:#fff;font-weight:700;color:#64748b;white-space:nowrap}
+.common-tab-list button[aria-selected=true]{border-bottom-color:#2f6df6;color:#2f6df6}
+.common-draft-actions{display:flex;gap:8px;flex-wrap:wrap}
+.common-draft-table{min-width:800px}.common-draft-table .wrap{white-space:normal}
+.common-empty{padding:20px 0;color:#64748b}.common-market-picker :disabled+span{color:#94a3b8}
+@media(max-width:700px){.common-market-picker{padding:12px}.common-market-picker>div{gap:12px}.common-override{padding:12px}.common-map-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}.common-map-row>.btn{grid-column:1/-1;justify-self:end}.common-marketplace-editor .editor-actions{gap:8px}.common-marketplace-editor .editor-actions .btn{padding-left:10px;padding-right:10px}.common-marketplace-editor .editor-image-grid{grid-template-columns:1fr}.common-marketplace-editor .editor-grid{grid-template-columns:1fr}}
+
+.marketplace-col-action{width:190px}
+.marketplace-detail-actions{flex-wrap:wrap;justify-content:flex-end}
+
+.editor-validation-pending{border-color:#e2e8f0;background:#f8fafc;color:#475569}
+
+.common-validation-markets{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.common-live-state{padding:16px;margin:16px 0;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc}
+.common-live-heading{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.common-live-heading>span{font-size:13px;color:#64748b}.common-live-heading>.btn{margin-left:auto}
+.common-selected-changes{display:flex;flex-direction:column;gap:10px;margin-top:16px}.common-selected-changes label{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.common-selected-changes input,.common-apply-fields input{width:17px;height:17px;flex:none}.common-selected-changes label>span{flex:1;min-width:120px}
+.common-review-value{display:block;color:#9a3412;margin-top:4px;overflow-wrap:anywhere}
+.common-apply-panel h2{font-size:17px}.common-apply-panel>.common-subheading{margin-top:0}.common-apply-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}.common-apply-fields label{display:flex;align-items:center;gap:8px;font-size:14px}
+@media(max-width:700px){.common-live-heading>.btn{margin-left:0}.common-selected-changes label>.btn{font-size:12px}.common-apply-fields{grid-template-columns:minmax(0,1fr)}.common-apply-panel>.common-subheading{align-items:start;flex-wrap:wrap}}
+.common-market-submit-option{display:flex;justify-content:flex-end;margin:18px 0}.common-market-submit-option label{display:flex;gap:8px;align-items:center;font-size:14px}.common-market-submit-option input{width:18px;height:18px}
+.common-submission-dialog{width:min(1000px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:24px;border:1px solid #e2e8f0;border-radius:14px;color:#202632}.common-submission-dialog::backdrop{background:rgba(15,23,42,.45)}
+.common-submission-dialog .common-subheading{margin-top:0}.common-submission-dialog h2{font-size:20px;margin:0}.common-submission-dialog-actions{display:flex;justify-content:flex-end;position:sticky;bottom:-24px;padding:16px 0;background:#fff;border-top:1px solid #e2e8f0}
+.common-submission-target{padding:14px 0;border-top:1px solid #e2e8f0}.common-submission-target h3{font-size:16px;margin:0 0 12px}.common-planned-steps{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.common-planned-steps span{font-size:13px;padding:5px 9px;background:#f1f5f9;border-radius:6px}
+.common-submission-changes{min-width:500px;width:100%;table-layout:fixed}.common-submission-changes th,.common-submission-changes td{white-space:pre-wrap;overflow-wrap:anywhere;vertical-align:top}.common-submission-changes th:first-child{width:28%}.common-preview-summary{color:#475569;font-size:14px}
+.common-execution{border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin:14px 0}.common-execution-heading{display:flex;justify-content:space-between;align-items:start;gap:12px;flex-wrap:wrap}.common-execution-actions{display:flex;gap:8px;flex-wrap:wrap}.common-execution-steps{list-style:none;padding:0;margin:0}.common-execution-steps li{display:grid;grid-template-columns:minmax(140px,1fr) auto minmax(120px,2fr);gap:12px;align-items:start;margin:12px 0;font-size:14px}.common-step-message{overflow-wrap:anywhere;color:#64748b}
+@media(max-width:700px){.common-marketplace-editor .editor-actions{flex-wrap:wrap;justify-content:flex-end}.common-submission-dialog{padding:16px}.common-submission-dialog-actions{bottom:-16px}.common-execution-steps li{grid-template-columns:minmax(0,1fr) auto}.common-step-message{grid-column:1/-1}.common-execution-heading>div{max-width:100%;overflow-wrap:anywhere}}
+
+/* The common brand name and the currently connected marketplace code share one row. */
+.common-brand-field{grid-column:span 2;max-width:520px}
+.common-brand-field .coupang-brand-inline{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:8px;align-items:center}
+.common-brand-field .coupang-brand-inline input{width:100%;min-width:0;max-width:none}
+.common-brand-field .coupang-brand-inline .btn{white-space:nowrap}
+.common-brand-note{font-size:12px;color:#64748b;line-height:1.5;margin:6px 0 0}
+@media(max-width:700px){.common-brand-field{grid-column:1/-1}.common-brand-field .coupang-brand-inline .btn{font-size:12px;padding:8px}}

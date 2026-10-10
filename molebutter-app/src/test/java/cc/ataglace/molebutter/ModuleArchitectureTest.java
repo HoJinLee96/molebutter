@@ -11,20 +11,25 @@ import org.junit.jupiter.api.Test;
 
 class ModuleArchitectureTest {
     private static final String ROOT = "cc.ataglace.molebutter.";
-    private static final Map<String,Set<String>> ALLOWED = Map.of(
-        "common",Set.of(), "identity",Set.of("common"), "operations",Set.of("common","identity"),
-        "catalog",Set.of("common","identity","operations"),
-        "procurement",Set.of("common","identity","operations","catalog"),
-        "inventory",Set.of("common","identity","operations","catalog"),
-        "attendance",Set.of("common","identity","operations"),
-        "imaging",Set.of("common"),
-        "storage",Set.of("common"),
-        "app",Set.of("common","identity","operations","catalog","procurement","inventory","attendance","imaging","storage"));
+    private static final Map<String,Set<String>> ALLOWED = Map.ofEntries(
+        Map.entry("common",Set.of()), Map.entry("identity",Set.of("common")), Map.entry("operations",Set.of("common","identity")),
+        Map.entry("catalog",Set.of("common","identity","operations")),
+        Map.entry("procurement",Set.of("common","identity","operations","catalog")),
+        Map.entry("inventory",Set.of("common","identity","operations","catalog")),
+        Map.entry("attendance",Set.of("common","identity","operations")),
+        Map.entry("media",Set.of("common","identity")),
+        Map.entry("marketplace",Set.of("common","identity","media")),
+        Map.entry("marketplacecoupang",Set.of("common","identity","marketplace","media")),
+        Map.entry("marketplacenaver",Set.of("common","identity","marketplace","media")),
+        Map.entry("imaging",Set.of("common")),
+        Map.entry("storage",Set.of("common")),
+        Map.entry("app",Set.of("common","identity","operations","catalog","procurement","inventory","attendance","marketplace","marketplacecoupang","marketplacenaver","media","imaging","storage")));
     private static String owner(String name) { return name.startsWith(ROOT) ? name.substring(ROOT.length()).split("\\.")[0] : ""; }
     private static boolean api(String name, String owner) { return name.equals(ROOT+owner+".api") || name.startsWith(ROOT+owner+".api."); }
     private static boolean sourceMatches(URI source, String owner) {
         String location = source.toString();
-        return location.contains("/molebutter-"+owner+"/") || location.matches(".*[/!]molebutter-"+owner+"-[^/!]+\\.jar.*");
+        String module = switch(owner) { case "marketplacecoupang" -> "marketplace-coupang"; case "marketplacenaver" -> "marketplace-naver"; default -> owner; };
+        return location.contains("/molebutter-"+module+"/") || location.matches(".*[/!]molebutter-"+module+"-[^/!]+\\.jar.*");
     }
     private static void exposed(Type type, Set<Type> visited, Set<String> violations, String contract) {
         if (!visited.add(type)) return;

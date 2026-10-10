@@ -1,8 +1,19 @@
-/** Shared display and link safety. Functions do not install page event handlers. */
+/** Shared browser, display and link helpers. Functions do not install page event handlers. */
 const AppUI = (() => {
     const $ = id => document.getElementById(id);
     const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const stamp = value => value ? value.replace('T', ' ').slice(0, 19) : '미기록';
+    // LAN HTTP exposes getRandomValues, while randomUUID requires a secure context.
+    function uuid() {
+        const crypto = globalThis.crypto;
+        if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID();
+        if (typeof crypto?.getRandomValues !== 'function') throw new Error('보안 난수를 생성할 수 없습니다. 최신 브라우저에서 다시 시도해 주세요.');
+        const bytes = crypto.getRandomValues(new Uint8Array(16));
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+        return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    }
     function webUrl(value) {
         try { const u = new URL(value); return ['http:', 'https:'].includes(u.protocol) && !u.username && !u.password ? u.href : ''; }
         catch { return ''; }
@@ -59,5 +70,6 @@ const AppUI = (() => {
         summary.setAttribute('aria-live', 'polite'); node.append(summary);
         if (restoreFocus) currentButton?.focus();
     }
-    return { $, escape, stamp, webUrl, pager };
+    return { $, escape, stamp, uuid, webUrl, pager };
 })();
+if (typeof module !== 'undefined') module.exports = AppUI;

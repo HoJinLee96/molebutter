@@ -5,8 +5,11 @@ import static org.assertj.core.api.Assertions.*;
 import java.sql.DriverManager;
 import java.time.LocalDateTime;
 import cc.ataglace.molebutter.common.api.BusinessTime;
+import cc.ataglace.molebutter.marketplace.api.MarketplaceDrafts;
+import cc.ataglace.molebutter.marketplace.api.MarketplaceSubmissions;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectMapper;
 
 class MigrationUpgradeIT {
     @Test
@@ -334,6 +337,224 @@ class MigrationUpgradeIT {
             try(var r=st.executeQuery("SELECT worker_owner,worker_until FROM procurement_runtime WHERE id=1")){r.next();assertThat(r.getString(1)).isEqualTo("stopped-worker");assertThat(r.getObject(2,LocalDateTime.class)).isEqualTo(expiredLease);}
             try(var r=st.executeQuery("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='catalog_product' AND column_name IN ('search_query','lookup_revision','latest_result','image_url')")){r.next();assertThat(r.getInt(1)).isZero();}
             try(var r=st.executeQuery("SELECT on_hand,pending,unit_price FROM inventory_item WHERE id=100")){r.next();assertThat(r.getLong(1)).isEqualTo(2);assertThat(r.getLong(2)).isEqualTo(1);assertThat(r.getLong(3)).isEqualTo(12345);}
+        }
+        marketplaceDraftsAndHistorySurviveEditingSessionUpgrade(url, user, password);
+    }
+
+    private static void marketplaceDraftsAndHistorySurviveEditingSessionUpgrade(
+            String url, String user, String password) throws Exception {
+        String account = "a".repeat(64);
+        String assetId = "31000000-0000-4000-8000-000000000001";
+        String optionId = "31000000-0000-4000-8000-000000000002";
+        String oldDocument = """
+                {"id":"31001","revision":7,"common":{"productCode":"UPGRADE-SKU","name":"기존 공통 상품"},
+                 "options":[{"id":"%s","name":"블랙","sku":"UPGRADE-SKU","price":"0","quantity":null}],
+                 "stockMode":"OPTION","productQuantity":"","selectedMarkets":["COUPANG","NAVER"],
+                 "markets":{"COUPANG":{"categoryCode":"123"},"NAVER":{"categoryCode":"456",
+                 "naver":{"channelId":"old-channel","status":"SALE","saleType":"NEW","originCode":"LOCAL",
+                 "deliveryTemplateId":"old-template","afterServiceTelephone":"","attributes":[],"notices":[]}}}}
+                """.formatted(optionId);
+        String oldMapping = """
+                {"accountKey":"%s","sellerProductId":"9007199254740993",
+                 "options":[{"optionId":"%s","sellerProductItemId":"9007199254740994","vendorItemId":"9007199254740995"}]}
+                """.formatted(account, optionId);
+        // These V32 snapshots predate editIntent and requestJson.
+        String oldPrepared = """
+                {"accountKey":"%s","mapping":%s,"steps":[{"id":"PRICE:%s","type":"PRICE","optionId":"%s",
+                 "method":"PUT","path":"/synthetic/price","query":"","bodyJson":"{\\"salePrice\\":0}",
+                 "baselineJson":"{\\"salePrice\\":100}","expectedJson":"{\\"salePrice\\":0}"}],
+                 "changes":[{"path":"options.price","before":"100","after":"0"}],
+                 "preparedAt":"2026-10-05T14:00:00Z","expectedSkus":["UPGRADE-SKU"]}
+                """.formatted(account, oldMapping, optionId, optionId);
+        String oldResult = """
+                {"state":"UNKNOWN","mapping":%s,"code":"INTERRUPTED","message":null,
+                 "attemptedAt":"2026-10-05T14:01:00Z"}
+                """.formatted(oldMapping);
+        String oldPreview = """
+                {"id":"32001","draftId":"31001","revision":7,"expiresAt":"2026-10-05T14:10:00Z",
+                 "executable":true,"requested":false,"targets":[{"market":"COUPANG","mode":"UPDATE",
+                 "steps":[{"id":"PRICE:%s","type":"PRICE","optionId":"%s","label":"현재 판매가"}],
+                 "changes":[{"path":"options.price","before":"100","after":"0"}],"issues":[]}]}
+                """.formatted(optionId, optionId);
+        var drafts = Flyway.configure().dataSource(url,user,password).target("31").load();
+        assertThat(drafts.migrate().migrationsExecuted).isEqualTo(1); drafts.validate();
+        try (var c = DriverManager.getConnection(url,user,password)) {
+            insert(c, """
+                    INSERT INTO marketplace_draft
+                    (id,revision,product_code,product_name,document_json,import_market,import_account,
+                     import_product_id,created_by,updated_by,created_at,updated_at)
+                    VALUES(31001,7,'UPGRADE-SKU','기존 공통 상품',?,'COUPANG',?,'9007199254740993',1,1,
+                     '2026-10-05 23:00:00.123456','2026-10-05 23:00:00.123456')
+                    """, oldDocument, account);
+            insert(c, """
+                    INSERT INTO marketplace_asset
+                    (id,relative_path,media_type,width,height,bytes,created_by,created_at)
+                    VALUES(?,'synthetic/old.png','image/png',1000,1000,1234,1,'2026-10-05 23:00:00.123456')
+                    """, assetId);
+            insert(c, "INSERT INTO marketplace_draft_asset(draft_id,asset_id) VALUES(31001,?)", assetId);
+        }
+        var submissions = Flyway.configure().dataSource(url,user,password).target("32").load();
+        assertThat(submissions.migrate().migrationsExecuted).isEqualTo(1); submissions.validate();
+        try (var c = DriverManager.getConnection(url,user,password)) {
+            insert(c, """
+                    INSERT INTO marketplace_submission_preview
+                    (id,draft_id,draft_revision,created_by,requested,document_json,prepared_json,preview_json,
+                     created_at,expires_at)
+                    VALUES(32001,31001,7,1,FALSE,?,?,?,'2026-10-05 23:00:00.123456','2026-10-05 23:10:00.123456')
+                    """, oldDocument, oldPrepared, oldPreview);
+            insert(c, """
+                    INSERT INTO marketplace_execution
+                    (id,preview_id,draft_id,draft_revision,idempotency_key,created_by,status,created_at,updated_at)
+                    VALUES(32002,32001,31001,7,'32000000-0000-4000-8000-000000000003',1,'UNKNOWN',
+                     '2026-10-05 23:01:00.123456','2026-10-05 23:01:00.123456')
+                    """);
+            insert(c, """
+                    INSERT INTO marketplace_execution_target
+                    (execution_id,market,account_key,mode,status,external_product_id)
+                    VALUES(32002,'COUPANG',?,'UPDATE','UNKNOWN','9007199254740993')
+                    """, account);
+            insert(c, """
+                    INSERT INTO marketplace_execution_step
+                    (execution_id,step_id,sequence_no,step_type,option_id,status,action,attempts,
+                     result_json,result_code,result_message,updated_at)
+                    VALUES(32002,?,0,'PRICE',?,'UNKNOWN','WRITE',1,?,'INTERRUPTED',NULL,'2026-10-05 23:01:00.123456')
+                    """, "PRICE:"+optionId, optionId, oldResult);
+            insert(c, """
+                    INSERT INTO marketplace_execution_attempt
+                    (id,execution_id,step_id,action,status,result_code,started_at,completed_at)
+                    VALUES(32003,32002,?,'WRITE','UNKNOWN','INTERRUPTED',
+                     '2026-10-05 23:01:00.123456','2026-10-05 23:01:01.123456')
+                    """, "PRICE:"+optionId);
+            insert(c, """
+                    INSERT INTO marketplace_listing_mapping
+                    (draft_id,market,account_key,external_product_id,mapping_json,applied_revision,updated_at)
+                    VALUES(31001,'COUPANG',?,'9007199254740993',?,6,'2026-10-05 23:01:00.123456')
+                    """, account, oldMapping);
+            insert(c, "INSERT INTO marketplace_execution_asset(submission_id,asset_id) VALUES(32001,?)", assetId);
+            insert(c, """
+                    INSERT INTO marketplace_asset_publication(asset_id,token,created_at)
+                    VALUES(?,?,'2026-10-05 23:01:00.123456')
+                    """, assetId, "b".repeat(64));
+        }
+        var editing = Flyway.configure().dataSource(url,user,password).target("33").load();
+        assertThat(editing.migrate().migrationsExecuted).isEqualTo(1); editing.validate();
+        assertThat(editing.info().current().getVersion().getVersion()).isEqualTo("33");
+        assertThat(editing.migrate().migrationsExecuted).isZero();
+        try (var c = DriverManager.getConnection(url,user,password); var st = c.createStatement()) {
+            try (var r=st.executeQuery("SELECT revision,document_json,import_market,import_account,import_product_id,created_by,updated_by FROM marketplace_draft WHERE id=31001")) {
+                assertThat(r.next()).isTrue(); assertThat(r.getLong(1)).isEqualTo(7);
+                assertThat(r.getString(2)).isEqualTo(oldDocument); assertThat(r.getString(3)).isEqualTo("COUPANG");
+                var preserved=new ObjectMapper().readValue(r.getString(2),MarketplaceDrafts.Document.class);
+                assertThat(preserved.options().getFirst().price()).isEqualTo("0");
+                assertThat(preserved.options().getFirst().quantity()).isNull();
+                assertThat(preserved.markets().get(MarketplaceDrafts.Market.NAVER).naver().naverShoppingRegistration()).isNull();
+                assertThat(r.getString(4)).isEqualTo(account); assertThat(r.getString(5)).isEqualTo("9007199254740993");
+                assertThat(r.getLong(6)).isEqualTo(1); assertThat(r.getLong(7)).isEqualTo(1);
+            }
+            try (var r=st.executeQuery("SELECT draft_revision,requested,document_json,prepared_json,preview_json,edit_session_id FROM marketplace_submission_preview WHERE id=32001")) {
+                assertThat(r.next()).isTrue(); assertThat(r.getLong(1)).isEqualTo(7); assertThat(r.getBoolean(2)).isFalse();
+                assertThat(r.getString(3)).isEqualTo(oldDocument); assertThat(r.getString(4)).isEqualTo(oldPrepared);
+                assertThat(r.getString(5)).isEqualTo(oldPreview); assertThat(r.getObject(6)).isNull();
+                var json=new ObjectMapper();
+                assertThat(json.readTree(r.getString(4)).has("editIntent")).isFalse();
+                var preserved=json.readValue(r.getString(5),MarketplaceSubmissions.Preview.class);
+                assertThat(preserved.targets().getFirst().steps().getFirst().optionId()).isEqualTo(optionId);
+            }
+            try (var r=st.executeQuery("SELECT e.status,e.idempotency_key,t.account_key,t.mode,t.status,t.external_product_id FROM marketplace_execution e JOIN marketplace_execution_target t ON t.execution_id=e.id WHERE e.id=32002")) {
+                assertThat(r.next()).isTrue(); assertThat(r.getString(1)).isEqualTo("UNKNOWN");
+                assertThat(r.getString(2)).isEqualTo("32000000-0000-4000-8000-000000000003");
+                assertThat(r.getString(3)).isEqualTo(account); assertThat(r.getString(4)).isEqualTo("UPDATE");
+                assertThat(r.getString(5)).isEqualTo("UNKNOWN"); assertThat(r.getString(6)).isEqualTo("9007199254740993");
+            }
+            try (var r=st.executeQuery("SELECT step_id,option_id,status,action,attempts,result_json,result_code,result_message FROM marketplace_execution_step WHERE execution_id=32002")) {
+                assertThat(r.next()).isTrue(); assertThat(r.getString(1)).isEqualTo("PRICE:"+optionId);
+                assertThat(r.getString(2)).isEqualTo(optionId); assertThat(r.getString(3)).isEqualTo("UNKNOWN");
+                assertThat(r.getString(4)).isEqualTo("WRITE"); assertThat(r.getInt(5)).isEqualTo(1);
+                assertThat(r.getString(6)).isEqualTo(oldResult); assertThat(r.getString(7)).isEqualTo("INTERRUPTED");
+                assertThat(r.getObject(8)).isNull();
+            }
+            try (var r=st.executeQuery("SELECT step_id,status,action,result_code,request_json,started_at,completed_at FROM marketplace_execution_attempt WHERE id=32003")) {
+                assertThat(r.next()).isTrue(); assertThat(r.getString(1)).isEqualTo("PRICE:"+optionId);
+                assertThat(r.getString(2)).isEqualTo("UNKNOWN"); assertThat(r.getString(3)).isEqualTo("WRITE");
+                assertThat(r.getString(4)).isEqualTo("INTERRUPTED"); assertThat(r.getObject(5)).isNull();
+                assertThat(r.getTimestamp(6).toLocalDateTime()).isEqualTo(LocalDateTime.parse("2026-10-05T23:01:00.123456"));
+                assertThat(r.getTimestamp(7).toLocalDateTime()).isEqualTo(LocalDateTime.parse("2026-10-05T23:01:01.123456"));
+            }
+            try (var r=st.executeQuery("SELECT account_key,external_product_id,mapping_json,applied_revision FROM marketplace_listing_mapping WHERE draft_id=31001")) {
+                assertThat(r.next()).isTrue(); assertThat(r.getString(1)).isEqualTo(account);
+                assertThat(r.getString(2)).isEqualTo("9007199254740993"); assertThat(r.getString(3)).isEqualTo(oldMapping);
+                assertThat(r.getLong(4)).isEqualTo(6);
+            }
+            for (String table : java.util.List.of("marketplace_draft_asset","marketplace_execution_asset","marketplace_asset_publication")) {
+                try (var r=st.executeQuery("SELECT COUNT(*) FROM "+table+" WHERE asset_id='"+assetId+"'")) {
+                    assertThat(r.next()).isTrue(); assertThat(r.getInt(1)).isEqualTo(1);
+                }
+            }
+            try (var r=st.executeQuery("SELECT COUNT(*) FROM marketplace_edit_session")) {
+                assertThat(r.next()).isTrue(); assertThat(r.getInt(1)).isZero();
+            }
+            insert(c, """
+                    INSERT INTO marketplace_edit_session
+                    (id,draft_id,draft_revision,created_by,account_key,mapping_json,session_json,created_at,expires_at)
+                    VALUES(33001,31001,7,1,?,?,'{"id":"33001","targets":[]}',
+                     '2026-10-06 10:00:00.123456','2026-10-06 10:10:00.123456')
+                    """, account, oldMapping);
+            try (var r=st.executeQuery("SELECT draft_revision,revoked,mapping_json FROM marketplace_edit_session WHERE id=33001")) {
+                assertThat(r.next()).isTrue(); assertThat(r.getLong(1)).isEqualTo(7);
+                assertThat(r.getBoolean(2)).isFalse(); assertThat(r.getString(3)).isEqualTo(oldMapping);
+            }
+            try (var r=st.executeQuery("SELECT email,password_hash FROM user WHERE id=1")) {
+                assertThat(r.next()).isTrue(); assertThat(r.getString(1)).isEqualTo("owner@example.com");
+                assertThat(r.getString(2)).isEqualTo("custom-password-hash");
+            }
+            try (var r=st.executeQuery("SELECT on_hand,pending,unit_price FROM inventory_item WHERE id=100")) {
+                assertThat(r.next()).isTrue(); assertThat(r.getLong(1)).isEqualTo(2);
+                assertThat(r.getLong(2)).isEqualTo(1); assertThat(r.getLong(3)).isEqualTo(12345);
+            }
+        }
+        Flyway.configure().dataSource(url,user,password).target("34").load().migrate();
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()){
+            st.executeUpdate("INSERT INTO marketplace_order(id,market,account_key,order_id,collected_at) VALUES(34001,'COUPANG','synthetic-account','999',CURRENT_TIMESTAMP(6))");
+            st.executeUpdate("INSERT INTO marketplace_order_item(id,parent_id,shipment_box_id,sequence_no,vendor_item_id,status,product_name,snapshot_json) VALUES(34002,34001,'1','1','1','ACCEPT','합성','{}')");
+            st.executeUpdate("INSERT INTO marketplace_order_job(id,created_by,account_key,request_id,status,request_json,started_at,lease_owner,lease_until) VALUES(34003,1,'synthetic-account','legacy-request','RUNNING','{}',CURRENT_TIMESTAMP(6),'legacy-owner',CURRENT_TIMESTAMP(6)+INTERVAL 5 MINUTE)");
+            st.executeUpdate("INSERT INTO marketplace_order_job_order(job_id,parent_id,snapshot_observed) VALUES(34003,34001,TRUE)");
+            st.executeUpdate("INSERT INTO marketplace_order_claim(id,market,account_key,claim_type,claim_id,order_id,shipment_box_id,vendor_item_id,snapshot_json) VALUES(34004,'COUPANG','synthetic-account','RETURN','88','999','1','1','{}')");
+        }
+        var recovery=Flyway.configure().dataSource(url,user,password).target("35").load();recovery.migrate();recovery.validate();
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()){
+            try(var r=st.executeQuery("SELECT observed_item_count FROM marketplace_order_job_order WHERE job_id=34003")){assertThat(r.next()).isTrue();assertThat(r.getLong(1)).isEqualTo(1);}
+            try(var r=st.executeQuery("SELECT progress_reconstructed FROM marketplace_order_job WHERE id=34003")){assertThat(r.next()).isTrue();assertThat(r.getBoolean(1)).isTrue();}
+            try(var r=st.executeQuery("SELECT COUNT(*) FROM marketplace_order_job_claim WHERE job_id=34003")){assertThat(r.next()).isTrue();assertThat(r.getLong(1)).isEqualTo(1);}
+            try(var r=st.executeQuery("SELECT latest_verified FROM marketplace_order_claim WHERE id=34004")){assertThat(r.next()).isTrue();assertThat(r.getBoolean(1)).isFalse();}
+            try(var r=st.executeQuery("SELECT active_job_id,lease_owner FROM marketplace_order_account_lock WHERE account_key='synthetic-account'")){assertThat(r.next()).isTrue();assertThat(r.getLong(1)).isEqualTo(34003);assertThat(r.getString(2)).isEqualTo("legacy-owner");}
+        }
+        var registration=Flyway.configure().dataSource(url,user,password).target("37").load();
+        assertThat(registration.migrate().migrationsExecuted).isEqualTo(2);registration.validate();
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement();var r=st.executeQuery("SELECT editor_kind,registration_account,revision,document_json FROM marketplace_draft WHERE id=31001")){
+            assertThat(r.next()).isTrue();assertThat(r.getString(1)).isEqualTo("COMMON");assertThat(r.getString(2)).isNull();assertThat(r.getLong(3)).isEqualTo(7);assertThat(r.getString(4)).isEqualTo(oldDocument);
+        }
+    }
+    @Test
+    void salesOrderMigrationIsAdditiveAndContainsNoShippingPersonalColumns() throws Exception {
+        String url=System.getenv("MOLEBUTTER_TEST_DB_URL");
+        if(url==null||!url.contains("/molebutter_test?"))throw new IllegalStateException("Run scripts/test-integration.sh");
+        // The application test database has all migrations; the historical upgrade test remains independent.
+        var flyway=Flyway.configure().dataSource(url,"test_migrator","isolated-test-migration-password").load();
+        flyway.migrate();flyway.validate();
+        try(var c=DriverManager.getConnection(url,"test_migrator","isolated-test-migration-password");var st=c.createStatement()) {
+            try(var r=st.executeQuery("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN ('marketplace_order','marketplace_order_item','marketplace_order_claim','marketplace_order_job','marketplace_order_checkpoint','marketplace_order_account_lock','marketplace_order_failed_detail','marketplace_order_job_claim')")) {
+                assertThat(r.next()).isTrue();assertThat(r.getInt(1)).isEqualTo(8);
+            }
+            try(var r=st.executeQuery("SELECT column_name FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name LIKE 'marketplace_order%'")) {
+                var names=new java.util.ArrayList<String>();while(r.next())names.add(r.getString(1));
+                assertThat(names).contains("detail_reason").doesNotContain("recipient_name","phone","address","address_detail","raw_json","response_json");
+            }
+        }
+    }
+    private static void insert(java.sql.Connection connection, String sql, Object... values) throws java.sql.SQLException {
+        try (var statement=connection.prepareStatement(sql)) {
+            for (int i=0;i<values.length;i++) statement.setObject(i+1,values[i]);
+            assertThat(statement.executeUpdate()).isEqualTo(1);
         }
     }
 

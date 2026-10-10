@@ -60,7 +60,7 @@ async function apiRequest(url, options, allowRefresh = true) {
     const mutation = !['GET', 'HEAD', 'OPTIONS'].includes((options?.method ?? 'GET').toUpperCase());
     if (mutation && !String(url).startsWith('/api/auth/')) {
         options = { ...options, headers: new Headers(options?.headers) };
-        if (!options.headers.has('X-Operation-Id')) options.headers.set('X-Operation-Id', (crypto.randomUUID ? crypto.randomUUID() : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c => (Number(c) ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> Number(c) / 4).toString(16))));
+        if (!options.headers.has('X-Operation-Id')) options.headers.set('X-Operation-Id', AppUI.uuid());
     }
     let success = false;
     const form = typeof document !== 'undefined' ? document.activeElement?.closest('form') : null;
@@ -86,8 +86,8 @@ async function apiRequestResult(url, options, allowRefresh) {
     return payload?.data ?? null;
 }
 
-async function apiGet(url) {
-    return apiRequest(url, { headers: { 'Accept': 'application/json' } });
+async function apiGet(url, options = {}) {
+    return apiRequest(url, { ...options, headers: { 'Accept': 'application/json', ...options.headers } });
 }
 
 async function apiPost(url, body) {

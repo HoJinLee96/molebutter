@@ -55,13 +55,18 @@ import tools.jackson.databind.ObjectMapper;
         "spring.flyway.user=test_migrator", "spring.flyway.password=isolated-test-migration-password",
         "spring.data.redis.host=127.0.0.1", "spring.data.redis.password=", "mail.provider=test",
         "auth.jwt.secret=isolated-integration-test-secret-at-least-32-bytes", "auth.cookie.secure=false",
-        "auth.signin.rate-limit-max-attempts=1000"
+        "auth.signin.rate-limit-max-attempts=1000", "cloudflare.r2.enabled=false"
 })
 @ActiveProfiles("bootstrap-admin")
 @Import(AuthenticationFlowIT.MailConfiguration.class)
 class AuthenticationFlowIT {
     @DynamicPropertySource
     static void databases(DynamicPropertyRegistry registry) {
+        if(!"true".equals(System.getenv("MOLEBUTTER_COUPANG_LIVE"))){
+            registry.add("marketplace.coupang.vendor-id",()->"");
+            registry.add("marketplace.coupang.access-key",()->"");
+            registry.add("marketplace.coupang.secret-key",()->"");
+        }
         String url = System.getenv("MOLEBUTTER_TEST_DB_URL");
         if (url == null || !url.contains("/molebutter_test?")) {
             throw new IllegalStateException("Run with scripts/test-integration.sh (isolated test database required)");
@@ -99,6 +104,185 @@ class AuthenticationFlowIT {
     @Autowired ApplicationContext context;
     @Autowired cc.ataglace.molebutter.operations.internal.DefaultOperationAuditService operations;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
+
+    @Test void r2InfrastructureStartsDisabledWithoutACloudClient() {
+        var storage = context.getBean(cc.ataglace.molebutter.storage.api.ObjectStorage.class);
+        assertThat(context.getBeansOfType(software.amazon.awssdk.services.s3.S3Client.class)).isEmpty();
+        assertThatThrownBy(() -> storage.head(cc.ataglace.molebutter.storage.api.StorageArea.PRIVATE, "test/file.png"))
+                .isInstanceOf(cc.ataglace.molebutter.storage.api.StorageException.class)
+                .extracting(failure -> ((cc.ataglace.molebutter.storage.api.StorageException) failure).code())
+                .isEqualTo(cc.ataglace.molebutter.storage.api.StorageException.Code.NOT_CONFIGURED);
+    }
+
+    @Test
+    void marketplaceRequiresCurrentAdministrator() throws Exception {
+        Browser admin=admin();assertStatus(admin.get("/marketplaces"),200);
+        String cancelPath="/api/marketplaces/coupang/requests/"+java.util.UUID.randomUUID()+"/cancel";
+        assertStatus(admin.post(cancelPath,Map.of()),200);
+        assertStatus(admin.post("/api/marketplaces/coupang/requests/invalid/cancel",Map.of()),400);
+        if(!"true".equals(System.getenv("MOLEBUTTER_COUPANG_LIVE")))
+            assertStatus(admin.get("/api/marketplaces/coupang/products"),503,"COUPANG_CONFIGURATION");
+        assertStatus(admin.get("/api/marketplaces/coupang/products?maxPerPage=11"),400);
+        assertStatus(admin.get("/api/marketplaces/coupang/products/invalid"),400);
+        String email=uniqueEmail();Browser staff=approvedUser(email);
+        assertStatus(staff.get("/api/marketplaces/coupang/products"),403);
+        assertStatus(staff.get("/api/marketplaces/coupang/products/123"),403);
+        for(String path:List.of("/marketplaces/coupang/products/new","/marketplaces/coupang/products/123/edit","/api/marketplaces/coupang/products/123/edit-data","/api/marketplaces/coupang/categories/123/rules"))assertStatus(staff.get(path),403);
+        assertStatus(staff.get("/marketplaces"),403);
+        assertStatus(staff.post(cancelPath,Map.of()),403);
+        assertThat(staff.get("/").body()).doesNotContain("/marketplaces");
+        long id=users.findByEmail(email).orElseThrow().getId();
+        assertStatus(admin.post("/api/admin/users/"+id+"/role",Map.of("role","PRODUCT")),200);
+        assertStatus(staff.post("/api/auth/signin",credentials(email)),200);
+        assertStatus(staff.get("/api/marketplaces/coupang/products"),403);
+        assertStatus(staff.get("/api/marketplaces/coupang/products/123"),403);
+        for(String path:List.of("/marketplaces/coupang/products/new","/marketplaces/coupang/products/123/edit","/api/marketplaces/coupang/products/123/edit-data","/api/marketplaces/coupang/categories/123/rules"))assertStatus(staff.get(path),403);
+        assertStatus(staff.get("/marketplaces"),403);
+        assertStatus(staff.post(cancelPath,Map.of()),403);
+        assertThat(staff.get("/").body()).doesNotContain("/marketplaces");
+    }
+
+    @Test
+    void productImageWorkspaceRequiresProductAccessAndCsrf() throws Exception {
+        Browser anonymous = new Browser();
+        assertStatus(anonymous.get("/api/product-images/size-guide/templates"), 401, "UNAUTHORIZED");
+        String uploadPath = "/api/product-images/products/upload";
+        String uploadJobPath = uploadPath + "/jobs/" + UUID.randomUUID();
+        Map<String, Object> uploadRequest = Map.of("requestId", UUID.randomUUID().toString(),
+                "productCode", "TEST-BAG", "brandCode", "DAKS", "uploadProductCode", "CUSTOM-BAG",
+                "images", List.of(Map.of("imageIndex", 0, "sourceImageUrl", "https://img.lfmall.co.kr/test.png")));
+        assertStatus(anonymous.get(uploadJobPath), 401, "UNAUTHORIZED");
+        Browser admin = admin();
+        assertStatus(admin.get("/product-images"), 200);
+        assertStatus(admin.get("/api/product-images/size-guide/templates"), 200);
+        assertStatus(admin.send("POST", "/api/product-images/products/download", Map.of(), null), 403, "INVALID_CSRF_TOKEN");
+        assertStatus(admin.post("/api/product-images/products/download", Map.of()), 400, "IMAGING_INVALID_INPUT");
+        assertStatus(admin.send("POST", uploadPath, uploadRequest, null), 403, "INVALID_CSRF_TOKEN");
+        assertStatus(admin.post(uploadPath, Map.of()), 400, "IMAGING_UPLOAD_INVALID_INPUT");
+        assertStatus(admin.post(uploadPath, uploadRequest), 503, "IMAGING_UPLOAD_NOT_CONFIGURED");
+        assertStatus(admin.get(uploadJobPath), 404, "IMAGING_UPLOAD_JOB_NOT_FOUND");
+        String noticePath = "/api/product-images/products/TEST-BAG/notice-image/images";
+        assertStatus(admin.send("POST", noticePath, Map.of("fields", Map.of("치수", "30")), null), 403, "INVALID_CSRF_TOKEN");
+        assertStatus(admin.post(noticePath, Map.of("brandCode", "DAKS", "fields", Map.of("치수", "30"))), 404, "IMAGING_NOT_FOUND");
+        String email = uniqueEmail();
+        Browser staff = approvedUser(email);
+        assertStatus(staff.get("/product-images"), 403);
+        assertStatus(staff.get("/api/product-images/size-guide/templates"), 403);
+        assertStatus(staff.post(uploadPath, uploadRequest), 403);
+        assertStatus(staff.get(uploadJobPath), 403);
+        assertStatus(staff.post(noticePath, Map.of("brandCode", "DAKS", "fields", Map.of("치수", "30"))), 403);
+        assertThat(staff.get("/").body()).doesNotContain("/product-images");
+        long id = users.findByEmail(email).orElseThrow().getId();
+        assertStatus(admin.post("/api/admin/users/" + id + "/role", Map.of("role", "PRODUCT")), 200);
+        assertStatus(staff.post("/api/auth/signin", credentials(email)), 200);
+        assertStatus(staff.get("/product-images"), 200);
+        assertStatus(staff.get("/api/product-images/size-guide/templates"), 200);
+        assertStatus(staff.post(uploadPath, uploadRequest), 503, "IMAGING_UPLOAD_NOT_CONFIGURED");
+        assertStatus(staff.get(uploadJobPath), 404, "IMAGING_UPLOAD_JOB_NOT_FOUND");
+        assertThat(staff.get("/").body()).contains("/product-images");
+        assertStatus(staff.get("/api/product-images/products/download/jobs/unknown/archive"), 404, "IMAGING_NOT_FOUND");
+    }
+
+    /** 명시적으로 활성화한 경우에만 실행 앱이 비밀 설정을 로딩해 읽기 전용 외부 호출을 수행한다. */
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="MOLEBUTTER_COUPANG_LIVE",matches="true")
+    void coupangLivePages() throws Exception {
+        Browser admin=admin();String path="/api/marketplaces/coupang/products?maxPerPage=10";
+        for(int page=1;page<=2;page++){
+            var response=admin.get(path);
+            var root=json.readTree(response.body());
+            System.out.println("COUPANG_LIVE page="+page+" http="+response.statusCode()+" code="+root.path("code").asText()+" count="+root.path("data").path("items").size()+" hasNext="+root.path("data").path("hasNext").asBoolean());
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(root.path("data").path("items").isArray()).isTrue();
+            if(page==1&&!root.path("data").path("items").isEmpty()){
+                Thread.sleep(1100);
+                String productId=root.path("data").path("items").get(0).path("sellerProductId").asText();
+                var detailResponse=admin.get("/api/marketplaces/coupang/products/"+productId);
+                var detail=json.readTree(detailResponse.body());
+                System.out.println("COUPANG_LIVE detail http="+detailResponse.statusCode()+" code="+detail.path("code").asText()+" options="+detail.path("data").path("items").size());
+                assertThat(detailResponse.statusCode()).isEqualTo(200);
+                assertThat(detail.path("data").path("product").isObject()).isTrue();
+                int currentCount=0;
+                for(var option:detail.path("data").path("items"))if(!option.path("vendorItemId").isNull()){
+                    assertThat(option.path("current").isObject()).as("current option lookup succeeds").isTrue();currentCount++;
+                }
+                System.out.println("COUPANG_LIVE current successfulOptions="+currentCount);
+                int images=0;
+                for(var option:detail.path("data").path("items"))for(var image:option.path("images"))if(image.path("url").isTextual()){
+                    var imageResponse=java.net.http.HttpClient.newHttpClient().send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(image.path("url").asText())).timeout(java.time.Duration.ofSeconds(10)).method("HEAD",java.net.http.HttpRequest.BodyPublishers.noBody()).build(),java.net.http.HttpResponse.BodyHandlers.discarding());
+                    assertThat(imageResponse.statusCode()).as("detail CDN image is reachable").isEqualTo(200);images++;
+                }
+                System.out.println("COUPANG_LIVE images reachable="+images);
+            }
+            if(!root.path("data").path("hasNext").asBoolean())break;
+            String token=root.path("data").path("nextToken").asText();
+            path="/api/marketplaces/coupang/products?maxPerPage=10&nextToken="+java.net.URLEncoder.encode(token,java.nio.charset.StandardCharsets.UTF_8);
+            Thread.sleep(1100);
+        }
+    }
+
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="MOLEBUTTER_COUPANG_LIVE",matches="true")
+    void coupangLiveDescriptionImages() throws Exception {
+        Browser admin=admin();Thread.sleep(1100);
+        var products=json.readTree(admin.get("/api/marketplaces/coupang/products?maxPerPage=10").body()).path("data").path("items");
+        var src=java.util.regex.Pattern.compile("(?i)src\\s*=\\s*[\"']([^\"']+)");
+        var http=java.net.http.HttpClient.newHttpClient();
+        for(int n=0;n<Math.min(2,products.size());n++){
+            Thread.sleep(1100);var response=admin.get("/api/marketplaces/coupang/products/"+products.get(n).path("sellerProductId").asText());
+            assertThat(response.statusCode()).isEqualTo(200);var detail=json.readTree(response.body()).path("data");
+            int insecure=0,cdn=0,reachable=0,images=0;var shapes=new java.util.TreeMap<String,Integer>();
+            for(var option:detail.path("items"))for(var content:option.path("contents")){
+                String text=content.path("content").asText();var urls=new java.util.ArrayList<String>();
+                if("IMAGE".equals(content.path("detailType").asText()))urls.add(text);else{var matcher=src.matcher(text);while(matcher.find())urls.add(matcher.group(1));}
+                for(String url:urls){images++;String shape=url.startsWith("vendor_inventory/")?"CDN_RELATIVE":url.startsWith("/image/")?"CDN_ROOT":url.startsWith("//")?"PROTOCOL_RELATIVE":url.startsWith("https:")?"HTTPS":url.startsWith("http:")?"HTTP":"OTHER";shapes.merge(shape,1,Integer::sum);try{var uri=java.net.URI.create(shape.equals("CDN_RELATIVE")?"https://img1a.coupangcdn.com/image/"+url:url);if("http".equals(uri.getScheme()))insecure++;if(uri.getHost()!=null&&uri.getHost().endsWith(".coupangcdn.com")){cdn++;var secure=java.net.URI.create(uri.toString().replaceFirst("^http:","https:"));var result=http.send(java.net.http.HttpRequest.newBuilder(secure).timeout(java.time.Duration.ofSeconds(10)).method("HEAD",java.net.http.HttpRequest.BodyPublishers.noBody()).build(),java.net.http.HttpResponse.BodyHandlers.discarding());if(result.statusCode()==200)reachable++;}}catch(IllegalArgumentException ignored){}}
+            }
+            System.out.println("COUPANG_DESCRIPTION shape="+(n+1)+" images="+images+" httpImages="+insecure+" coupangCdn="+cdn+" httpsReachable="+reachable+" shapes="+shapes);
+            assertThat(images).isPositive();assertThat(reachable).isEqualTo(images);
+        }
+    }
+
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="MOLEBUTTER_COUPANG_LIVE",matches="true")
+    void coupangLiveSearch() throws Exception {
+        Browser admin=admin();Thread.sleep(1100);
+        var baseline=json.readTree(admin.get("/api/marketplaces/coupang/products?maxPerPage=10").body()).path("data").path("items");
+        assertThat(baseline.isArray()).isTrue();if(baseline.isEmpty())return;
+        var first=baseline.get(0);String id=first.path("sellerProductId").asText();
+        String name=first.path("sellerProductName").asText();name=name.substring(0,Math.min(10,name.length()));
+        String date=first.path("createdAt").asText().substring(0,10);
+        String state=switch(first.path("statusName").asText()){case "승인완료"->"APPROVED";case "임시저장"->"SAVED";case "심사중"->"IN_REVIEW";case "승인대기중"->"APPROVING";case "부분승인완료"->"PARTIAL_APPROVED";case "승인반려"->"DENIED";case "상품삭제"->"DELETED";default->first.path("statusName").asText();};
+        String encName=java.net.URLEncoder.encode(name,java.nio.charset.StandardCharsets.UTF_8);
+        for(String filter:java.util.List.of("sellerProductId="+id,"sellerProductName="+encName,"sellerProductId="+id+"&sellerProductName="+encName,"sellerProductId="+id+"&sellerProductName=NO_MATCH_TEST_840729","sellerProductId="+id+"&status="+state+"&createdAt="+date,"sellerProductId="+id+"&createdAt=1900-01-01")){
+            Thread.sleep(1100);var response=admin.get("/api/marketplaces/coupang/products?maxPerPage=10&"+filter);var body=json.readTree(response.body());
+            System.out.println("COUPANG_LIVE search http="+response.statusCode()+" code="+body.path("code").asText()+" count="+body.path("data").path("items").size());
+            assertThat(response.statusCode()).isEqualTo(200);assertThat(body.path("data").path("items").isArray()).isTrue();
+            if(filter.endsWith("1900-01-01")||filter.contains("NO_MATCH_TEST_840729"))assertThat(body.path("data").path("items").size()).isZero();
+            else assertThat(body.path("data").path("items").size()).isPositive();
+        }
+    }
+
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="MOLEBUTTER_COUPANG_LIVE",matches="true")
+    void coupangLiveEditor() throws Exception {
+        Browser admin=admin();var list=admin.get("/api/marketplaces/coupang/products?maxPerPage=10");
+        assertStatus(list,200);var items=json.readTree(list.body()).path("data").path("items");if(items.isEmpty())return;
+        Thread.sleep(1100);var response=admin.get("/api/marketplaces/coupang/products/"+items.get(0).path("sellerProductId").asText()+"/edit-data");
+        assertStatus(response,200);var editor=json.readTree(response.body()).path("data");assertThat(editor.path("options").isArray()).isTrue();
+        Thread.sleep(1100);var metadata=admin.get("/api/marketplaces/coupang/categories/"+editor.path("basic").path("displayCategoryCode").asText()+"/rules");assertStatus(metadata,200);
+        var rules=json.readTree(metadata.body()).path("data");assertThat(rules.path("attributes").isArray()).isTrue();
+        System.out.println("COUPANG_EDITOR http="+response.statusCode()+" options="+editor.path("options").size()+" categoryHttp="+metadata.statusCode()+" attributes="+rules.path("attributes").size());
+    }
+
+    @Test
+    void marketplaceEditorPagesAndMissingConfiguration() throws Exception {
+        Browser admin=admin();
+        assertStatus(admin.get("/marketplaces/coupang/products/new"),200);
+        assertStatus(admin.get("/marketplaces/products/new"),200);
+        assertStatus(admin.get("/marketplaces/coupang/products/123/edit"),200);
+        assertStatus(admin.get("/api/marketplaces/coupang/products/123/edit-data"),503);
+        assertStatus(admin.get("/api/marketplaces/coupang/categories/123/rules"),503);
+    }
 
     @Test
     void defaultInMemoryAuthenticationIsNotCreated() {
@@ -403,7 +587,7 @@ class AuthenticationFlowIT {
         }
         HttpResponse<String> send(String method, String path, Object body, String csrfHeader) throws Exception {
             var request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
-                    .timeout(Duration.ofSeconds(10)).header("Content-Type", "application/json");
+                    .timeout(Duration.ofSeconds(30)).header("Content-Type", "application/json");
             if (!cookies.isEmpty()) request.header("Cookie", cookies.entrySet().stream()
                     .map(e -> e.getKey() + "=" + e.getValue()).collect(java.util.stream.Collectors.joining("; ")));
             if (csrfHeader != null) request.header("X-XSRF-TOKEN", csrfHeader);
