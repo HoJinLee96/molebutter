@@ -45,7 +45,7 @@ class MarketplaceDraftFlowIT {
   clear();
   for(long id:List.of(otherAdmin,staff,viewer))if(id>0){db.update("DELETE FROM user_notification WHERE user_id=?",id);users.deleteById(id);}
  }
- void clear(){for(String table:List.of("marketplace_execution_attempt","marketplace_execution_step","marketplace_execution_target","marketplace_execution","marketplace_execution_asset","marketplace_submission_preview","marketplace_edit_session","marketplace_listing_mapping","marketplace_submission_account","marketplace_asset_publication","marketplace_draft_asset","marketplace_draft","marketplace_asset"))db.update("DELETE FROM "+table);}
+ void clear(){for(String table:List.of("marketplace_image_edit","marketplace_editor_history_link","marketplace_execution_attempt","marketplace_execution_step","marketplace_execution_target","marketplace_execution","marketplace_execution_asset","marketplace_submission_preview","marketplace_edit_session","marketplace_listing_history_asset","marketplace_listing_history","marketplace_listing_state","marketplace_listing_mapping","marketplace_submission_account","marketplace_asset_publication","marketplace_draft_asset","marketplace_draft","marketplace_asset"))db.update("DELETE FROM "+table);}
  @AfterAll static void cleanFiles()throws Exception {try(var stream=Files.list(assetsDirectory)){for(var p:stream.toList())Files.deleteIfExists(p);}Files.deleteIfExists(assetsDirectory);}
  long account(UserRole role){return users.saveAndFlush(User.builder().email(UUID.randomUUID()+"@market.test").name("마켓 테스트").passwordHash("unused").role(role).status(UserStatus.ACTIVE).build()).getId();}
  Document blank(){return json.readValue("""
@@ -54,6 +54,11 @@ class MarketplaceDraftFlowIT {
  Document changeName(Document d,String name){var c=d.common();return new Document(d.id(),d.revision(),new Common(c.productCode(),name,c.productName(),c.brand(),c.manufacturer(),c.origin(),c.material(),c.model(),c.afterService(),c.taxType(),c.adultOnly()),d.options(),d.stockMode(),d.productQuantity(),d.services(),d.media(),d.delivery(),d.selectedMarkets(),d.markets());}
  Document withImage(Document d,ImageAssets.Asset asset){return new Document(d.id(),d.revision(),d.common(),d.options(),d.stockMode(),d.productQuantity(),d.services(),new Media(List.of(new Image(UUID.randomUUID().toString(),asset.id(),asset.url(),true,0,null)),d.media().contents()),d.delivery(),d.selectedMarkets(),d.markets());}
  byte[] png()throws Exception {var bytes=new ByteArrayOutputStream();ImageIO.write(new BufferedImage(500,500,BufferedImage.TYPE_INT_RGB),"PNG",bytes);return bytes.toByteArray();}
+ @Test void commonShippingPeriodAndServiceSurviveSaveAndReentry(){
+  var c=new Common("NEW-COMMON","상품","","","","","","","기존 A/S 원문","TAX","EVERYONE","담당자","02-123-4567","2026-10-14T10:00","2099-12-31T23:59");var delivery=new Delivery("SEQUENCIAL","CJGLS","FREE","0","0","4000","3000","Y","UNION_DELIVERY","","","","","","","","2","0","5000");var option=new Option(UUID.randomUUID().toString(),"옵션","SKU","87000","5",List.of());
+  var input=new Document(null,null,c,List.of(option),StockMode.OPTION,"",List.of(),new Media(List.of(),List.of()),delivery,List.of(Market.NAVER),Map.of(Market.NAVER,new MarketConfig("123",null,null,null,null)));
+  var created=drafts.create(admin,input);var reentered=drafts.get(otherAdmin,created.id());assertThat(reentered.common()).isEqualTo(c);assertThat(reentered.delivery()).isEqualTo(delivery);var saved=drafts.save(admin,created.id(),created.revision(),reentered);assertThat(drafts.get(admin,saved.id()).common()).isEqualTo(c);assertThat(drafts.get(admin,saved.id()).delivery().jejuCharge()).isEqualTo("0");
+ }
  @Test void incompleteDraftPersistsAcrossReadsAndVersionConflictPreservesStoredData()throws Exception {
   var browser=new Browser(admin);var created=browser.send("POST","/api/marketplaces/drafts",blank(),true);assertThat(created.statusCode()).isEqualTo(200);
   var d=json.treeToValue(json.readTree(created.body()).path("data"),Document.class);assertThat(d.id()).isNotBlank();assertThat(d.common().name()).isEmpty();

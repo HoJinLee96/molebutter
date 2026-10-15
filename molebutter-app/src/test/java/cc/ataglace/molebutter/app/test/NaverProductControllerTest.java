@@ -29,12 +29,25 @@ class NaverProductControllerTest {
         http.perform(get("/api/marketplaces/naver/products").param("keyword","9001").param("sellerManagementCode","SELLER").param("size","50").param("actor","999")).andExpect(status().isOk()).andExpect(jsonPath("$.data.products[0].originProductNo").value("9001")).andExpect(jsonPath("$.data.products[0].stockQuantity").value(0));
         var input=ArgumentCaptor.forClass(NaverCatalog.Search.class);verify(catalog).products(eq(42L),input.capture());assertThat(input.getValue()).isEqualTo(new NaverCatalog.Search(1,50,"9001","SELLER"));
     }
+    @Test void listPassesSelectedSaleStatusToCatalog()throws Exception{
+        when(catalog.products(eq(42L),any())).thenReturn(new NaverCatalog.ProductPage(List.of(),1,0,false));
+        http.perform(get("/api/marketplaces/naver/products").param("statusType","SUSPENSION"))
+                .andExpect(status().isOk());
+        verify(catalog).products(42L,new NaverCatalog.Search(1,20,null,null,"SUSPENSION"));
+    }
     @Test void preparationUsesObservationTokenAndNativeZeroValues()throws Exception{
         when(saving.prepare(eq(42L),eq("9001"),any())).thenReturn(new MarketplaceSubmissions.Preview("p","d",1,"2099-01-01",true,false,List.of()));
         http.perform(post("/api/marketplaces/naver/products/9001/prepare").contentType("application/json").content("""
             {"token":"server-observation","input":{"fields":{"originProduct.salePrice":0},"optionMode":"COMBINATION","optionNames":["색상"],"options":[{"id":"801fed42-3ad7-4db4-bd9c-362e6312c009","values":["블랙"],"price":0,"stockQuantity":0,"usable":true}],"images":[],"description":"<p>합성</p>"}}
             """)).andExpect(status().isOk()).andExpect(jsonPath("$.data.requested").value(false));
         var input=ArgumentCaptor.forClass(NaverProductSaving.Prepare.class);verify(saving).prepare(eq(42L),eq("9001"),input.capture());assertThat(input.getValue().token()).isEqualTo("server-observation");assertThat(input.getValue().input().options().getFirst().stockQuantity()).isZero();
+    }
+    @Test void brandMetadataKeepsNaverIdentityAsAStringAndUsesAuthenticatedActor()throws Exception{
+        when(catalog.metadata(42L,"brands",Map.of("name","닥스"))).thenReturn(List.of(new NaverCatalog.Brand("9007199254740993","닥스")));
+        http.perform(get("/api/marketplaces/naver/metadata/brands").param("name","닥스"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].id").value("9007199254740993"))
+            .andExpect(jsonPath("$.data[0].name").value("닥스"));
+        verify(catalog).metadata(42L,"brands",Map.of("name","닥스"));
     }
     @Test void newDraftsRejectRemoteIdentitiesAndSourceEnvelopesBeforeService()throws Exception{
         for(String forbidden:List.of("\"originProductNo\":9001","\"source\":{}","\"input\":{}"))http.perform(post("/api/marketplaces/naver/product-registrations/drafts").contentType("application/json").content("{"+forbidden+",\"fields\":{}}")) .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_INPUT"));

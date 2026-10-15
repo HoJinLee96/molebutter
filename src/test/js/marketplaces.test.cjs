@@ -1,8 +1,8 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
 function setup(){
  const elements={},requests=[];
- const get=id=>elements[id]??= {value:id==='marketplace-size'?'10':'',listeners:{},disabled:false,hidden:false,textContent:'',innerHTML:'',open:false,showModal(){this.open=true;},close(){this.open=false;this.listeners.close?.();},addEventListener(type,fn){this.listeners[type]=fn;},setAttribute(){},focus(){},querySelectorAll(){return [get('marketplace-size'),get('submit')];}};
- const ctx={AppUI:{$:get,escape:s=>String(s).replaceAll('<','&lt;').replaceAll('>','&gt;')},URL,URLSearchParams,document:{querySelector:()=>get('header')},window:{addEventListener(){}},apiGet:url=>new Promise((resolve,reject)=>requests.push({url,resolve,reject}))};
+ const get=id=>elements[id]??= {value:id==='marketplace-size'?'10':'',listeners:{},disabled:false,hidden:false,textContent:'',innerHTML:'',open:false,showModal(){this.open=true;},close(){this.open=false;this.listeners.close?.();},addEventListener(type,fn){this.listeners[type]=fn;},setAttribute(){},focus(){},querySelector(){return get('submit');},querySelectorAll(){return [get('marketplace-size'),get('submit')];}};
+ const ctx={FormActions:{bindEnterSubmit(form,button){assert.equal(form,get('marketplace-query'));assert.equal(button,get('submit'));}},AppUI:{$:get,escape:s=>String(s).replaceAll('<','&lt;').replaceAll('>','&gt;')},URL,URLSearchParams,document:{querySelector:()=>get('header')},window:{addEventListener(){}},apiGet:url=>new Promise((resolve,reject)=>requests.push({url,resolve,reject}))};
  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../../../molebutter-app/src/main/resources/static/js/marketplaces.js'),'utf8'),ctx);
  return {get,requests,detail:id=>get('marketplace-rows').listeners.click({target:{closest:()=>({dataset:{marketplaceProduct:id}})}}),submit:()=>get('marketplace-query').listeners.submit({preventDefault(){}}),click:id=>get(id).listeners.click(),size:value=>{get('marketplace-size').value=value;get('marketplace-size').listeners.change();}};
 }

@@ -37,7 +37,7 @@ const server=http.createServer(async(req,res)=>{try{
  if(/^\/marketplaces\/naver\/products\/(new|[0-9]+\/edit)$/.test(url)){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(html('naver-product-editor','ADMIN'));}
  if(/^\/marketplaces\/coupang\/products\/(new|[0-9]+\/edit)$/.test(url)){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(html('marketplace-editor','ADMIN'));}
  if(['/','/products','/product-refresh','/settings','/attendance','/attendance-manage','/marketplaces'].includes(url)){const role=u.searchParams.get('role')||(/fixtureRole=(ADMIN|PRODUCT)/.exec(req.headers.cookie||'')?.[1]??'ADMIN');res.setHeader('Set-Cookie',`fixtureRole=${role}; Path=/; SameSite=Lax`);res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(html(url==='/'?'home':url.slice(1),role));}
- if(/^\/(js|css)\/[a-z.-]+$/.test(url)){res.setHeader('Content-Type',url.endsWith('.js')?'text/javascript':'text/css');return res.end(fs.readFileSync(path.join(root,'static',url)));}
+ if(/^\/(js|css)\/[a-z0-9.-]+$/.test(url)){res.setHeader('Content-Type',url.endsWith('.js')?'text/javascript':'text/css');return res.end(fs.readFileSync(path.join(root,'static',url)));}
  if(url==='/favicon.ico'){res.statusCode=204;return res.end();}
  const chunks=[];for await(const c of req)chunks.push(c);const body=Buffer.concat(chunks).toString(),input=body&&req.headers['content-type']?.includes('application/json')?JSON.parse(body):{};
  let data;

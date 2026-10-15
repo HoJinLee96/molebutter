@@ -43,20 +43,20 @@
     "id": "LOTTEON",
     "label": "롯데ON",
     "provider": "LOTTEON",
-    "commonDraft": false,
-    "productRead": false,
-    "productCreate": false,
-    "productUpdate": false,
+    "commonDraft": true,
+    "productRead": true,
+    "productCreate": true,
+    "productUpdate": true,
     "orderRead": false
   },
   {
     "id": "ELEVENST",
     "label": "11번가",
     "provider": "ELEVENST",
-    "commonDraft": false,
-    "productRead": false,
-    "productCreate": false,
-    "productUpdate": false,
+    "commonDraft": true,
+    "productRead": true,
+    "productCreate": true,
+    "productUpdate": true,
     "orderRead": false
   }
 ]

@@ -1,11 +1,11 @@
 package cc.ataglace.molebutter.marketplacenaver.internal;
 import cc.ataglace.molebutter.marketplace.api.MarketplaceWriteGateway;
 import cc.ataglace.molebutter.media.api.ImageAssets;
+import cc.ataglace.molebutter.media.api.R2Images;
 import cc.ataglace.molebutter.marketplacenaver.api.NaverGateway;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -22,33 +22,39 @@ import cc.ataglace.molebutter.marketplace.api.MarketplaceDrafts.Document;
 @Component
 final class DefaultNaverWriteGateway implements MarketplaceWriteGateway {
     private final BusinessAccess access;private final NaverGateway gateway;private final ImageAssets assets;private final ObjectMapper json;
+    private final NaverWriteValidation validation;private final R2Images r2;private final cc.ataglace.molebutter.media.api.ImageInspection inspection;
     private static final String ORIGIN="/v2/products/origin-products/",CHANNEL="/v2/products/channel-products/";
-    DefaultNaverWriteGateway(BusinessAccess access,NaverGateway gateway,ImageAssets assets,ObjectMapper json){this.access=access;this.gateway=gateway;this.assets=assets;this.json=json;}
+    DefaultNaverWriteGateway(BusinessAccess access,NaverGateway gateway,ImageAssets assets,ObjectMapper json,R2Images r2){this(access,gateway,assets,json,r2,null);}
+    @org.springframework.beans.factory.annotation.Autowired
+    DefaultNaverWriteGateway(BusinessAccess access,NaverGateway gateway,ImageAssets assets,ObjectMapper json,R2Images r2,cc.ataglace.molebutter.media.api.ImageInspection inspection){this.r2=r2;this.access=access;this.gateway=gateway;this.assets=assets;this.json=json;this.validation=new NaverWriteValidation(json);this.inspection=inspection;}
     public Document projectChanges(Document document,List<MarketplaceEditing.Change> changes){return NaverEditPatch.apply(document,changes);}
     public String market(){return "NAVER";}
     public String accountKey(){return gateway.accountKey();}
+    private JsonNode linkedProduct(Mapping mapping){var source=gateway.product(mapping.sellerProductId());if(mapping.channelProductId()!=null)gateway.channel(mapping.channelProductId());return source;}
     public Prepared prepare(Long actor,Document document,Mapping mapping,boolean requested){
-        access.productActor(actor,true);checkAccount(mapping);var input=NaverDraftAdapter.from(document);
+        access.productActor(actor,true);checkAccount(mapping);NaverCommonProjection.requireMediaSources(document);var input=NaverDraftAdapter.from(document);
         return gateway.session(()->{
-            if(mapping!=null&&mapping.sellerProductId()!=null){var source=gateway.product(mapping.sellerProductId());var projection=NaverEditPatch.editor(source);var observed=NaverDraftAdapter.observed(document,projection,mapping);return selected(actor,document,mapping,observed,NaverEditPatch.diff(NaverDraftAdapter.from(observed),input),source);}
+            if(mapping!=null&&mapping.sellerProductId()!=null){var source=linkedProduct(mapping);var projection=NaverEditPatch.editor(source);var observed=NaverDraftAdapter.observed(document,projection,mapping);return selected(actor,document,mapping,observed,NaverEditPatch.diff(NaverDraftAdapter.from(observed),input),source);}
             if("PRESERVE".equals(input.optionMode()))throw invalid("기존 옵션 보존 모드로 신규 상품을 등록할 수 없습니다.");
-            var body=wire(actor,input,null,null,null,true);validate(body,true,input);
+            MarketplaceCommonSettings.validate(document);NaverDeliveryPolicy.verify(input,q->gateway.metadata("bundle-group",q));var body=wire(actor,input,null,null,null,true);validate(body,true,input);
             var step=new Step(UUID.randomUUID().toString(),Type.CREATE,null,"POST","/v2/products","",json.writeValueAsString(body),json.writeValueAsString(existingProducts(sellerCode(body))),json.writeValueAsString(body));
             return new Prepared(accountKey(),null,List.of(step),visible(null,input),Instant.now(),List.of(sellerCode(body)),new EditIntent(document,List.of()),market());
         });
     }
     public Prepared prepareSelected(Long actor,Document reference,Mapping mapping,boolean requested,Document observed,List<MarketplaceEditing.Change> changes){
         access.productActor(actor,true);checkAccount(mapping);if(mapping==null||mapping.sellerProductId()==null)return prepare(actor,NaverEditPatch.apply(observed,changes),null,false);
-        return gateway.session(()->selected(actor,reference,mapping,observed,changes,gateway.product(mapping.sellerProductId())));
+        return gateway.session(()->selected(actor,reference,mapping,observed,changes,linkedProduct(mapping)));
     }
     private Prepared selected(Long actor,Document reference,Mapping mapping,Document observed,List<MarketplaceEditing.Change> changes,JsonNode source){
         var view=NaverEditPatch.editor(source);if(view.limits().groupProduct())throw invalid(view.limits().message());
         var latest=NaverDraftAdapter.observed(reference,view,mapping);var old=NaverDraftAdapter.from(observed);var now=NaverDraftAdapter.from(latest);
         var desired=NaverEditPatch.apply(latest,changes);var input=NaverDraftAdapter.from(desired);
         if(!changes.isEmpty()&&now.optionMode().equals("COMBINATION")){
-            var step=new NaverOptionStockUpdates(json).prepare(old,now,input,mapping,changes);
+            var wanted=NaverDraftAdapter.from(NaverEditPatch.apply(observed,changes));
+            var step=new NaverOptionStockUpdates(json).prepare(old,now,wanted,mapping,NaverEditPatch.diff(old,wanted));
             return new Prepared(accountKey(),mapping,List.of(step),visible(old,input),Instant.now(),List.of(sellerCode(source)),new EditIntent(observed,List.copyOf(changes)),market());
         }
+        if(changes.stream().anyMatch(c->c.path().contains(".deliveryInfo.")))NaverDeliveryPolicy.verify(input,q->gateway.metadata("bundle-group",q));
         checkChanges(old,now,input,changes,view.limits());
         var effective=NaverEditPatch.diff(now,input);var originChanges=effective.stream().filter(c->!c.path().contains(".fields.smartstoreChannelProduct.")).toList();var channelChanges=effective.stream().filter(c->c.path().contains(".fields.smartstoreChannelProduct.")).toList();
         if(effective.isEmpty())return new Prepared(accountKey(),mapping,List.of(),List.of(),Instant.now(),List.of(sellerCode(source)),new EditIntent(latest,List.of()),market());
@@ -112,11 +118,11 @@ final class DefaultNaverWriteGateway implements MarketplaceWriteGateway {
     public Result execute(Long actor,Prepared prepared,Step step,Mapping current){return execute(actor,prepared,step,current,s->{});}
     public Result execute(Long actor,Prepared prepared,Step step,Mapping current,Consumer<Step> beforeDispatch){
         access.productActor(actor,true);checkAccount(current);if(!market().equals(prepared.market())||!accountKey().equals(prepared.accountKey()))return failure(current,"ACCOUNT_CHANGED");
-        return gateway.session(()->{
+        try{return gateway.session(()->{
             Step actual=step;
             NaverEditor.Input executionInput=NaverDraftAdapter.from(prepared.editIntent().observed());
             try{
-                if(step.type()==Type.CREATE){if(current!=null&&current.sellerProductId()!=null)return failure(current,"ALREADY_REGISTERED");actual=new Step(step.id(),step.type(),step.optionId(),step.method(),step.path(),step.query(),step.bodyJson(),json.writeValueAsString(existingProducts(sellerCode(json.readTree(step.bodyJson())))),step.expectedJson());}
+                if(step.type()==Type.CREATE){if(inspection!=null){executionInput=NaverDraftAdapter.from(NaverEditPatch.apply(prepared.editIntent().observed(),prepared.editIntent().changes()));var checks=new ArrayList<cc.ataglace.molebutter.media.api.ImageInspection.Input>();for(var image:executionInput.images())checks.add(new cc.ataglace.molebutter.media.api.ImageInspection.Input("NAVER",image.representative()?"REPRESENTATION":"DETAIL",null,image.id(),image.url(),image.assetId(),false));checks.addAll(cc.ataglace.molebutter.media.api.ImageInspection.descriptionInputs("NAVER",executionInput.description(),""));inspection.require(actor,checks);}if(current!=null&&current.sellerProductId()!=null)return failure(current,"ALREADY_REGISTERED");actual=new Step(step.id(),step.type(),step.optionId(),step.method(),step.path(),step.query(),step.bodyJson(),json.writeValueAsString(existingProducts(sellerCode(json.readTree(step.bodyJson())))),step.expectedJson());}
                 else {
                     var source=gateway.product(current.sellerProductId());var view=NaverEditPatch.editor(source);if(view.limits().groupProduct())return failure(current,"GROUP_PRODUCT");
                     if(NaverOptionStockUpdates.isStep(step)){
@@ -137,29 +143,46 @@ final class DefaultNaverWriteGateway implements MarketplaceWriteGateway {
                     }
                 }
             }catch(InputValidationFailure e){return failure(current,"BASELINE_CHANGED");}
+            if(step.type()==Type.CREATE||prepared.editIntent().changes().stream().anyMatch(c->c.path().contains(".deliveryInfo.")))NaverDeliveryPolicy.verify(executionInput,q->gateway.metadata("bundle-group",q));
             beforeDispatch.accept(actual);final Step sent=actual;NaverGateway.Response response;
             try{response=gateway.write(sent.method(),sent.path(),json.readTree(sent.bodyJson()));}catch(MarketplaceFailure e){return new Result(State.UNKNOWN,current,"RESULT_UNKNOWN","요청 결과를 확인한 뒤 다시 시도해 주세요.",Instant.now(),sent.bodyJson());}
             var outcome=parseOutcome(response,sent,current,executionInput);
             if(outcome.state()==State.ACCEPTED&&outcome.mapping()!=null&&outcome.mapping().sellerProductId()!=null)return reconcileWithRequest(actor,prepared,sent,outcome);
             return outcome;
-        });
+        });}catch(MarketplaceFailure preflightFailure){return new Result(State.FAILED,current,"PREFLIGHT_"+preflightFailure.kind().name(),"전송 전 조회에 실패하여 상품 요청을 보내지 않았습니다. 다시 확인해 주세요.",Instant.now());}
     }
-    public Result reconcile(Long actor,Prepared prepared,Step step,Result previous){access.productActor(actor,true);checkAccount(previous.mapping());return gateway.session(()->reconcileWithRequest(actor,prepared,step,previous));}
+    public Result reconcile(Long actor,Prepared prepared,Step step,Result previous){access.productActor(actor,true);checkAccount(previous.mapping());if(!accountKey().equals(prepared.accountKey()))return new Result(State.FAILED,previous.mapping(),"ACCOUNT_CHANGED","스마트스토어 연결 계정이 변경되었습니다.",previous.attemptedAt(),previous.requestJson());return gateway.session(()->reconcileWithRequest(actor,prepared,step,previous));}
     private Result reconcileWithRequest(Long actor,Prepared prepared,Step step,Result previous){
-        Mapping mapping=previous.mapping();var input=NaverDraftAdapter.from(prepared.editIntent().observed());
-        if(step.type()!=Type.CREATE)input=NaverDraftAdapter.from(NaverEditPatch.apply(prepared.editIntent().observed(),prepared.editIntent().changes()));
+        Mapping mapping=previous.mapping();var input=NaverDraftAdapter.from(NaverEditPatch.apply(prepared.editIntent().observed(),prepared.editIntent().changes()));
         try{
             if(mapping==null||mapping.sellerProductId()==null){
                 // Seller codes and matching content cannot prove which request created a product.
                 // Keep the unconfirmed write locked until a causally verified product ID is available.
                 return pending(previous,"CREATE_UNCONFIRMED");
             }
-            var source=gateway.product(mapping.sellerProductId());mapping=mapping(source,input,mapping);var current=NaverDraftAdapter.observed(prepared.editIntent().observed(),NaverEditPatch.editor(source),mapping);var latest=NaverDraftAdapter.from(current);
+            var source=linkedProduct(mapping);var verified=mapping(source,input,mapping);
+            if(!Objects.equals(mapping.sellerProductId(),verified.sellerProductId())||mapping.channelProductId()!=null&&!Objects.equals(mapping.channelProductId(),verified.channelProductId()))return pending(previous,"MAPPING_CHANGED");
+            mapping=verified;var current=NaverDraftAdapter.observed(prepared.editIntent().observed(),NaverEditPatch.editor(source),mapping);var latest=NaverDraftAdapter.from(current);
             boolean reflected;
             if(step.type()==Type.CREATE)reflected=createMatches(json.readTree(step.bodyJson()),source);
             else if(NaverOptionStockUpdates.isStep(step))reflected=new NaverOptionStockUpdates(json).reflected(latest,mapping,step);
             else{var request=json.readTree(previous.requestJson()==null?step.bodyJson():previous.requestJson());var keys=normalizeExpected(json.readTree(step.expectedJson()).deepCopy().asObject(),request);var selected=new ArrayList<MarketplaceEditing.Change>();for(var key:keys.properties())selected.add(new MarketplaceEditing.Change(key.getKey(),null,null));reflected=matches(selectedValues(latest,selected),keys);}
             String status=source.path("originProduct").path("statusType").asString("");boolean approval=Set.of("WAIT","UNADMISSION").contains(status);
+            if(step.type()==Type.CREATE){
+                // The successful POST's ID plus an authenticated GET proves creation. Later
+                // edits and server normalization must not keep a confirmed creation locked.
+                // Require every local option to retain a verified remote identity first.
+                var rows=source.path("originProduct").path("detailAttribute").path("optionInfo").path("optionCombinations");
+                var ids=new HashSet<String>();for(var row:rows){var id=NaverEditPatch.id(row.path("id"));if(id!=null)ids.add(id);}
+                var linkedIds=new HashSet<String>();for(var link:mapping.options())linkedIds.add(link.sellerProductItemId());
+                if(rows.size()!=input.options().size()||!ids.equals(linkedIds)
+                        ||!cc.ataglace.molebutter.marketplace.api.MarketplaceCreationConfirmation.completeOptions(mapping,input.options().stream().map(NaverEditor.Option::id).toList(),false))return pending(new Result(previous.state(),mapping,previous.code(),previous.message(),previous.attemptedAt(),previous.requestJson()),"CREATE_OPTIONS_UNCONFIRMED");
+                if(approval)return new Result(State.ACCEPTED,mapping,"APPROVAL_PENDING","상품 번호가 발급되었으며 승인 결과를 확인하고 있습니다.",previous.attemptedAt(),previous.requestJson());
+                if(status.equals("REJECTION"))return pending(new Result(previous.state(),mapping,previous.code(),previous.message(),previous.attemptedAt(),previous.requestJson()),"APPROVAL_REJECTED");
+                if(!Set.of("SALE","OUTOFSTOCK","SUSPENSION","CLOSE").contains(status))return pending(previous,"CREATE_STATUS_UNCONFIRMED");
+                if(!source.path("smartstoreChannelProduct").path("naverShoppingRegistration").isBoolean())return pending(previous,"VERIFY_UNAVAILABLE");
+                return new Result(State.CONFIRMED,mapping,reflected?"CREATED_CONFIRMED":"CREATED_VALUES_DIFFER",reflected?"등록 상품과 옵션 연결을 확인했습니다.":"등록 상품과 옵션 연결을 확인했습니다. 현재 상품값이 등록 요청과 다릅니다. 상품 수정에서 최신값을 확인해 주세요.",previous.attemptedAt(),previous.requestJson());
+            }
             return new Result(reflected&&!approval?State.CONFIRMED:State.ACCEPTED,mapping(source,input,mapping),reflected?approval?"APPROVAL_PENDING":"CONFIRMED":"REFLECTION_PENDING",reflected?approval?"상품 번호가 발급되었으며 승인 결과를 확인하고 있습니다.":"재조회에서 변경 값이 확인되었습니다.":"요청은 접수되었으며 반영 결과를 확인하고 있습니다.",Instant.now(),previous.requestJson());
         }catch(MarketplaceFailure|InputValidationFailure e){return pending(new Result(previous.state(),mapping,previous.code(),previous.message(),previous.attemptedAt(),previous.requestJson()),"VERIFY_UNAVAILABLE");}
     }
@@ -192,16 +215,22 @@ final class DefaultNaverWriteGateway implements MarketplaceWriteGateway {
         var body=json.createObjectNode();body.set("originProduct",source==null?json.createObjectNode():source.path("originProduct").deepCopy());body.set("smartstoreChannelProduct",source==null?json.createObjectNode():source.path("smartstoreChannelProduct").deepCopy());
         for(var e:input.fields().entrySet())if(create||changes==null||changedField(changes,e.getKey()))NaverEditPatch.put(body,e.getKey(),json.valueToTree(e.getValue()));
         var origin=body.path("originProduct").asObject();if(!origin.path("detailAttribute").isObject())origin.set("detailAttribute",json.createObjectNode());var detail=origin.path("detailAttribute").asObject();
+
+        String descriptionValue=create||changed(changes,"description")?description(actor,input.description(),source==null?"":source.path("originProduct").path("detailContent").asString("")):null;
         if(create||changed(changes,"images")){
+            var existingUrls=new HashSet<String>();if(source!=null){existingUrls.add(source.path("originProduct").path("images").path("representativeImage").path("url").asString(""));for(var old:source.path("originProduct").path("images").path("optionalImages"))existingUrls.add(old.path("url").asString(""));}
+            for(var image:input.images())if(image.assetId()!=null||!existingUrls.contains(image.url())){
+                if(inspection!=null)inspection.require(actor,List.of(new cc.ataglace.molebutter.media.api.ImageInspection.Input("NAVER",image.representative()?"REPRESENTATION":"DETAIL",null,image.id(),image.url(),image.assetId(),false)));if(image.assetId()!=null){if(assets.editedMetadata(actor,image.assetId())==null)throw invalid("기존 로컬 이미지를 R2 이미지로 다시 선택해 주세요.");}else r2.resolve(actor,image.url());
+            }
             if(resolvedImages!=null&&resolvedImages.isObject())origin.set("images",resolvedImages.deepCopy());
             else{
-                var images=json.createObjectNode();var optional=json.createArrayNode();var existingUrls=new HashSet<String>();if(source!=null){existingUrls.add(source.path("originProduct").path("images").path("representativeImage").path("url").asString(""));for(var old:source.path("originProduct").path("images").path("optionalImages"))existingUrls.add(old.path("url").asString(""));}
+                var images=json.createObjectNode();var optional=json.createArrayNode();
                 for(var image:input.images().stream().sorted(Comparator.comparingInt(NaverEditor.Image::order)).toList()){
                     String url=image.assetId()==null&&existingUrls.contains(image.url())?image.url():gateway.uploadImage(actor,image);var row=json.createObjectNode().put("url",url);if(image.representative())images.set("representativeImage",row);else optional.add(row);
                 }images.set("optionalImages",optional);origin.set("images",images);
             }
         }
-        if(create||changed(changes,"description"))origin.put("detailContent",description(actor,input.description()));else origin.remove("detailContent");
+        if(create||changed(changes,"description"))origin.put("detailContent",descriptionValue);else origin.remove("detailContent");
         boolean optionChanged=create||changed(changes,"optionNames")||changed(changes,"options")||changed(changes,"optionMode");
         if(optionChanged&&"COMBINATION".equals(input.optionMode())){
             var info=detail.path("optionInfo").isObject()?detail.path("optionInfo").deepCopy().asObject():json.createObjectNode();var names=json.createObjectNode();for(int i=0;i<input.optionNames().size();i++)names.put("optionGroupName"+(i+1),input.optionNames().get(i));info.set("optionCombinationGroupNames",names);info.put("useStockManagement",true);
@@ -219,7 +248,7 @@ final class DefaultNaverWriteGateway implements MarketplaceWriteGateway {
         if(!create&&!changedField(changes,"originProduct.stockQuantity")&&!(optionChanged&&"COMBINATION".equals(input.optionMode())))origin.remove("stockQuantity");
         clean(body);return body;
     }
-    private String description(Long actor,String value){if(value.contains("blob:"))throw invalid("이미지 업로드가 완료된 뒤 저장해 주세요.");var matcher=Pattern.compile("/api/marketplaces/assets/([0-9a-fA-F-]{36})").matcher(value);return matcher.replaceAll(m->java.util.regex.Matcher.quoteReplacement(assets.submissionUrl(actor,m.group(1))));}
+    private String description(Long actor,String value,String previous){if(inspection!=null)inspection.require(actor,cc.ataglace.molebutter.media.api.ImageInspection.descriptionInputs("NAVER",value,previous));return cc.ataglace.molebutter.media.api.EditedImages.description(actor,value,previous,r2,assets);}
     private static void clean(ObjectNode body){var origin=body.path("originProduct").asObject();for(String key:List.of("originProductNo","createdDate","modifiedDate","lastModifiedDate","groupProductNo"))origin.remove(key);var channel=body.path("smartstoreChannelProduct");if(channel.isObject())for(String key:List.of("channelProductNo","channelNo","originProductNo","createdDate","modifiedDate"))channel.asObject().remove(key);}
     private boolean createMatches(JsonNode expected,JsonNode source){
         if(!source.path("originProduct").isObject())return false;var body=source.deepCopy();var origin=body.path("originProduct").asObject();if(!origin.has("saleType"))origin.put("saleType","NEW");var detail=origin.path("detailAttribute");if(detail.isObject()&&!detail.has("taxType"))detail.asObject().put("taxType","TAX");var channel=body.path("smartstoreChannelProduct");if(channel.isObject()&&!channel.has("storeKeepExclusiveProduct"))channel.asObject().put("storeKeepExclusiveProduct",false);for(String key:List.of("name","leafCategoryId","salePrice","detailContent","images"))if(!contains(body.path("originProduct").path(key),expected.path("originProduct").path(key)))return false;
@@ -259,54 +288,6 @@ final class DefaultNaverWriteGateway implements MarketplaceWriteGateway {
     }
     private Result failure(Mapping mapping,String code){return new Result(State.FAILED,mapping,code,"스마트스토어 저장을 진행할 수 없습니다. 입력 값과 최신 조회 결과를 확인해 주세요.",Instant.now());}
     private static InputValidationFailure invalid(String message){return new InputValidationFailure(message);}
-    private void validate(ObjectNode body,boolean create,NaverEditor.Input input){
-        validate(body,create,input,List.of());
-    }
-    private void validate(ObjectNode body,boolean create,NaverEditor.Input input,List<MarketplaceEditing.Change> changes){
-        var origin=body.path("originProduct");var detail=origin.path("detailAttribute");
-        required(origin,"name");required(origin,"leafCategoryId");if(create)required(origin,"detailContent");
-        String status=origin.path("statusType").asString("");
-        if(create&&!status.equals("SALE"))throw invalid("신규 상품은 판매 중으로 등록됩니다. 노출을 중지하려면 채널 전시를 중지해 주세요.");
-        if(!create&&!Set.of("SALE","SUSPENSION").contains(status))throw invalid(changedField(changes,"originProduct.statusType")?"상품 수정의 판매 상태는 판매 중 또는 판매 중지만 선택할 수 있습니다.":"현재 판매 상태("+status+")를 유지하는 상품 수정은 지원하지 않습니다. 스마트스토어센터에서 상태를 확인해 주세요. 저장 과정에서 판매 중으로 강제 변경하지 않습니다.");
-        number(origin.path("salePrice"),0,999999990,"판매가");if(create||origin.has("stockQuantity"))number(origin.path("stockQuantity"),0,99999999,"재고");
-        var images=origin.path("images");required(images.path("representativeImage"),"url");if(input.images().stream().filter(NaverEditor.Image::representative).count()!=1||images.path("optionalImages").size()>9)throw invalid("대표 이미지는 1개, 추가 이미지는 9개까지 등록할 수 있습니다.");
-        var after=detail.path("afterServiceInfo");required(after,"afterServiceTelephoneNumber");required(after,"afterServiceGuideContent");
-        var area=detail.path("originAreaInfo");required(area,"originAreaCode");if(area.path("originAreaCode").asString("").startsWith("02"))required(area,"importer");if(area.path("originAreaCode").asString("").startsWith("04"))required(area,"content");
-        bool(detail.path("minorPurchasable"),"구매 연령");
-        var channel=body.path("smartstoreChannelProduct");bool(channel.path("naverShoppingRegistration"),"네이버 쇼핑 등록 여부");if(!Set.of("ON","SUSPENSION").contains(channel.path("channelProductDisplayStatusType").asString("")))throw invalid("스마트스토어 전시 상태는 전시 중 또는 중지로 선택해 주세요.");
-        if(create||detail.has("productInfoProvidedNotice")){var notice=detail.path("productInfoProvidedNotice");required(notice,"productInfoProvidedNoticeType");String key=NaverEditPatch.noticeKey(notice.path("productInfoProvidedNoticeType").asString(""));if(key==null||!notice.path(key).isObject())throw invalid("선택한 상품정보제공고시를 입력해 주세요.");for(String field:NaverEditPatch.NOTICE_REQUIRED.getOrDefault(key,Set.of())){if(Set.of("returnCostReason","noRefundReason","qualityAssuranceStandard","compensationProcedure","troubleShootingContents").contains(field))continue;var v=notice.path(key).path(field);if(v.isMissingNode()||v.isNull()||v.isString()&&v.asString().isBlank())throw invalid("필수 상품정보제공고시 항목을 입력해 주세요: "+field);}}
-        for(var certification:detail.path("productCertificationInfos"))number(certification.path("certificationInfoId"),1,Long.MAX_VALUE,"인증 유형");
-        for(var attribute:detail.path("productAttributes")){number(attribute.path("attributeValueSeq"),1,Long.MAX_VALUE,"검색 속성 값");if(attribute.has("attributeSeq"))number(attribute.path("attributeSeq"),1,Long.MAX_VALUE,"검색 속성");}
-        for(String path:List.of("originProduct.detailAttribute.naverShoppingSearchInfo.brandId","originProduct.detailAttribute.naverShoppingSearchInfo.modelId","originProduct.deliveryInfo.claimDeliveryInfo.shippingAddressId","originProduct.deliveryInfo.claimDeliveryInfo.returnAddressId","originProduct.deliveryInfo.deliveryBundleGroupId","smartstoreChannelProduct.bbsSeq")){var v=NaverEditPatch.at(body,path);if(!v.isMissingNode()&&!v.isNull())number(v,1,Long.MAX_VALUE,path);}
-        var quantity=detail.path("purchaseQuantityInfo");for(String key:List.of("minPurchaseQuantity","maxPurchaseQuantityPerOrder"))if(quantity.has(key))number(quantity.path(key),0,10000,"구매 수량");if(quantity.has("maxPurchaseQuantityPerId"))number(quantity.path("maxPurchaseQuantityPerId"),0,99999999,"1인 구매 수량");
-        if(detail.has("taxType")&&!Set.of("TAX","DUTYFREE","SMALL").contains(detail.path("taxType").asString("")))throw invalid("부가세 유형을 확인해 주세요.");
-        if(detail.path("seoInfo").path("pageTitle").asString("").length()>100||detail.path("seoInfo").path("metaDescription").asString("").length()>160)throw invalid("검색 제목은 100자, 설명은 160자 이하로 입력해 주세요.");
-        if("COMBINATION".equals(input.optionMode())){
-            if(input.optionNames().isEmpty()||input.optionNames().size()>3||input.optionNames().stream().anyMatch(String::isBlank)||new HashSet<>(input.optionNames()).size()!=input.optionNames().size()||input.options().isEmpty())throw invalid("구매 옵션명은 중복 없이 1~3개 입력하고 옵션을 추가해 주세요.");
-            var combinations=new HashSet<List<String>>();long total=0;for(var o:input.options()){
-                if(o.values().size()!=input.optionNames().size()||o.values().stream().anyMatch(String::isBlank)||!combinations.add(o.values()))throw invalid("구매 옵션 조합의 값이 비어 있거나 중복되었습니다.");
-                if(o.price()==null||o.stockQuantity()==null)throw invalid("각 옵션의 추가 금액과 재고를 확인해 주세요.");
-                number(json.valueToTree(o.price()),-999999990L,999999990L,"옵션 추가 금액");number(json.valueToTree(o.stockQuantity()),0,99999999,"옵션 재고");
-                if(origin.path("salePrice").asLong()+o.price()<0||origin.path("salePrice").asLong()+o.price()>999999990)throw invalid("판매가와 옵션 추가 금액의 합계를 확인해 주세요.");
-                if(o.usable()==null||o.usable())total=Math.addExact(total,o.stockQuantity());
-            }if(total>99999999)throw invalid("판매 가능한 옵션의 전체 재고가 허용 범위를 초과했습니다.");
-        }else if("NONE".equals(input.optionMode())&&(!input.options().isEmpty()||!input.optionNames().isEmpty()))throw invalid("옵션 없는 상품은 구매 옵션을 비워 주세요.");
-        var delivery=origin.path("deliveryInfo");if(delivery.isObject()){
-            if(!Set.of("DELIVERY","DIRECT").contains(delivery.path("deliveryType").asString("")))throw invalid("배송 방식을 확인해 주세요.");
-            if(delivery.path("deliveryType").asString("").equals("DELIVERY"))required(delivery,"deliveryCompany");
-            var fee=delivery.path("deliveryFee");if(!fee.isObject())throw invalid("배송비 설정을 입력해 주세요.");
-            if(fee.has("baseFee"))number(fee.path("baseFee"),0,100000,"기본 배송비");if(fee.has("freeConditionalAmount"))number(fee.path("freeConditionalAmount"),0,999999990,"무료배송 기준");
-            var claims=delivery.path("claimDeliveryInfo");number(claims.path("returnDeliveryFee"),0,1000000,"반품 배송비");number(claims.path("exchangeDeliveryFee"),0,1000000,"교환 배송비");
-        }
-        var discount=origin.path("customerBenefit").path("immediateDiscountPolicy").path("discountMethod");if(discount.isObject()){
-            var value=discount.path("value");if(value.isMissingNode()||value.isNull()){origin.path("customerBenefit").asObject().remove("immediateDiscountPolicy");}
-            else {decimal(value,BigDecimal.ONE,new BigDecimal("10000000"),"즉시 할인");String unit=discount.path("unitType").asString("");if(!Set.of("WON","PERCENT").contains(unit))throw invalid("할인 단위는 원 또는 퍼센트로 입력해 주세요.");if(unit.equals("PERCENT")&&value.asDouble()>100||unit.equals("WON")&&value.asDouble()>origin.path("salePrice").asDouble())throw invalid("할인 값이 판매 가격을 초과했습니다.");if(create||changedField(changes,"originProduct.customerBenefit.immediateDiscountPolicy.discountMethod.startDate"))time(discount.path("startDate"),10,0,"할인 시작일");if(create||changedField(changes,"originProduct.customerBenefit.immediateDiscountPolicy.discountMethod.endDate"))time(discount.path("endDate"),10,9,"할인 종료일");}
-        }
-        if(create||changedField(changes,"originProduct.saleStartDate"))time(origin.path("saleStartDate"),60,0,"판매 시작일");if(create||changedField(changes,"originProduct.saleEndDate"))time(origin.path("saleEndDate"),60,59,"판매 종료일");
-    }
-    private static void required(JsonNode parent,String field){if(!parent.path(field).isString()||parent.path(field).asString().isBlank())throw invalid("필수 항목을 입력해 주세요: "+field);}
-    private static void number(JsonNode value,long min,long max,String label){if(!value.isIntegralNumber()||!value.canConvertToLong()||value.asLong()<min||value.asLong()>max)throw invalid(label+"는 "+min+"~"+max+" 범위의 정수로 입력해 주세요.");}
-    private static void decimal(JsonNode value,BigDecimal min,BigDecimal max,String label){try{var d=new BigDecimal(value.asString());if(!value.isNumber()||d.compareTo(min)<0||d.compareTo(max)>0)throw new IllegalArgumentException();}catch(RuntimeException e){throw invalid(label+" 값을 확인해 주세요.");}}
-    private static void bool(JsonNode value,String label){if(!value.isBoolean())throw invalid(label+"의 선택 값을 확인해 주세요.");}
-    private static void time(JsonNode value,int interval,int offset,String label){if(value.isMissingNode()||value.isNull()||value.isString()&&value.asString().isBlank())return;try{var date=OffsetDateTime.parse(value.asString());if(date.getMinute()%interval!=offset||date.getSecond()!=0||date.getNano()!=0)throw new IllegalArgumentException();}catch(RuntimeException e){throw invalid(label+"의 시간·분과 시간대 형식을 확인해 주세요.");}}
+    private void validate(ObjectNode body,boolean create,NaverEditor.Input input){validation.validate(body,create,input);}
+    private void validate(ObjectNode body,boolean create,NaverEditor.Input input,List<MarketplaceEditing.Change> changes){validation.validate(body,create,input,changes);}
 }

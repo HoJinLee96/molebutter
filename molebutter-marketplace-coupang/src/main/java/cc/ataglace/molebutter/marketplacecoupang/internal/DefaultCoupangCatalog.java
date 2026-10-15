@@ -12,6 +12,7 @@ final class DefaultCoupangCatalog implements CoupangCatalog, cc.ataglace.molebut
     public EditorDocument edit(Long actor,String id,String requestId){access.productActor(actor,true);return client.operation(actor,requestId,()->client.editor(id));}
     public CategoryRules category(Long actor,String code){return category(actor,code,null);}
     public CategoryRules category(Long actor,String code,String requestId){access.productActor(actor,true);return client.operation(actor,requestId,()->client.category(code));}
+    public java.util.List<CategoryChoice> categories(Long actor,String requestId){access.productActor(actor,true);return client.operation(actor,requestId,client::categories);}
     public ProductDetail product(Long actor,String id){return product(actor,id,null);}
     public ProductDetail product(Long actor,String id,String requestId){access.productActor(actor,true);return client.operation(actor,requestId,()->client.product(id));}
     public ProductPage products(Long actor,int size,String token,ProductSearch search){return products(actor,size,token,search,null);}

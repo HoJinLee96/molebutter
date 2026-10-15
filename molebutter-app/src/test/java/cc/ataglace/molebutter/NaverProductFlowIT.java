@@ -28,18 +28,57 @@ class NaverProductFlowIT {
  @DynamicPropertySource static void databases(DynamicPropertyRegistry registry){AuthenticationFlowIT.databases(registry);}
  @Autowired NaverProductRegistrations registrations;@Autowired NaverProductSaving saving;@Autowired MarketplaceSubmissions submissions;
  @Autowired DefaultMarketplaceSubmissions worker;@Autowired NaverProductTestGateway gateway;@Autowired JdbcTemplate db;@Autowired UserRepository users;@Autowired ObjectMapper json;
+ @Autowired MarketplaceProductEditor productEditor;
+ @Autowired MarketplaceEditing editing;
+ @Autowired NaverProductDocuments editorDocuments;
+ @Autowired MarketplaceDrafts commonDrafts;
+ @org.springframework.test.context.bean.override.mockito.MockitoBean cc.ataglace.molebutter.media.api.R2Images r2Images;
  long admin;
- @BeforeEach void setup(){clear();gateway.reset();admin=users.findByEmail("admin@example.com").orElseThrow().getId();}
+ @BeforeEach void setup(){clear();gateway.reset();admin=users.findByEmail("admin@example.com").orElseThrow().getId();org.mockito.Mockito.when(r2Images.resolve(org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.anyString())).thenAnswer(i->new cc.ataglace.molebutter.media.api.R2Images.Image("products/SYNTHETIC/official/01.jpg",i.getArgument(1),"image/jpeg",1000,1000,1000));}
  @AfterEach void cleanup(){clear();}
- void clear(){for(String table:List.of("marketplace_execution_attempt","marketplace_execution_step","marketplace_execution_target","marketplace_execution","marketplace_execution_asset","marketplace_submission_preview","marketplace_edit_session","marketplace_listing_mapping","marketplace_submission_account","marketplace_asset_publication","marketplace_draft_asset","marketplace_draft","marketplace_asset"))db.update("DELETE FROM "+table);}
+ void clear(){for(String table:List.of("marketplace_image_edit","marketplace_editor_history_link","marketplace_execution_attempt","marketplace_execution_step","marketplace_execution_target","marketplace_execution","marketplace_execution_asset","marketplace_submission_preview","marketplace_edit_session","marketplace_listing_history_asset","marketplace_listing_history","marketplace_listing_state","marketplace_listing_mapping","marketplace_submission_account","marketplace_asset_publication","marketplace_draft_asset","marketplace_draft","marketplace_asset"))db.update("DELETE FROM "+table);}
  NaverEditor.Input input(){
   var fields=new LinkedHashMap<String,Object>();fields.put("originProduct.name","합성 스마트스토어 상품");fields.put("originProduct.leafCategoryId","50000001");fields.put("originProduct.statusType","SALE");fields.put("originProduct.saleType","NEW");fields.put("originProduct.salePrice",1000L);fields.put("originProduct.stockQuantity",0L);
   fields.put("originProduct.detailAttribute.afterServiceInfo.afterServiceTelephoneNumber","010-0000-0000");fields.put("originProduct.detailAttribute.afterServiceInfo.afterServiceGuideContent","합성 AS 안내");fields.put("originProduct.detailAttribute.originAreaInfo.originAreaCode","00");fields.put("originProduct.detailAttribute.minorPurchasable",true);fields.put("originProduct.detailAttribute.taxType","TAX");fields.put("originProduct.detailAttribute.sellerCodeInfo.sellerManagementCode","SYNTHETIC-NAVER-1");
   fields.put("smartstoreChannelProduct.naverShoppingRegistration",true);fields.put("smartstoreChannelProduct.channelProductDisplayStatusType","ON");
   fields.put("originProduct.detailAttribute.productInfoProvidedNotice",Map.of("productInfoProvidedNoticeType","BAG","bag",Map.of("type","상품 상세페이지 참조","material","상품 상세페이지 참조","color","상품 상세페이지 참조","size","상품 상세페이지 참조","manufacturer","상품 상세페이지 참조","caution","상품 상세페이지 참조","warrantyPolicy","상품 상세페이지 참조","afterServiceDirector","상품 상세페이지 참조","returnCostReason","상품 상세페이지 참조","noRefundReason","상품 상세페이지 참조")));
-  return new NaverEditor.Input(fields,"NONE",List.of(),List.of(),List.of(new NaverEditor.Image(UUID.randomUUID().toString(),null,"https://assets.molebutter.link/synthetic.jpg",true,0)),"<p>합성 상세설명</p>");
+  return new NaverEditor.Input(fields,"NONE",List.of(),List.of(),List.of(new NaverEditor.Image(UUID.randomUUID().toString(),null,"https://assets.molebutter.link/products/SYNTHETIC/official/01.jpg",true,0)),"<p>합성 상세설명</p>");
+ }
+ @Test void unifiedNaverImportKeepsNativeSnapshotAndCreatesCompleteCommonPrice(){
+  gateway.seed(input());var entry=productEditor.open(admin,"MARKET_EDIT","NAVER","101",null);
+  assertThat(entry.activeTabs()).containsExactly("NAVER");assertThat(db.queryForObject("SELECT COUNT(*) FROM marketplace_draft",Long.class)).isZero();
+  gateway.seed(changed(input(),"originProduct.stockQuantity",9L));
+  var imported=productEditor.connect(admin,new MarketplaceProductEditor.Link(entry.token(),null,null,"INTERNAL-NAVER",List.of(),List.of()));
+  assertThat(imported.activeTabs()).containsExactly("","NAVER");assertThat(imported.reference().options()).hasSize(1);assertThat(imported.reference().options().getFirst().price()).isEqualTo("1000");assertThat(imported.reference().options().getFirst().originalPrice()).isEqualTo("1000");
+  assertThat(imported.reference().productQuantity()).isEqualTo("9");
+  assertThat(imported.session().targets().getFirst().naverContext()).isNotNull();assertThat(gateway.writes()).isEmpty();
+ }
+ @Test void unifiedNaverPendingSaveAndExplicitPromotionPreserveInputAndInternalDraftId(){
+  gateway.seed(input());var entry=productEditor.open(admin,"MARKET_EDIT","NAVER","101",null);var change=new MarketplaceEditing.Change("markets.NAVER.naver.editorInput.fields.originProduct.name",null,"임시 수정명");
+  var saved=productEditor.save(admin,new MarketplaceProductEditor.Save(entry.token(),"NAVER",entry.reference(),List.of(new MarketplaceEditing.TargetChanges("NAVER",List.of(change)))));
+  assertThat(saved.session().targets().getFirst().pendingChanges()).containsExactly(change);assertThat(db.queryForObject("SELECT editor_kind FROM marketplace_draft WHERE id=?",String.class,Long.parseLong(saved.reference().id()))).isEqualTo("MARKET_ONLY");
+  var reopened=productEditor.open(admin,"MARKET_EDIT","NAVER","101",null);assertThat(reopened.commonId()).isNull();assertThat(reopened.session().targets().getFirst().pendingChanges()).containsExactly(change);
+  var imported=productEditor.connect(admin,new MarketplaceProductEditor.Link(reopened.token(),null,null,"INTERNAL-NAVER",List.of(),List.of(change)));
+  assertThat(imported.commonId()).isEqualTo(saved.reference().id());assertThat(imported.session().targets().getFirst().pendingChanges()).containsExactly(change);assertThat(gateway.writes()).isEmpty();
  }
  NaverEditor.Input changed(NaverEditor.Input input,String path,Object value){var f=new HashMap<>(input.fields());f.put(path,value);return new NaverEditor.Input(f,input.optionMode(),input.optionNames(),input.options(),input.images(),input.description());}
+ @Test void unifiedNativeNewUsesNativeFieldsAndLegacyDraftApiCanReadThem(){
+  var reference=editorDocuments.document(null,null,input());var change=new MarketplaceEditing.Change("markets.NAVER.naver.editorInput.fields.originProduct.salePrice",null,1500);
+  var saved=productEditor.save(admin,new MarketplaceProductEditor.Save(null,"NAVER",reference,List.of(new MarketplaceEditing.TargetChanges("NAVER",List.of(change)))));
+  var reopened=productEditor.open(admin,"MARKET_NEW","NAVER",null,saved.reference().id());assertThat(reopened.activeTabs()).containsExactly("NAVER");assertThat(reopened.reference().common().name()).isEqualTo("합성 스마트스토어 상품");
+  assertThat(registrations.get(admin,saved.reference().id()).input().fields().get("originProduct.salePrice").toString()).isEqualTo("1500");assertThat(gateway.writes()).isEmpty();
+ }
+ @Test void manualNaverOptionConnectionRekeysWholeOptionChangesAndAddsCompleteCommonPrice(){
+  var base=input();var rows=List.of(new NaverEditor.Option(UUID.randomUUID().toString(),List.of("빨강"),0L,3L,"RED",true),new NaverEditor.Option(UUID.randomUUID().toString(),List.of("파랑"),200L,4L,"BLUE",true));
+  var nativeInput=new NaverEditor.Input(base.fields(),"COMBINATION",List.of("색상"),rows,base.images(),base.description());gateway.seed(nativeInput);
+  var target=commonDrafts.create(admin,editorDocuments.document(null,null,nativeInput));var entry=productEditor.open(admin,"MARKET_EDIT","NAVER","101",null);var source=entry.reference().markets().get(MarketplaceDrafts.Market.NAVER).naver().editorInput();
+  var changedRows=new ArrayList<>(source.options());var red=changedRows.getFirst();changedRows.set(0,new NaverEditor.Option(red.id(),red.values(),50L,red.stockQuantity(),red.sellerManagerCode(),red.usable()));
+  var links=List.of(new MarketplaceProductEditor.OptionLink(source.options().getFirst().id(),target.options().get(1).id(),false),new MarketplaceProductEditor.OptionLink(source.options().get(1).id(),null,true));
+  var connected=productEditor.connect(admin,new MarketplaceProductEditor.Link(entry.token(),target.id(),target.revision(),null,links,List.of(new MarketplaceEditing.Change("markets.NAVER.naver.editorInput.options",null,changedRows))));
+  assertThat(connected.reference().common()).isEqualTo(target.common());assertThat(connected.reference().options()).hasSize(3);var added=connected.reference().options().get(2);assertThat(added.price()).isEqualTo("1200");assertThat(added.originalPrice()).isEqualTo("1200");
+  var live=connected.session().targets().getFirst();assertThat(live.naverContext().optionIdentities()).extracting(NaverEditor.OptionIdentity::id).containsExactly(target.options().get(1).id(),added.id());
+  var desired=editorDocuments.apply(live.document(),live.pendingChanges()).markets().get(MarketplaceDrafts.Market.NAVER).naver().editorInput();assertThat(desired.options()).extracting(NaverEditor.Option::id).containsExactly(target.options().get(1).id(),added.id());assertThat(desired.options().getFirst().price()).isEqualTo(50L);assertThat(gateway.writes()).isEmpty();
+ }
  Execution execute(Preview preview){assertThat(preview.executable()).as(preview.targets().toString()).isTrue();return submissions.execute(admin,preview.id(),UUID.randomUUID().toString());}
  @Test void incompleteDraftAndRevisionConflictDoNotSendAnyRemoteWrite(){
   var incomplete=new NaverEditor.Input(Map.of(),"NONE",List.of(),List.of(),List.of(),"");var d=registrations.create(admin,incomplete);assertThat(registrations.get(admin,d.id()).input().fields()).isEmpty();assertThat(gateway.writes()).isEmpty();
@@ -54,6 +93,25 @@ class NaverProductFlowIT {
   var saved=registrations.get(admin,d.id());assertThat(saved.externalProductId()).isEqualTo("101");assertThat(saved.blocked()).isTrue();
   assertThat(db.queryForObject("SELECT mapping_json FROM marketplace_listing_mapping WHERE draft_id=? AND market='NAVER'",String.class,Long.parseLong(d.id()))).contains("\"sellerProductId\":\"101\"","\"channelProductId\":\"202\"");
   assertThatThrownBy(()->registrations.prepare(admin,d.id(),new NaverProductRegistrations.Prepare(d.revision()))).isInstanceOf(MarketplaceDraftFailure.class);
+ }
+ @Test void acceptedCommonCreateWithExternalChangesConfirmsMappingAndReopensFromLiveGet(){
+  var d=commonDrafts.create(admin,editorDocuments.document(null,null,combination()));
+  var session=editing.start(admin,d.id());var request=new MarketplaceEditing.PrepareRequest(d.id(),d.revision(),session.id(),false,List.of(new MarketplaceEditing.TargetChanges("NAVER",List.of())));
+  var execution=execute(submissions.prepare(admin,request));gateway.failNextProductRead();worker.runPending();
+  assertThat(submissions.get(admin,execution.id()).status()).isEqualTo(Status.ACCEPTED);
+  gateway.salePrice(2000);submissions.reconcile(admin,execution.id());worker.runPending();
+  var confirmed=submissions.get(admin,execution.id());assertThat(confirmed.status()).isEqualTo(Status.SUCCEEDED);
+  assertThat(confirmed.targets().getFirst().steps().getFirst().code()).isEqualTo("CREATED_VALUES_DIFFER");
+  assertThat(confirmed.targets().getFirst().steps().getFirst().message()).contains("현재 상품값","최신값");
+  var reopened=productEditor.open(admin,"MARKET_EDIT","NAVER","101",null);assertThat(reopened.commonId()).isEqualTo(d.id());
+  var target=reopened.session().targets().getFirst();assertThat(target.mode()).isEqualTo("UPDATE");assertThat(target.pendingChanges()).isEmpty();
+  assertThat(target.document().markets().get(MarketplaceDrafts.Market.NAVER).naver().editorInput().fields().get("originProduct.salePrice").toString()).isEqualTo("2000");
+  var mapping=json.readTree(db.queryForObject("SELECT mapping_json FROM marketplace_listing_mapping WHERE draft_id=? AND market='NAVER'",String.class,Long.parseLong(d.id())));
+  assertThat(mapping.path("options")).hasSize(2);assertThat(mapping.path("options").get(0).path("optionId").asString()).isEqualTo(d.options().getFirst().id());
+  assertThat(db.queryForObject("SELECT applied_revision FROM marketplace_listing_mapping WHERE draft_id=? AND market='NAVER'",Long.class,Long.parseLong(d.id()))).isEqualTo(d.revision());
+  gateway.salePrice(3000);var again=productEditor.open(admin,"MARKET_EDIT","NAVER","101",null);
+  assertThat(again.session().targets().getFirst().document().markets().get(MarketplaceDrafts.Market.NAVER).naver().editorInput().fields().get("originProduct.salePrice").toString()).isEqualTo("3000");
+  assertThat(gateway.writes()).containsExactly("POST /v2/products");
  }
  @Test void mappedProductReopensWithoutChannelNumberAndStillRejectsAnotherChannel(){
   var draft=registrations.create(admin,input());var created=execute(registrations.prepare(admin,draft.id(),new NaverProductRegistrations.Prepare(draft.revision())));worker.runPending();

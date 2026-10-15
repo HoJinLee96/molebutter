@@ -32,8 +32,12 @@
 
 <script th:src="@{/js/api.js}"></script>
 <script th:inline="none">
+    FormActions.bindEnterSubmit(document.getElementById('find-form'), document.getElementById('find-btn'));
     document.getElementById('find-form').addEventListener('submit', async (event) => {
         event.preventDefault();
+        const button = document.getElementById('find-btn');
+        if (button.disabled) return;
+        button.disabled = true;
         setError('form-error', null);
         try {
             const data = await apiPost('/api/auth/find-email', {
@@ -45,6 +49,8 @@
             document.getElementById('result').hidden = false;
         } catch (e) {
             setError('form-error', e.message);
+        } finally {
+            button.disabled = false;
         }
     });
 </script>

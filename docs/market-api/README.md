@@ -1,8 +1,10 @@
 # 판매 마켓 Open API 연동 조사
 
+2026-10-14 외부 삭제 대응과 기존 초안 검증: 공통 편집기에 삭제 확정 표시·내부 재등록 준비·연결 세대와 이력 보존을 추가했다. 쿠팡·네이버의 확인 가능한 신호만 사용하고 롯데ON·11번가의 일반 조회 실패를 삭제로 추정하지 않는다. WCWA705R2의 실제 조회·내부 저장·재진입 결과와 쿠팡 등록 전 임시 변경 호환 수정은 [검증 기록](../verification/2026-10-14-listing-recreation.md)에 구분한다. 실제 마켓 쓰기는 수행하지 않았다.
+
 > 문서 유형: 외부 API 조사·후속 연동 제안과 현재 구현 상태. 외부 사양은 조사 당시 기준이며 실제 계정 호출 여부와 결과는 현재 구현 상태 문단 및 마켓별 검증 기록으로 구분한다. 구현 전 최신 공식 문서와 계정 권한을 다시 확인한다. 현재 코드 경계는 [모듈 구조](../modular-architecture.md)를 따른다.
 
-최초 조사일: 2026-10-03. 대상은 **내 판매자 계정에 등록한 상품**이다. 당시 네이버 스마트스토어·쿠팡 Wing·G마켓·옥션으로 시작했으며, 2026-10-07 롯데ON을 포함한 문서 참조 기준을 반영했다. 마켓별 최초 상품 조회에서는 HTTP 성공과 업무 성공·정상 응답을 함께 확인한다.
+최초 조사일: 2026-10-03. 대상은 **내 판매자 계정에 등록한 상품**이다. 당시 네이버 스마트스토어·쿠팡 Wing·G마켓·옥션으로 시작했으며, 2026-10-07 롯데ON, 2026-10-11 11번가를 포함한 문서 참조 기준을 반영했다. 마켓별 최초 상품 조회에서는 HTTP 성공과 업무 성공·정상 응답을 함께 확인한다.
 
 ## 문서와 조사 범위
 
@@ -10,16 +12,19 @@
 2026-10-07 제공된 롯데ON 포함 업데이트의 읽기 규칙과 검수 현황을 확인했다. 원문 수집일은 문서의 `fetched_at`을 따르며 전달일과 구분한다. 롯데ON 281개 문서의 노트 검수 완료는 제공된 README의 기록이며 실제 계정 검증을 뜻하지 않는다.
 에이전트의 지속적인 참고 순서는 [프로젝트 AGENTS.md](../../AGENTS.md)에 기록한다.
 
+2026-10-11에는 11번가 포함 업데이트를 반영했다. 11번가 원문 수집일은 2026-10-08이며, 판매자 공통 API 명세 109개 등 총 387개 문서를 포함한다. 패키지의 기계 변환·노트 검수 기록과 이번 프로젝트의 계약 대조·미실행 실계정 검증은 [11번가 안내](11st.md)에서 구분한다.
+
 README → 마켓별 OVERVIEW·INDEX → 대상 문서의 SOURCE 순서로 찾는다. 공통 설계에서는 `cross-market/`도 읽고,
 네이버 하위 구조체, INDEX의 관련 FAQ·공지와 해당 마켓의 `KNOWN-ISSUES.md`를 확인한다. ESM은 `endpoints`와 '엔드포인트' 열로 찾는다. 불일치는 `_raw/`와 최신 공식 문서로 대조한다.
 개요·비교·노트의 검수 완료를 실계정 동작 검증으로 해석하지 않는다.
 
 | 문서 | 내용 |
 |---|---|
-| [네이버 스마트스토어](naver-smartstore.md) | OAuth, 상품 목록·상세, 전용 신규·수정 화면과 초안·전송·결과 확인 |
+| [네이버 스마트스토어](naver-smartstore.md) | OAuth, 상품 목록·상세, 공통/전용 폼과 초안·전송·결과 확인 |
 | [쿠팡 Wing](coupang-wing.md) | 키·IP 등록, HMAC, 상품 목록·상세, 문서 불일치와 확인 방법 |
 | [G마켓·옥션 / ESM](esm-gmarket-auction.md) | 사용 승인, 공통 JWT, 사이트별 상품 조회, 마스터·사이트·옵션 구분 |
-| [롯데ON](lotteon.md) | 최신 문서 참조, 셀러용 범위·호스트·필수 표기·응답 차이와 후속 구현 준비 |
+| [롯데ON](lotteon.md) | 상품 목록·상세·등록·승인 수정, 통합 폼·수동 공통 연결·옵션별 미디어; 주문 미구현·실계정 검증 별도 |
+| [11번가](11st.md) | 판매자 XML API·인증·이미지·수정 계약, 상품 조회·등록·수정 구현과 읽기 전용 실계정 검증 |
 | [첫 조회 구현·검증 순서](first-product-query.md) | 프로젝트 적용 경계, 필요한 설정, 요청·응답 판정과 완료 조건 |
 
 최초 조사에서는 인증·사용 신청·상품 목록·상세·옵션·조회 제한·관련 공지와 FAQ를 읽고 대조했다. 전체 API의 주문·배송·반품·정산·문의 기능은 후속 연동의 영역으로 분류했다. 모든 도메인의 모든 요청 필드까지 검증한 문서는 아니다.
@@ -28,7 +33,7 @@ README → 마켓별 OVERVIEW·INDEX → 대상 문서의 SOURCE 순서로 찾�
 
 2026-10-03 최초 조사의 상태는 **문서 조사 완료 / 실제 계정 호출 미실행**이었다. 이후 구현과 실제 호출 결과는 아래 날짜별 구현 상태 및 마켓별 기록을 따른다. 2026-10-07 롯데ON 문서 반영 작업에서는 서비스 코드·DB·판매 상품·재고를 변경하거나 실제 API를 호출하지 않았다.
 
-## 다섯 마켓 비교
+## 여섯 마켓 비교
 
 | 마켓 | 인증 | 첫 상품 목록 조회 | 준비 |
 |---|---|---|---|
@@ -37,12 +42,15 @@ README → 마켓별 OVERVIEW·INDEX → 대상 문서의 SOURCE 순서로 찾�
 | G마켓 | ESM HS256 JWT → Bearer | `POST https://sa2.esmplus.com/item/v1/goods/search` | ESM 승인·키·마스터 ID, G마켓 판매자 ID·허용 IP |
 | 옥션 | ESM HS256 JWT → Bearer | 위와 동일, 옥션 조건으로 별도 호출 | ESM 승인·키·마스터 ID, 옥션 판매자 ID·허용 IP |
 | 롯데ON | 판매자 인증키 → Bearer, 등록된 출발지 IP 검증 | `POST https://openapi.lotteon.com/v1/openapi/product/v1/product/list` | 판매자 키·등록 IP, 해당 API의 거래처 식별자·조회 조건 |
+| 11번가 | `openapikey` 헤더, XML 전문 | `POST /rest/prodmarketservice/prodmarket` (`SearchProduct`) | 판매자 키·호출 IP·권한, 인코딩·운영 URL 확인. 원문은 `http://api.11st.co.kr` 표기 |
 
 규격 근거: [네이버 인증](https://apicenter.commerce.naver.com/docs/auth), [상품 목록](https://apicenter.commerce.naver.com/docs/commerce-api/current/search-product), [쿠팡 HMAC](https://developers.coupang.com/ko/getting-started/creating-hmac-signature), [상품 목록](https://developers.coupang.com/ko/api/products/product-list-paging-query), [ESM 가이드](https://etapi.gmarket.com/pages/API-%EA%B0%80%EC%9D%B4%EB%93%9C), [상품 목록](https://etapi.gmarket.com/160).
 
 롯데ON 근거는 [개발가이드 SOURCE](../../marketplace-api-docs/lotteon/guide/시작하기-API-개발가이드.md)와 [상품 목록 SOURCE](../../marketplace-api-docs/lotteon/api/상품/93-상품-목록-조회.md)다. 호스트·응답·호출 제한의 예외와 불일치는 [롯데ON 안내](lotteon.md)를 따른다.
 
-G마켓과 옥션은 공통 클라이언트를 사용할 수 있지만, 한쪽의 성공이 다른 쪽의 계정·상품 접근 성공을 보장하지 않는다. 완료 기록은 다섯 마켓별로 남긴다.
+11번가는 [상품 목록 SOURCE](../../marketplace-api-docs/11st/api/상품/상품조회/1007-다중상품조회.md), [인증을 명시한 등록 SOURCE](../../marketplace-api-docs/11st/api/상품/상품관리/1003-상품등록-신규상품등록.md)와 [11번가 안내](11st.md)를 따른다. 카테고리 조회의 키 불필요 예외와 GET 쓰기를 구분한다.
+
+G마켓과 옥션은 공통 클라이언트를 사용할 수 있지만, 한쪽의 성공이 다른 쪽의 계정·상품 접근 성공을 보장하지 않는다. 완료 기록은 여섯 마켓별로 남긴다.
 
 ## 프로젝트에 적용할 원칙
 
@@ -52,7 +60,8 @@ G마켓과 옥션은 공통 클라이언트를 사용할 수 있지만, 한쪽�
 
 | 통합 파일 키 | 서버 내부 설정 |
 |---|---|
-| `coupang_access_id` | `marketplace.coupang.vendor-id` |
+| `coupang_access_id` | `marketplace.coupang.vendor-id` (업체코드) |
+| `coupang_vendor_user_id` | `marketplace.coupang.vendor-user-id` (Wing 로그인 ID, 신규 등록용) |
 | `coupang_access_key` | `marketplace.coupang.access-key` |
 | `coupang_secret_key` | `marketplace.coupang.secret-key` |
 | `naver_smart_store_account_id` | `marketplace.naver.account-id` |
@@ -62,7 +71,7 @@ G마켓과 옥션은 공통 클라이언트를 사용할 수 있지만, 한쪽�
 | `esm_plus_api_key` | `marketplace.esm.api-key` |
 | `lotteon_api_key` | `marketplace.lotteon.api-key` |
 
-직접 지정한 `marketplace.*` 설정은 Spring의 기존 우선순위를 따른다. 네이버는 기존 `NAVER_COMMERCE_*` 환경 변수가 있으면 새 파일 키보다 우선하며 인증 유형 기본값 `SELF`를 유지한다. 11번가·ESM·롯데ON은 설정 연결만 준비한 상태이고 키 입력만으로 외부 API나 등록 기능을 활성화하지 않는다. 네이버 공개 검색·매입처 로그인 및 Cloudflare 설정은 이 통합 대상과 별개다.
+직접 지정한 `marketplace.*` 설정은 Spring의 기존 우선순위를 따른다. 네이버는 기존 `NAVER_COMMERCE_*` 환경 변수가 있으면 새 파일 키보다 우선하며 인증 유형 기본값 `SELF`를 유지한다. 11번가는 상품 조회·등록·수정 어댑터를 연결했고 실계정 읽기만 검증했다. ESM은 설정 연결을 준비한 상태이며 ESM 브랜드 검색에는 추가 JWT 인증 설정이 필요하다. 롯데ON은 기존 `lotteon_api_key`를 런타임 Bearer 인증에 사용하는 브랜드 조회만 연결했다. 키 입력이 상품 등록·수정이나 주문 기능을 활성화하지는 않는다. 네이버 공개 검색·매입처 로그인 및 Cloudflare 설정은 이 통합 대상과 별개다.
 
 현재 코드의 책임 분리와 보안 보완은 [연동 전 기반 정리](../market-integration-readiness.md)에 기록한다. 아래 원칙은 최초 단계의 설계 제안이며 실제 구현·호출 범위는 날짜별 기록을 따른다.
 
@@ -121,4 +130,16 @@ G마켓과 옥션은 공통 클라이언트를 사용할 수 있지만, 한쪽�
 
 ## 모듈 적용 (2026-10-09)
 
-쿠팡·스마트스토어 외부 어댑터를 `molebutter-marketplace-coupang`·`molebutter-marketplace-naver`로 분리했다. 공통 초안·실행·주문 이력은 marketplace, 원본 자산·발행·참조는 media가 소유한다. [현재 구조](../modular-architecture.md)를 따른다. 여섯 채널 목록은 `MarketplaceChannels`에서 관리하며 G마켓·옥션의 공급자는 ESM, 롯데ON·11번가는 준비 상태다. 원문이 확보되지 않은 11번가 규격을 추정해 구현하지 않는다.
+쿠팡·스마트스토어 외부 어댑터를 `molebutter-marketplace-coupang`·`molebutter-marketplace-naver`로 분리했다. `molebutter-marketplace-lotteon`은브랜드 조회부터 연결했고, ESM·롯데ON 상품 매핑 기반의 후속 범위는 [구현 현황](partner-product-implementation.md)을 따른다. 공통 초안·실행·주문 이력은 marketplace, 원본 자산·발행·참조는 media가 소유한다. [현재 구조](../modular-architecture.md)를 따른다. 여섯 채널 목록은 `MarketplaceChannels`에서 관리하며 G마켓·옥션의 공급자는 ESM, 롯데ON·11번가의 상품 전송은 준비 상태다. 2026-10-11 11번가 판매자 원문은 확보했으며, 전송 어댑터 구현·계정 검증은 [후속 범위](11st.md)다.
+
+## 공통 브랜드 검색 (2026-10-09)
+
+공통 기준 정보의 한 검색창에서 같은 검색어로 쿠팡·스마트스토어·롯데ON 브랜드를 조회하고 마켓별 결과를 직접 선택한다. 공통 브랜드명과 각 마켓에서 반환한 정확한 이름·ID를 분리해 저장한다. 취소는 선택을 반영하지 않으며 선택 해제도 적용 버튼을 눌러야 저장 입력에 반영된다. 연결된 쿠팡 상품의 브랜드 잠금은 유지한다. [화면·저장 계약](common-product-editor.md#통합-브랜드-선택-2026-10-09)을 따른다.
+
+G마켓·옥션은 ESM 공용 브랜드 검색 준비 상태이며 추가 JWT 인증 설정이 필요하다. 11번가는 수집 범위에서 브랜드 검색 API가 확인되지 않았고 관리 브랜드 코드 공지의 첨부파일도 패키지에 없어 호출을 생성하지 않는다([확인 근거·후속 범위](11st.md)). 롯데ON 검색은 최대 100개 후보만 조회하므로 검색어 구체화 안내를 표시한다. 롯데ON 조회 ID의 최대 길이 12와 등록 필드 길이 7의 차이는 미해결이며 브랜드 조회·초안 보관을 상품 등록 가능으로 해석하지 않는다. 이번 변경의 실제 계정 호출·상품 쓰기 검증은 수행하지 않았다.
+
+## 2026-10-13 11번가 상품 연동
+
+11번가 상품 조회·등록·수정과 통합 편집·공통 상품 연결을 구현했다. 지원 범위와 미확인 전체 수정 제한, 모의 검증·실계정 읽기 결과는 [11번가 안내](11st.md)를 따른다. 주문·브랜드 검색은 비활성이다. 실제 상품 전송은 수행하지 않았다.
+
+2026-10-14 네 마켓의 최신 조회값과 앱 저장 의도를 분리했다. 공용 비교 화면에서 해당 마켓만 조회값 채택 또는 앱값 UPDATE 준비를 선택하고, 내부 저장·재진입까지 보존한다. V43과 `/editor/resolve`의 서버 재조회·revision/세대·중복 요청 검사를 적용한다. 실제 외부 쓰기와 내부 선택은 분리한다. [구현 및 검증](../verification/2026-10-14-marketplace-value-comparison.md).

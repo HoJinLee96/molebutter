@@ -106,7 +106,7 @@
         $('break-editor').append(row);
     }
     $('add-break').addEventListener('click', () => addBreak());
-    $('correction-form').addEventListener('submit', async event => {
+    FormActions.bindExplicitSubmit($('correction-form'), $('submit-correction'), async event => {
         event.preventDefault();
         const button = $('submit-correction'); if (button.disabled) return;
         button.disabled = true; message('correction-error', null);

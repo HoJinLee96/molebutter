@@ -15,8 +15,11 @@ final class DraftValidation {
     private final NaverProductDocuments naver;
     private final ImageAssets assets;
     DraftValidation(CoupangProductDocuments coupang,NaverProductDocuments naver,ImageAssets assets){this.coupang=coupang;this.naver=naver;this.assets=assets;}
-    Validation validate(Long actor,Document d,String requestId){
+    Validation validate(Long actor,Document d,String requestId){return validate(actor,d,requestId,true);}
+    Validation validate(Long actor,Document d,String requestId,boolean inspectImages){
         var errors=new ArrayList<Issue>();var unverified=new ArrayList<Issue>();
+        try{MarketplaceCommonSettings.validate(d);}catch(cc.ataglace.molebutter.common.api.InputValidationFailure e){errors.add(new Issue(null,"common",e.getMessage()));}
+        if(d.selectedMarkets().equals(List.of(Market.LOTTEON))&&LotteonInput.get(d)!=null)return new Validation(false,List.of(),List.of(new Issue("LOTTEON","markets.LOTTEON","롯데ON 전용 입력 검증에서 필수값·실제 이미지를 확인해 주세요.")));
         var nativeConfig=d.markets().get(Market.NAVER);
         if(d.selectedMarkets().equals(List.of(Market.NAVER))&&nativeConfig!=null&&nativeConfig.naver()!=null&&nativeConfig.naver().editorInput()!=null){
             // Native options hold additional prices and NONE has no option rows. The common draft
@@ -32,6 +35,7 @@ final class DraftValidation {
             var o=d.options().get(i);String p="options."+i;
             require(errors,null,p+".name",o.name(),"옵션명");if(!o.name().isBlank()&&!names.add(o.name().trim()))issue(errors,null,p+".name","옵션명이 중복되었습니다.");
             number(errors,null,p+".price",o.price(),"판매가",9_007_199_254_740_991L);
+            if(o.originalPrice()!=null&&!o.originalPrice().isEmpty())number(errors,null,p+".originalPrice",o.originalPrice(),"정상가",9_007_199_254_740_991L);
             if(d.stockMode()==StockMode.OPTION)number(errors,null,p+".quantity",o.quantity(),"판매 수량",9_007_199_254_740_991L);
         }
         if(d.stockMode()==StockMode.PRODUCT)number(errors,null,"productQuantity",d.productQuantity(),"상품 판매 수량",9_007_199_254_740_991L);
@@ -55,7 +59,7 @@ final class DraftValidation {
                 if((market==Market.COUPANG?images.stream().filter(i->!i.imageType().equals("USED_PRODUCT")).count():images.size())>imageLimit)issue(errors,market,"media.images","옵션 이미지는 "+imageLimit+"개 이하로 지정해 주세요.");
             }
             switch(market){
-                case COUPANG->{marketNumbers(d,m,market,9_007_199_254_740_991L,99999,errors);coupang.validate(actor,d,m,requestId,metadata,errors,unverified);}
+                case COUPANG->{marketNumbers(d,m,market,9_007_199_254_740_991L,99999,errors);if(inspectImages)coupang.validate(actor,d,m,requestId,metadata,errors,unverified);else coupang.validateFields(actor,d,m,requestId,metadata,errors,unverified);}
                 case NAVER->{
                     marketNumbers(d,m,market,999_999_990L,99_999_999L,errors);
                     var n=m.naver();
@@ -71,7 +75,8 @@ final class DraftValidation {
                     issue(unverified,market,prefix+".categoryCode","네이버 카테고리 규격·계정 정책 확인이 필요합니다.");
                     issue(unverified,market,"media.images","네이버 이미지 업로드 API 반환 URL 확인이 필요합니다.");
                 }
-                case LOTTEON,ELEVENST->issue(unverified,market,prefix,"마켓 상품 API 연결 준비 중입니다.");
+                case ELEVENST->issue(unverified,market,prefix,"11번가 탭의 입력 검증에서 필수값·실제 이미지를 확인해 주세요.");
+                case LOTTEON->issue(unverified,market,prefix,"롯데ON 탭에서 실제 상품 입력을 검증해 주세요.");
                 case GMARKET,AUCTION->{
                     esmNumbers(d,m,market,errors,unverified);
                     if(m.esm()!=null&&!MarketplaceDocuments.blank(m.esm().siteId())&&!m.esm().siteId().equals(market==Market.GMARKET?"2":"1"))issue(errors,market,prefix+".esm.siteId","마켓 사이트 구분을 확인해 주세요.");
@@ -89,7 +94,7 @@ final class DraftValidation {
     private static String inherited(String override,String common){return override==null?common:override;}
     private static OptionOverride override(MarketConfig market,Option option){return market.overrides()==null?null:market.overrides().options().stream().filter(o->o.optionId().equals(option.id())).findFirst().orElse(null);}
     private static String name(Document d,MarketConfig m){return m.overrides()==null?d.common().name():inherited(m.overrides().name(),d.common().name());}
-    private static List<Image> images(Document d,MarketConfig m,Option o){return d.media().images().stream().filter(i->i.optionId()==null||i.optionId().equals(o.id())).filter(i->m.overrides()==null||m.overrides().imageIds()==null||m.overrides().imageIds().contains(i.id())).toList();}
+    private static List<Image> images(Document d,MarketConfig m,Option o){return MarketplaceDocuments.imagesFor(d,o.id()).stream().filter(i->m.overrides()==null||m.overrides().imageIds()==null||m.overrides().imageIds().contains(i.id())).toList();}
     private static void marketNumbers(Document d,MarketConfig m,Market market,long maxPrice,long maxStock,List<Issue> errors){
         for(int n=0;n<d.options().size();n++){
             var o=d.options().get(n);var override=override(m,o);String path="markets."+market+".overrides.options."+n;

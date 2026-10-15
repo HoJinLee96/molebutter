@@ -46,7 +46,7 @@
                     <label for="password-confirm">비밀번호 확인</label>
                     <input id="password-confirm" type="password" autocomplete="new-password" required>
                 </div>
-                <button type="submit" id="signup-btn" class="btn primary block">가입 신청</button>
+                <button type="button" id="signup-btn" class="btn primary block">가입 신청</button>
             </div>
         </form>
 
@@ -71,8 +71,14 @@
     const sendBtn = document.getElementById('send-btn');
     const verifyBtn = document.getElementById('verify-btn');
     let stopResendCooldown = () => {};
+    let sendPending = false, verifyPending = false;
+    FormActions.bindEnter(emailInput, sendBtn);
+    FormActions.bindEnter(document.getElementById('code'), verifyBtn);
 
     sendBtn.addEventListener('click', async () => {
+        if (sendPending || verifyPending || sendBtn.disabled || emailInput.readOnly) return;
+        sendPending = true; sendBtn.disabled = true;
+        let cooling = false;
         setError('form-error', null);
         try {
             await apiPost('/api/auth/signup/email-code', { email: emailInput.value.trim() });
@@ -81,13 +87,20 @@
             sendBtn.textContent = '재발송';
             stopResendCooldown();
             stopResendCooldown = startCooldown(sendBtn, 60, document.getElementById('resend-hint'));
+            cooling = true;
             document.getElementById('code').focus();
         } catch (e) {
             setError('form-error', e.message);
+        } finally {
+            sendPending = false;
+            if (!cooling) sendBtn.disabled = false;
         }
     });
 
     verifyBtn.addEventListener('click', async () => {
+        if (sendPending || verifyPending || verifyBtn.disabled) return;
+        verifyPending = true; verifyBtn.disabled = true;
+        let verified = false;
         setError('form-error', null);
         try {
             await apiPost('/api/auth/signup/verify-email', {
@@ -102,13 +115,17 @@
             emailInput.readOnly = true;
             sendBtn.hidden = true;
             verifyBtn.disabled = true;
+            verified = true;
             document.getElementById('name').focus();
         } catch (e) {
             setError('form-error', e.message);
+        } finally {
+            verifyPending = false;
+            if (!verified) verifyBtn.disabled = false;
         }
     });
 
-    document.getElementById('info-form').addEventListener('submit', async (event) => {
+    FormActions.bindExplicitSubmit(document.getElementById('info-form'), document.getElementById('signup-btn'), async (event) => {
         event.preventDefault();
         setError('form-error', null);
         const password = document.getElementById('password').value;

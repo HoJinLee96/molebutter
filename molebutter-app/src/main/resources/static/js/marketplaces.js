@@ -104,6 +104,7 @@
     }
     $('marketplace-detail-retry').addEventListener('click',()=>{if(detailId)detail(detailId);});
     $('marketplace-query').addEventListener('submit',ev=>{ev.preventDefault();if(busy)return;submitted=inputs();load(0,true);});
+    FormActions.bindEnterSubmit($('marketplace-query'),$('marketplace-query').querySelector('button[type=submit]'));
     $('marketplace-size').addEventListener('change',()=>{sequence++;queryRead?.cancel();queryRead=null;busy=false;$('marketplace-query').setAttribute('aria-busy','false');submitted=inputs();tokens=[''];index=0;result=null;$('marketplace-rows').innerHTML='<tr><td colspan="7" class="empty">조회 버튼을 눌러 상품을 불러오세요.</td></tr>';$('marketplace-page').textContent='';$('marketplace-summary').textContent='조회 버튼을 눌러 상품을 확인하세요.';buttons();});
     $('marketplace-first').addEventListener('click',()=>load(0,true));
     $('marketplace-prev').addEventListener('click',()=>load(index-1));

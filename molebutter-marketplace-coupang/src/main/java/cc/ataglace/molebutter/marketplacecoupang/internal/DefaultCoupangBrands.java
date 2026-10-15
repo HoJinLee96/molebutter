@@ -19,6 +19,15 @@ final class DefaultCoupangBrands implements CoupangBrands {
     }
     public void requireSelection(Long actor,String id,String name){
         access.productActor(actor,true);
-        synchronized(seen){var b=seen.get(actor+":"+id);if(b==null||!b.expires().isAfter(client.now())||!Objects.equals(b.name(),name))throw new InputValidationFailure("브랜드를 검색해서 선택해 주세요.");}
+        if(id==null||id.isBlank()||id.length()>100||id.indexOf(0)>=0||name==null||name.isBlank()||name.length()>200)throw new InputValidationFailure("브랜드를 검색해서 선택해 주세요.");
+        synchronized(seen){var b=seen.get(actor+":"+id);if(b!=null&&b.expires().isAfter(client.now())&&Objects.equals(b.name(),name))return;}
+        // A restart or cache expiry must not invalidate a saved brand. Recheck the
+        // exact ID/name with the provider; never trust the browser's saved label.
+        for(int page=1;page<=10;page++){
+            var result=search(actor,name,page,null);
+            if(result!=null&&result.items().stream().anyMatch(b->id.equals(b.brandId())&&name.equals(b.brandName())))return;
+            if(result==null||!result.hasNext())break;
+        }
+        throw new InputValidationFailure("저장된 브랜드 ID와 이름을 쿠팡에서 확인하지 못했습니다. 브랜드를 다시 조회해 주세요.");
     }
 }

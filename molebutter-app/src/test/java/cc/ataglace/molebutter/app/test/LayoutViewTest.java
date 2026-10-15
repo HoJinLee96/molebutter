@@ -18,29 +18,37 @@ class LayoutViewTest {
     void rendersGroupedNavigationAndReadOnlySettings(UserRole role)throws Exception {
         var groups=ViewController.navigationGroups(role);
         assertThat(groups).allMatch(g->!g.items().isEmpty());
-        var home=render("home","/",role);assertThat(home).contains("내 근태").doesNotContain("버전 기록","대시보드");
+        var home=render("home","/",role);assertThat(home).contains("내 근태", "/js/form-actions.js").doesNotContain("버전 기록","대시보드");
         if(role==UserRole.VIEWER){assertThat(home).doesNotContain("/settings","/products","/user-manage","/product-images");return;}
         var images=render("product-images","/product-images",role);
         assertThat(home).contains("/product-images");
-        assertThat(images).contains("상품 정보 도구","id=\"lookupForm\"","id=\"storageProductCodeInput\"","/js/form-actions.js","/js/product-images/app.js");
+        assertThat(images).contains("상품 정보 도구","id=\"lookupForm\"","id=\"storageProductCodeInput\"","/js/product-images/app.js");
+        assertThat(images).doesNotContain("id=\"uploadProductCodeInput\"");
         Files.createDirectories(Path.of("target/ui-fixtures"));
         Files.writeString(Path.of("target/ui-fixtures/product-images-"+role.name()+".html"),images);
         if(role==UserRole.ADMIN) {
+            for(String page:List.of("signin","find-id","signup","find-password")) {
+                var auth=render(page,"/"+page,role);
+                assertThat(auth).contains("/js/form-actions.js").doesNotContain("id=\"app-sidebar\"");
+                Files.writeString(Path.of("target/ui-fixtures/"+page+"-ADMIN.html"),auth);
+            }
             var market=render("marketplaces","/marketplaces",role);
-            assertThat(market).contains("판매 마켓","marketplace-query","/js/marketplaces.js","11번가 · 준비 중","G마켓 · 준비 중","window.MarketplaceChannels");
+            assertThat(market).contains("판매 마켓","marketplace-query","/js/marketplaces.js","11번가","/js/elevenst-products.js","G마켓 · 준비 중","window.MarketplaceChannels");
             Files.createDirectories(Path.of("target/ui-fixtures"));
             Files.writeString(Path.of("target/ui-fixtures/marketplaces-ADMIN.html"),market);
             var orders=render("marketplace-orders","/marketplace-orders",role);
             assertThat(orders).contains("판매 주문","orders-collect-form","orders-detail","/js/marketplace-orders.js");
             Files.writeString(Path.of("target/ui-fixtures/marketplace-orders-ADMIN.html"),orders);
-            var editor=render("marketplace-editor","/marketplaces/coupang/products/new",role);
-            assertThat(editor).contains("marketplace-editor-form","editor-validate","상품정보제공고시","/css/coupang-product-editor.css").doesNotContain("상품 저장");
+            var editor=render("common-marketplace-editor","/marketplaces/coupang/products/new",role);
+            assertThat(editor).contains("common-editor-form","common-validate","/js/common-marketplace-editor.js","/css/coupang-product-editor.css").doesNotContain("/js/marketplace-editor.js");
             Files.writeString(Path.of("target/ui-fixtures/marketplace-editor-ADMIN.html"),editor);
-            var naver=render("naver-product-editor","/marketplaces/naver/products/new",role);
-            assertThat(naver).contains("naver-form","naver-save","naver-save-dialog","/js/naver-product-editor.js","/css/naver-product-editor.css");
+            var naver=render("common-marketplace-editor","/marketplaces/naver/products/new",role);
+            assertThat(naver).contains("common-editor-form","common-market-save","common-submission-dialog","/js/common-marketplace-editor.js","/css/naver-product-editor.css").doesNotContain("/js/naver-product-editor.js");
             Files.writeString(Path.of("target/ui-fixtures/naver-product-editor-ADMIN.html"),naver);
+            Files.writeString(Path.of("target/ui-fixtures/elevenst-product-editor-ADMIN.html"),render("common-marketplace-editor","/marketplaces/elevenst/products/new",role));
+            Files.writeString(Path.of("target/ui-fixtures/lotteon-product-editor-ADMIN.html"),render("common-marketplace-editor","/marketplaces/lotteon/products/new",role));
             var common=render("common-marketplace-editor","/marketplaces/products/new",role);
-            assertThat(common).contains("공통","임시 저장","/js/common-marketplace-editor.js").doesNotContain("외부 등록 성공");
+            assertThat(common).contains("공통","임시 저장","/js/common-marketplace-editor.js","id=\"common-notice\"","id=\"common-notice-fields\"","이미지·상세설명").doesNotContain("외부 등록 성공","id=\"common-section-nav\"");
             Files.writeString(Path.of("target/ui-fixtures/common-marketplace-editor-ADMIN.html"),common);
         } else assertThat(home).doesNotContain("/marketplaces");
         var html=render("settings","/settings",role);

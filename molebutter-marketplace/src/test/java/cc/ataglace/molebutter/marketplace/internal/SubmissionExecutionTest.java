@@ -13,6 +13,27 @@ import cc.ataglace.molebutter.marketplace.api.*;
 import cc.ataglace.molebutter.marketplace.api.MarketplaceSubmissions.*;
 
 class SubmissionExecutionTest {
+    @Test void creationResultsAndPendingReasonsAreConsistentAcrossAllImplementedMarkets(){
+        for(String market:List.of("COUPANG","NAVER","LOTTEON","ELEVENST")){
+            assertThat(SubmissionStore.publicMessage("SUCCEEDED","CREATED_CONFIRMED",market)).contains("등록·옵션 연결").doesNotContain("변경 반영");
+            assertThat(SubmissionStore.publicMessage("SUCCEEDED","CREATED_VALUES_DIFFER",market)).contains("등록 요청과 다릅니다");
+            assertThat(SubmissionStore.publicMessage("ACCEPTED","APPROVAL_PENDING",market)).contains("승인 대기");
+            assertThat(SubmissionStore.publicMessage("ACCEPTED","APPROVAL_REJECTED",market)).contains("승인 반려");
+            assertThat(SubmissionStore.publicMessage("ACCEPTED","CREATE_OPTIONS_UNCONFIRMED",market)).contains("옵션 연결 확인");
+            assertThat(SubmissionStore.publicMessage("ACCEPTED","VERIFY_UNAVAILABLE",market)).contains("조회에 실패");
+        }
+    }
+    @Test void creationMappingsRejectMissingDuplicateOrStaleOptionIdentities(){
+        var expected=List.of("first","second");var valid=new MarketplaceWriteGateway.Mapping("account","product",List.of(new MarketplaceWriteGateway.OptionMapping("second","remote-2",null),new MarketplaceWriteGateway.OptionMapping("first","remote-1",null)));
+        assertThat(MarketplaceCreationConfirmation.completeOptions(valid,expected,false)).isTrue();assertThat(MarketplaceCreationConfirmation.completeOptions(valid,expected,true)).isFalse();
+        for(var rows:List.of(List.of(new MarketplaceWriteGateway.OptionMapping("first","remote-1",null)),List.of(new MarketplaceWriteGateway.OptionMapping("first","remote-1",null),new MarketplaceWriteGateway.OptionMapping("second","remote-1",null)),List.of(new MarketplaceWriteGateway.OptionMapping("first","remote-1",null),new MarketplaceWriteGateway.OptionMapping("first","remote-2",null)),List.of(new MarketplaceWriteGateway.OptionMapping("first","remote-1",null),new MarketplaceWriteGateway.OptionMapping("second",null,null))))
+            assertThat(MarketplaceCreationConfirmation.completeOptions(new MarketplaceWriteGateway.Mapping("account","product",rows),expected,false)).isFalse();
+    }
+    @Test void preflightAndConvertedImageMessagesRemainSpecificAtThePublicBoundary(){
+        assertThat(SubmissionStore.publicMessage("FAILED","PREFLIGHT_NETWORK","NAVER")).contains("보내지 않았습니다");
+        assertThat(SubmissionStore.publicMessage("ACCEPTED","IMAGE_REVIEW_REQUIRED","ELEVENST")).contains("WebP","판매자센터");
+        assertThat(SubmissionStore.publicMessage("UNKNOWN","RESULT_UNKNOWN","ELEVENST")).contains("다시 보내지 말고");
+    }
     final Long actor=1L;
     final String key="00000000-0000-4000-8000-000000000001";
     BusinessAccess access;MarketplaceDrafts drafts;DraftStore draftStore;SubmissionStore store;DefaultMarketplaceEditing editing;MarketplaceWriteGateway writer;DefaultMarketplaceSubmissions service;
@@ -22,7 +43,7 @@ class SubmissionExecutionTest {
         protected void doCommit(DefaultTransactionStatus s){}
         protected void doRollback(DefaultTransactionStatus s){}
     };
-    @BeforeEach void create(){access=mock(BusinessAccess.class);drafts=mock(MarketplaceDrafts.class);draftStore=mock(DraftStore.class);store=mock(SubmissionStore.class);editing=mock(DefaultMarketplaceEditing.class);writer=mock(MarketplaceWriteGateway.class);when(store.byKey(anyString())).thenReturn(null);when(store.byPreview(anyLong())).thenReturn(null);when(editing.require(eq(actor),eq("50"),eq(true))).thenReturn(new EditingStore.Stored(actor,DefaultMarketplaceSubmissions.account("test-vendor"),null,new MarketplaceEditing.Session("50","10",0,Instant.now().plusSeconds(300).toString(),List.of()),false));service=new DefaultMarketplaceSubmissions(access,drafts,draftStore,store,editing,writer,transactions,"test-vendor",false);executeWithRecordedActualRequest();}
+    @BeforeEach void create(){access=mock(BusinessAccess.class);drafts=mock(MarketplaceDrafts.class);draftStore=mock(DraftStore.class);store=mock(SubmissionStore.class);editing=mock(DefaultMarketplaceEditing.class);writer=mock(MarketplaceWriteGateway.class);when(writer.saveWorkflow(any())).thenAnswer(i->i.getArgument(0));when(store.byKey(anyString())).thenReturn(null);when(store.byPreview(anyLong())).thenReturn(null);when(editing.requireTarget(any(),anyString(),anyBoolean())).thenAnswer(i->((EditingStore.Stored)i.getArgument(0)).binding(i.getArgument(1)));when(editing.require(eq(actor),eq("50"),eq(true))).thenReturn(new EditingStore.Stored(actor,DefaultMarketplaceSubmissions.account("test-vendor"),null,new MarketplaceEditing.Session("50","10",0,Instant.now().plusSeconds(300).toString(),List.of()),false));service=new DefaultMarketplaceSubmissions(access,drafts,draftStore,store,editing,writer,transactions,"test-vendor",false);executeWithRecordedActualRequest();}
     @AfterEach void close(){service.close();}
     void executeWithRecordedActualRequest(){when(writer.execute(any(),any(),any(),nullable(MarketplaceWriteGateway.Mapping.class),any())).thenAnswer(invocation->{MarketplaceWriteGateway.Step step=invocation.getArgument(2);java.util.function.Consumer<MarketplaceWriteGateway.Step> before=invocation.getArgument(4);before.accept(step);return writer.execute(invocation.getArgument(0),invocation.getArgument(1),step,invocation.getArgument(3));});}
     MarketplaceDrafts.Document document(long revision){return new MarketplaceDrafts.Document("10",revision,null,List.of(),MarketplaceDrafts.StockMode.OPTION,"",List.of(),new MarketplaceDrafts.Media(List.of(),List.of()),null,List.of(MarketplaceDrafts.Market.COUPANG),Map.of());}
@@ -30,6 +51,8 @@ class SubmissionExecutionTest {
     SubmissionStore.StoredPreview preview(Instant expires,long revision,boolean executable){return new SubmissionStore.StoredPreview(20,10,revision,actor,expires,document(revision),prepared(),new Preview("20","10",revision,expires.toString(),executable,false,List.of()),"50");}
     Execution execution(Status state,long revision){return new Execution("30","10",revision,state,Instant.now().toString(),Instant.now().toString(),List.of(new Target("COUPANG","CREATE",state,null,List.of(new Step("create",StepType.CREATE,null,"상품 등록",state,1,"REJECTED","오류",Instant.now().toString())))));}
     SubmissionStore.Job job(String action){var p=prepared();return new SubmissionStore.Job(30,10,0,actor,"owner",p,p.steps().getFirst(),action,null,null,40);}
+    @Test void createMappingAllowsOnlyLocalOptionPlaceholders(){var p=prepared();var placeholder=new MarketplaceWriteGateway.Mapping(p.accountKey(),null,List.of());var local=new MarketplaceWriteGateway.Prepared(p.accountKey(),placeholder,p.steps(),p.changes(),p.preparedAt(),p.expectedSkus(),p.editIntent());assertThat(DefaultMarketplaceSubmissions.compatiblePreparedMapping(null,local)).isTrue();var fabricated=new MarketplaceWriteGateway.Mapping(p.accountKey(),"9001",List.of());assertThat(DefaultMarketplaceSubmissions.compatiblePreparedMapping(null,new MarketplaceWriteGateway.Prepared(p.accountKey(),fabricated,p.steps(),p.changes(),p.preparedAt(),p.expectedSkus(),p.editIntent()))).isFalse();}
+    @Test void updateMappingAllowsServerVendorIdEnrichmentWithoutReplacingRemoteIdentity(){var p=prepared();var bound=new MarketplaceWriteGateway.Mapping(p.accountKey(),"9001",List.of(new MarketplaceWriteGateway.OptionMapping("local","7001",null)));var enriched=new MarketplaceWriteGateway.Mapping(p.accountKey(),"9001",List.of(new MarketplaceWriteGateway.OptionMapping("local","7001","8001")));var ready=new MarketplaceWriteGateway.Prepared(p.accountKey(),enriched,p.steps(),p.changes(),p.preparedAt(),p.expectedSkus(),p.editIntent());assertThat(DefaultMarketplaceSubmissions.compatiblePreparedMapping(bound,ready)).isTrue();assertThat(DefaultMarketplaceSubmissions.compatiblePreparedMapping(new MarketplaceWriteGateway.Mapping(p.accountKey(),"other",bound.options()),ready)).isFalse();assertThat(DefaultMarketplaceSubmissions.compatiblePreparedMapping(new MarketplaceWriteGateway.Mapping(p.accountKey(),"9001",List.of(new MarketplaceWriteGateway.OptionMapping("local","other",null))),ready)).isFalse();assertThat(DefaultMarketplaceSubmissions.compatiblePreparedMapping(new MarketplaceWriteGateway.Mapping(p.accountKey(),"9001",List.of(new MarketplaceWriteGateway.OptionMapping("local","7001","old"))),ready)).isFalse();}
     @Test void aggregateKeepsPartialAndUnknownDistinctFromSuccess(){
         assertThat(SubmissionStore.aggregateStatus(List.of(Status.SUCCEEDED,Status.FAILED))).isEqualTo(Status.PARTIAL);
         assertThat(SubmissionStore.aggregateStatus(List.of(Status.SUCCEEDED,Status.UNKNOWN,Status.QUEUED))).isEqualTo(Status.UNKNOWN);

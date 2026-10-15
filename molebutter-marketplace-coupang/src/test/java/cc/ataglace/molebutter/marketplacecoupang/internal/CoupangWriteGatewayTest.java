@@ -21,6 +21,46 @@ import cc.ataglace.molebutter.marketplace.api.MarketplaceDrafts.*;
 import cc.ataglace.molebutter.marketplace.api.MarketplaceWriteGateway.*;
 
 class CoupangWriteGatewayTest {
+    @Test void saveWorkflowCreatesThenRequestsApprovalWithTheReturnedProductId(){
+        var p=writer.saveWorkflow(writer.prepare(1L,fresh(),null,false));assertThat(p.steps()).extracting(Step::type).containsExactly(Type.CREATE,Type.APPROVAL);
+        var create=p.steps().getFirst();assertThat(JSON.readTree(create.bodyJson()).path("requested").asBoolean()).isFalse();
+        var actual=JSON.readTree(create.bodyJson()).deepCopy().asObject().put("sellerProductId",555).put("statusName","임시저장");actual.path("items").get(0).asObject().put("sellerProductItemId",111);when(client.rawProduct("555")).thenReturn(actual);
+        when(client.write(any(),any(),any(),any())).thenAnswer(i->{if(i.getArgument(0).equals("POST"))return new CoupangHttpTransport.Response(200,"{\"code\":\"SUCCESS\",\"data\":555}".getBytes());assertThat((String)i.getArgument(1)).endsWith("/555/approvals");assertThat((String)i.getArgument(3)).isNull();actual.put("statusName","승인완료");actual.path("items").get(0).asObject().put("vendorItemId",222);return new CoupangHttpTransport.Response(200,"{\"code\":\"SUCCESS\",\"data\":\"555\"}".getBytes());});
+        var saved=writer.execute(1L,p,create,p.mapping());assertThat(saved.state()).isEqualTo(State.CONFIRMED);assertThat(saved.code()).isEqualTo("SAVED_FOR_APPROVAL");verify(client,never()).rawProduct("555");
+        var approval=writer.execute(1L,p,p.steps().getLast(),saved.mapping());assertThat(approval.state()).isEqualTo(State.CONFIRMED);assertThat(approval.mapping().options().getFirst().vendorItemId()).isEqualTo("222");
+        var order=inOrder(client);order.verify(client).write(eq("POST"),eq(CoupangProductClient.PATH),eq(""),anyString());order.verify(client).write(eq("PUT"),eq(CoupangProductClient.PATH+"/555/approvals"),eq(""),isNull());
+    }
+    @Test void approvalTimeoutIsReconciledWithReadsAndNeverRepeatsEitherWrite(){
+        var p=writer.saveWorkflow(writer.prepare(1L,fresh(),null,false));when(client.write(eq("POST"),any(),any(),any())).thenReturn(new CoupangHttpTransport.Response(200,"{\"code\":\"SUCCESS\",\"data\":555}".getBytes()));
+        var saved=writer.execute(1L,p,p.steps().getFirst(),p.mapping());when(client.write(eq("PUT"),any(),any(),any())).thenThrow(new MarketplaceFailure(MarketplaceFailure.Kind.NETWORK));
+        var unknown=writer.execute(1L,p,p.steps().getLast(),saved.mapping());assertThat(unknown.state()).isEqualTo(State.UNKNOWN);
+        var actual=JSON.readTree(p.steps().getFirst().bodyJson()).deepCopy().asObject().put("sellerProductId",555).put("statusName","승인완료");actual.path("items").get(0).asObject().put("sellerProductItemId",111).put("vendorItemId",222);when(client.rawProduct("555")).thenReturn(actual);
+        assertThat(writer.reconcile(1L,p,p.steps().getLast(),unknown).state()).isEqualTo(State.CONFIRMED);verify(client,times(1)).write(eq("POST"),any(),any(),any());verify(client,times(1)).write(eq("PUT"),any(),any(),any());
+    }
+    @Test void approvalProcessingErrorAndWrongResponseIdCannotClaimSuccess(){
+        var p=writer.saveWorkflow(writer.prepare(1L,fresh(),null,false));var mapping=new Mapping("account","555",p.mapping().options());
+        when(client.write(any(),any(),any(),any())).thenReturn(new CoupangHttpTransport.Response(400,"{\"message\":\"상품 정보가 등록 또는 수정되고 있습니다. 잠시 후 다시 조회해 주시기 바랍니다.\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        var processing=writer.execute(1L,p,p.steps().getLast(),mapping);assertThat(processing.state()).isEqualTo(State.FAILED);assertThat(processing.code()).isEqualTo("APPROVAL_NOT_READY");
+        when(client.write(any(),any(),any(),any())).thenReturn(new CoupangHttpTransport.Response(200,"{\"code\":\"SUCCESS\",\"data\":556}".getBytes()));assertThat(writer.execute(1L,p,p.steps().getLast(),mapping).state()).isEqualTo(State.UNKNOWN);
+    }
+    @Test void informationUpdateSavesBeforeApprovalWhilePriceOnlyRequiresNoApproval(){
+        var d=imported(true);var mapping=mapping(d);var change=change("common.name",null,"변경 상품명");var p=writer.saveWorkflow(writer.prepareSelected(1L,d,mapping,false,d,List.of(change)));
+        assertThat(p.steps()).extracting(Step::type).containsExactly(Type.PRODUCT,Type.APPROVAL);var live=JSON.readTree(BASE).deepCopy().asObject();when(client.rawProduct("123")).thenAnswer(i->live);
+        when(client.write(any(),any(),any(),any())).thenAnswer(i->{String path=i.getArgument(1);if(path.endsWith("/approvals")){live.put("statusName","승인완료");return new CoupangHttpTransport.Response(200,"{\"code\":\"SUCCESS\",\"data\":123}".getBytes());}var body=JSON.readTree((String)i.getArgument(3));assertThat(body.path("requested").asBoolean()).isFalse();live.put("sellerProductName",body.path("sellerProductName").asString()).put("statusName","임시저장");return new CoupangHttpTransport.Response(200,"{\"code\":\"SUCCESS\"}".getBytes());});
+        var saved=writer.execute(1L,p,p.steps().getFirst(),mapping);assertThat(saved.code()).isEqualTo("SAVED_FOR_APPROVAL");var approved=writer.execute(1L,p,p.steps().getLast(),saved.mapping());assertThat(approved.state()).isEqualTo(State.CONFIRMED);
+        when(client.rawProduct("123")).thenAnswer(i->JSON.readTree(BASE));var price=writer.saveWorkflow(writer.prepareSelected(1L,d,mapping,false,d,List.of(change("options.price",d.options().getFirst().id(),"170"))));assertThat(price.steps()).extracting(Step::type).containsExactly(Type.PRICE);
+    }
+    @Test void failedExecutionReadIsRetryableAndNeverRecordedAsADispatchedWrite(){
+        var observed=imported(true);var p=writer.prepareSelected(1L,observed,mapping(observed),false,observed,List.of(change("common.name",null,"새 상품명")));
+        when(client.rawProduct("123")).thenThrow(new MarketplaceFailure(MarketplaceFailure.Kind.NETWORK));
+        var sent=new ArrayList<Step>();var result=writer.execute(1L,p,p.steps().getFirst(),p.mapping(),sent::add);
+        assertThat(result.state()).isEqualTo(State.FAILED);assertThat(result.requestJson()).isNull();assertThat(sent).isEmpty();verify(client,never()).write(any(),any(),any(),any());
+    }
+    @Test void failedCreateCategoryCheckDoesNotLockAnUnsentRegistration(){
+        var p=writer.prepare(1L,fresh(),null,false);when(client.rawCategory(anyString())).thenThrow(new MarketplaceFailure(MarketplaceFailure.Kind.TIMEOUT));
+        var sent=new ArrayList<Step>();var result=writer.execute(1L,p,p.steps().getFirst(),p.mapping(),sent::add);
+        assertThat(result.state()).isEqualTo(State.FAILED);assertThat(sent).isEmpty();verify(client,never()).write(any(),any(),any(),any());
+    }
     static final ObjectMapper JSON=new ObjectMapper();
     static final Instant NOW=Instant.parse("2026-10-06T00:00:00Z");
     static final String BASE="""
@@ -31,9 +71,12 @@ class CoupangWriteGatewayTest {
         """;
     final CoupangProductClient client=mock(CoupangProductClient.class);
     final ImageAssets assets=mock(ImageAssets.class);
-    final DefaultCoupangWriteGateway writer=new DefaultCoupangWriteGateway(mock(BusinessAccess.class),client,assets,JSON,mock(cc.ataglace.molebutter.marketplace.api.CoupangBrands.class));
+    final cc.ataglace.molebutter.media.api.R2Images r2=mock(cc.ataglace.molebutter.media.api.R2Images.class);
+    {when(r2.resolve(anyLong(),anyString())).thenAnswer(i->new cc.ataglace.molebutter.media.api.R2Images.Image("synthetic",i.getArgument(1),"image/png",500,500,100));}
+    final DefaultCoupangWriteGateway writer=new DefaultCoupangWriteGateway(mock(BusinessAccess.class),client,assets,JSON,mock(cc.ataglace.molebutter.marketplace.api.CoupangBrands.class),r2);
     CoupangWriteGatewayTest(){
-        when(client.accountKey()).thenReturn("account");when(client.vendorId()).thenReturn("A-test");when(client.now()).thenReturn(NOW);
+        when(client.rawCategory(anyString())).thenAnswer(i->new CoupangEditor.CategoryRules(i.getArgument(0),true,List.of(new CoupangEditor.AttributeRule("색상","EXPOSED","OPTIONAL","NONE","STRING",null,List.of())),List.of(),List.of(),List.of(),List.of()));
+        when(client.registrationUserId()).thenReturn("server-wing");when(client.accountKey()).thenReturn("account");when(client.vendorId()).thenReturn("A-test");when(client.now()).thenReturn(NOW);
         when(client.writeSession(any())).thenAnswer(i->((Supplier<?>)i.getArgument(0)).get());
         when(client.rawProduct("123")).thenAnswer(i->JSON.readTree(BASE));
         when(client.rawInventory("222")).thenReturn(JSON.readTree("{\"salePrice\":100,\"amountInStock\":9,\"onSale\":true}"));
@@ -62,6 +105,44 @@ class CoupangWriteGatewayTest {
         var cfg=new Coupang(null,c.delivery(),settings,List.of(new CoupangOption(o.optionId(),null,null,o.registration(),o.attributes(),o.notices(),o.certifications())),c.documents(),null);
         return new Document(null,null,d.common(),d.options(),d.stockMode(),d.productQuantity(),d.services(),d.media(),d.delivery(),d.selectedMarkets(),Map.of(Market.COUPANG,new MarketConfig(m.categoryCode(),m.overrides(),cfg,null,null)));
     }
+    @Test void createIdentityComesOnlyFromServerConfigurationAndNeverFromLegacyDraft(){
+        var prepared=writer.prepare(1L,setting(fresh(),"vendorUserId","browser-forged"),null,false);
+        assertThat(JSON.readTree(prepared.steps().getFirst().bodyJson()).path("vendorUserId").asString()).isEqualTo("server-wing");
+        assertThat(prepared.changes()).noneMatch(c->c.path().equals("vendorUserId"));
+        assertThat(DefaultCoupangWriteGateway.editableField("markets.COUPANG.coupang.settings","vendorUserId")).isFalse();
+        verify(client,never()).write(any(),any(),any(),any());
+    }
+    @Test void missingServerWingIdentityFailsBeforeRemotePreparationButExistingEditsKeepRemoteIdentity(){
+        when(client.registrationUserId()).thenReturn("");
+        assertThatThrownBy(()->writer.prepare(1L,fresh(),null,false)).isInstanceOf(InputValidationFailure.class).hasMessageContaining("coupang_vendor_user_id").hasMessageContaining("업체코드");
+        verify(client,never()).writeSession(any());
+        var d=setting(imported(true),"vendorUserId","browser-forged");
+        var prepared=writer.prepare(1L,setting(d,"manufacture","변경 제조사"),mapping(d),false);
+        assertThat(JSON.readTree(prepared.steps().getFirst().bodyJson()).path("vendorUserId").asString()).isEqualTo("fake-wing");
+    }
+    @Test void serverCropUsesPublishedUrlForProductAndDescriptionWithoutChangingTheReference(){
+        var d=fresh();String asset=UUID.randomUUID().toString(),privateUrl="/api/marketplaces/assets/"+asset,publicUrl="https://app.example.test/marketplace-images/"+"a".repeat(64);
+        var metadata=new ImageAssets.Asset(asset,privateUrl,"image/png",750,750,88040);when(assets.editedMetadata(1L,asset)).thenReturn(metadata);when(assets.readEdited(1L,asset)).thenReturn(new ImageAssets.AssetContent(metadata,new byte[]{1}));when(assets.submissionUrl(1L,asset)).thenReturn(publicUrl);
+        var edited=new Document(d.id(),d.revision(),d.common(),d.options(),d.stockMode(),d.productQuantity(),d.services(),new Media(List.of(new Image(UUID.randomUUID().toString(),asset,privateUrl,true,0,d.options().getFirst().id())),List.of(new Content(UUID.randomUUID().toString(),"IMAGE",privateUrl,d.options().getFirst().id(),asset))),d.delivery(),d.selectedMarkets(),d.markets());
+        var body=JSON.readTree(writer.prepare(1L,edited,null,true).steps().getFirst().bodyJson());var item=body.path("items").get(0);
+        assertThat(item.path("images").get(0).path("vendorPath").asString()).isEqualTo(publicUrl);assertThat(item.path("contents").get(0).path("contentDetails").get(0).path("content").asString()).isEqualTo(publicUrl);assertThat(edited.media().images().getFirst().url()).isEqualTo(privateUrl);verify(r2,never()).resolve(anyLong(),anyString());
+        var htmlEdited=new Document(d.id(),d.revision(),d.common(),d.options(),d.stockMode(),d.productQuantity(),d.services(),new Media(edited.media().images(),List.of(new Content(UUID.randomUUID().toString(),"HTML","<p>설명</p><img src=\""+privateUrl+"\">",d.options().getFirst().id()))),d.delivery(),d.selectedMarkets(),d.markets());
+        var htmlBody=JSON.readTree(writer.prepare(1L,htmlEdited,null,true).steps().getFirst().bodyJson());assertThat(htmlBody.path("items").get(0).path("contents").get(0).path("contentDetails").get(0).path("content").asString()).contains(publicUrl).doesNotContain("/api/marketplaces/assets/");
+    }
+    @Test void commonNormalPriceSurvivesDraftRoundTripAndMapsToCreateWhenNotOverridden(){
+        var root=JSON.valueToTree(fresh()).asObject();var option=root.path("options").get(0).asObject();option.put("originalPrice","128000");option.put("price","99000");
+        var cfg=root.path("markets").path("COUPANG").path("coupang").path("options").get(0).asObject();var registration=JSON.createArrayNode();for(var f:cfg.path("registration"))if(!f.path("name").asString().equals("originalPrice"))registration.add(f);cfg.set("registration",registration);
+        var d=MarketplaceDocuments.normalize(JSON.treeToValue(root,Document.class));d=JSON.readValue(JSON.writeValueAsString(d),Document.class);assertThat(d.options().getFirst().originalPrice()).isEqualTo("128000");
+        var item=JSON.readTree(writer.prepare(1L,d,null,true).steps().getFirst().bodyJson()).path("items").get(0);assertThat(item.path("originalPrice").asLong()).isEqualTo(128000);assertThat(item.path("salePrice").asLong()).isEqualTo(99000);
+        registration.add(JSON.readTree("{\"name\":\"originalPrice\",\"value\":\"140000\"}"));cfg.set("registration",registration);d=MarketplaceDocuments.normalize(JSON.treeToValue(root,Document.class));item=JSON.readTree(writer.prepare(1L,d,null,true).steps().getFirst().bodyJson()).path("items").get(0);assertThat(item.path("originalPrice").asLong()).isEqualTo(140000);
+    }
+    @Test void createRejectsCourierDisplayNameBeforeTransmission(){
+        var root=JSON.valueToTree(fresh()).asObject();root.path("delivery").asObject().put("carrier","CJ 대한통운");
+        for(var field:root.path("markets").path("COUPANG").path("coupang").path("delivery"))if(field.path("name").asString().equals("deliveryCompanyCode"))field.asObject().put("value","CJ 대한통운");
+        var document=JSON.treeToValue(root,Document.class);
+        assertThat(CoupangCreateValidation.issues(document,document.markets().get(Market.COUPANG)))
+            .anySatisfy(issue->assertThat(issue.message()).contains("CJGLS"));
+    }
     @Test void dedicatedRegistrationConversionProducesSingleCreateWithApprovalAndNoExternalIdentity(){
         var input=CoupangRegistrationInput.input(fresh());var document=CoupangRegistrationInput.convert(input);
         var prepared=writer.prepare(1L,document,null,true);assertThat(prepared.steps()).hasSize(1);var step=prepared.steps().getFirst();
@@ -70,6 +151,30 @@ class CoupangWriteGatewayTest {
         assertThat(body.has("sellerProductId")).isFalse();var item=body.path("items").get(0);assertThat(item.has("sellerProductItemId")).isFalse();assertThat(item.has("vendorItemId")).isFalse();
         assertThat(item.path("salePrice").asLong()).isEqualTo(100);assertThat(item.path("maximumBuyCount").asLong()).isEqualTo(9);assertThat(item.path("itemName").asString()).isEqualTo("블랙");
         assertThat(item.path("images").get(0).path("imageType").asString()).isEqualTo("REPRESENTATION");assertThat(item.path("contents").get(0).path("contentsType").asString()).isEqualTo("HTML");
+    }
+    @Test void createUsesMarketPurchaseSelectionWithoutResurrectingCommonGroupMember(){
+        var d=fresh();var root=JSON.valueToTree(d).asObject();
+        root.path("options").get(0).asObject().set("attributes",JSON.readTree("[{\"name\":\"용량\",\"value\":\"1ml\"}]"));
+        root.path("markets").path("COUPANG").path("coupang").path("options").get(0).asObject().set("attributes",JSON.readTree("[{\"name\":\"중량\",\"value\":\"0g\",\"exposed\":\"EXPOSED\"}]"));
+        var rules=new CoupangEditor.CategoryRules("10",true,List.of(new CoupangEditor.AttributeRule("용량","EXPOSED","MANDATORY","1","NUMBER",null,List.of("ml")),new CoupangEditor.AttributeRule("중량","EXPOSED","MANDATORY","1","NUMBER",null,List.of("g"))),List.of(),List.of(),List.of(),List.of());
+        when(client.rawCategory("10")).thenReturn(rules);
+        var prepared=writer.prepare(1L,JSON.treeToValue(root,Document.class),null,true);
+        var item=JSON.readTree(prepared.steps().getFirst().bodyJson()).path("items").get(0);
+        assertThat(item.path("attributes")).hasSize(1);assertThat(item.path("attributes").get(0).path("attributeTypeName").asString()).isEqualTo("중량");
+        assertThat(item.path("itemName").asString()).isEqualTo("0g");
+    }
+    @Test void createMapsPurchaseRowsByUuidEvenWhenMarketRowsAreReversed(){
+        var root=JSON.valueToTree(fresh()).asObject();var options=root.path("options").asArray();var first=options.get(0).asObject();first.put("sku","SKU-FIRST");
+        var second=first.deepCopy();String secondId=UUID.randomUUID().toString();second.put("id",secondId);second.put("sku","SKU-SECOND");options.add(second);
+        var rows=root.path("markets").path("COUPANG").path("coupang").path("options").asArray();var marketFirst=rows.get(0).deepCopy();var marketSecond=marketFirst.deepCopy().asObject();marketSecond.put("optionId",secondId);
+        for(var field:marketFirst.path("registration"))if("externalVendorSku".equals(field.path("name").asString()))field.asObject().put("value","SKU-FIRST");
+        for(var field:marketSecond.path("registration"))if("externalVendorSku".equals(field.path("name").asString()))field.asObject().put("value","SKU-SECOND");
+        marketSecond.path("attributes").get(0).asObject().put("value","브라운");rows.removeAll();rows.add(marketSecond);rows.add(marketFirst);
+        for(var image:root.path("media").path("images"))image.asObject().putNull("optionId");
+        for(var content:root.path("media").path("contents"))content.asObject().putNull("optionId");
+        var prepared=writer.prepare(1L,JSON.treeToValue(root,Document.class),null,true);var items=JSON.readTree(prepared.steps().getFirst().bodyJson()).path("items");
+        assertThat(items).hasSize(2);assertThat(items.get(0).path("externalVendorSku").asString()).isEqualTo("SKU-FIRST");assertThat(items.get(0).path("itemName").asString()).isEqualTo("블랙");
+        assertThat(items.get(1).path("externalVendorSku").asString()).isEqualTo("SKU-SECOND");assertThat(items.get(1).path("itemName").asString()).isEqualTo("브라운");
     }
     @Test void approvedOriginalPriceUsesDedicatedPathAndReadbackIncludingZero(){
         var d=imported(true);String oid=d.options().getFirst().id();
@@ -109,10 +214,10 @@ class CoupangWriteGatewayTest {
         var d=imported(true);String oid=d.options().getFirst().id(),asset=UUID.randomUUID().toString();var mapping=new Mapping("account","123",List.of(new OptionMapping(oid,"111","222")));
         when(assets.metadata(1L,asset)).thenReturn(new ImageAssets.Asset(asset,"/api/marketplaces/assets/"+asset,"image/png",500,500,100));when(assets.submissionUrl(1L,asset)).thenReturn("https://images.example.com/public-token");
         var original=d.media().images().getFirst();
-        var images=List.of(new Image(UUID.randomUUID().toString(),asset,"/api/marketplaces/assets/"+asset,true,0,oid,"REPRESENTATION"),new Image(original.id(),null,original.url(),false,1,oid,"DETAIL"),new Image(UUID.randomUUID().toString(),null,"https://images.example.com/used.jpg",false,2,oid,"USED_PRODUCT"));
+        var images=List.of(new Image(UUID.randomUUID().toString(),null,"https://assets.example.com/products/CODE/official/01.jpg",true,0,oid,"REPRESENTATION"),new Image(original.id(),null,original.url(),false,1,oid,"DETAIL"),new Image(UUID.randomUUID().toString(),null,"https://images.example.com/used.jpg",false,2,oid,"USED_PRODUCT"));
         var p=writer.prepareSelected(1L,d,mapping,true,d,List.of(new MarketplaceEditing.Change("media.images",oid,images)));
         var body=JSON.readTree(p.steps().getFirst().bodyJson());var rows=body.path("items").get(0).path("images");
-        assertThat(rows.get(0).path("vendorPath").asString()).isEqualTo("https://images.example.com/public-token");
+        assertThat(rows.get(0).path("vendorPath").asString()).isEqualTo("https://assets.example.com/products/CODE/official/01.jpg");
         assertThat(rows.get(1).path("futureImage").asString()).isEqualTo("keep");assertThat(rows.get(1).path("imageType").asString()).isEqualTo("DETAIL");
         assertThat(rows.get(2).path("imageType").asString()).isEqualTo("USED_PRODUCT");assertThat(p.steps().getFirst().bodyJson()).doesNotContain("blob:","/api/marketplaces/assets/");
     }
@@ -162,6 +267,19 @@ class CoupangWriteGatewayTest {
         minimum.put("value","90");assertThat(writer.prepare(1L,JSON.treeToValue(tree,Document.class),null,true).steps()).extracting(Step::type).containsExactly(Type.CREATE);
         verify(client,never()).write(any(),any(),any(),any());
     }
+    @Test void freeShippingBlankUnusedThresholdBecomesNumericZeroInCreateRequest(){
+        var tree=(ObjectNode)JSON.valueToTree(fresh());((ObjectNode)tree.path("delivery")).put("freeOver","");
+        for(var row:tree.path("markets").path("COUPANG").path("coupang").path("delivery"))if(row.path("name").asText().equals("freeShipOverAmount"))((ObjectNode)row).put("value","");
+        var prepared=writer.prepare(1L,JSON.treeToValue(tree,Document.class),null,false);var body=JSON.readTree(prepared.steps().getFirst().bodyJson());
+        assertThat(body.path("freeShipOverAmount").isIntegralNumber()).isTrue();assertThat(body.path("freeShipOverAmount").asInt()).isZero();
+    }
+    @Test void validationPreservesUnchangedCoupangCdnImagesWithoutReadingR2(){
+        var d=imported(true);var editor=mock(CoupangEditor.class);
+        when(editor.category(1L,"10",null)).thenAnswer(i->client.rawCategory("10"));
+        var docs=new DefaultCoupangProductDocuments(editor,mock(CoupangBrands.class),client,JSON,r2);
+        var errors=new ArrayList<Issue>();var unverified=new ArrayList<Issue>();docs.validate(1L,d,d.markets().get(Market.COUPANG),null,Map.of(),errors,unverified);
+        assertThat(errors).noneMatch(i->i.path().equals("media.images"));assertThat(unverified).noneMatch(i->i.path().equals("media.images"));verify(r2,never()).resolve(anyLong(),anyString());
+    }
     @Test void createDefaultsToSavedStateAndSkusAreEncodedOnlyForWireLookup(){
         var p=writer.prepare(1L,fresh(),null,false);assertThat(p.steps()).extracting(Step::type).containsExactly(Type.CREATE);
         assertThat(JSON.readTree(p.steps().getFirst().bodyJson()).path("requested").asBoolean()).isFalse();assertThat(p.expectedSkus()).containsExactly("SKU-A");
@@ -204,6 +322,7 @@ class CoupangWriteGatewayTest {
         var raw=JSON.readTree(BASE).deepCopy().asObject();raw.put("brandId","KR-5");when(client.rawProduct("123")).thenReturn(raw);
         for(String changed:Arrays.asList("KR-6","",null))assertThatThrownBy(()->writer.prepare(1L,setting(imported(true),"brandId",changed),null,false)).isInstanceOf(InputValidationFailure.class).hasMessageContaining("브랜드 ID");
         assertThatThrownBy(()->writer.prepare(1L,setting(fresh(),"brandId","KR-6"),p.mapping(),false)).isInstanceOf(InputValidationFailure.class).hasMessageContaining("브랜드 ID");
+        when(client.rawCategory(anyString())).thenAnswer(i->new CoupangEditor.CategoryRules(i.getArgument(0),true,List.of(new CoupangEditor.AttributeRule("색상","EXPOSED","OPTIONAL","NONE","STRING",null,List.of())),List.of(),List.of(),List.of(),List.of()));
         when(client.accountKey()).thenReturn("another");assertThat(writer.execute(1L,p,p.steps().getFirst(),p.mapping()).code()).isEqualTo("ACCOUNT_CHANGED");
     }
     @Test void createSuccessRetainsIdIfVerificationCannotRead(){
@@ -219,7 +338,7 @@ class CoupangWriteGatewayTest {
         var pending=writer.execute(1L,prepared,step,prepared.mapping());
         assertThat(pending.state()).isEqualTo(State.ACCEPTED);assertThat(pending.mapping().sellerProductId()).isEqualTo("555");
         assertThat(pending.mapping().options().getFirst().sellerProductItemId()).isEqualTo("111");
-        actual.put("statusName","승인완료");actual.remove("requested");
+        actual.put("statusName","승인완료");actual.remove("requested");actual.path("items").get(0).asObject().put("vendorItemId",222);
         assertThat(writer.reconcile(1L,prepared,step,pending).state()).isEqualTo(State.CONFIRMED);
         verify(client,times(1)).write(any(),any(),any(),any());
     }
@@ -302,12 +421,44 @@ class CoupangWriteGatewayTest {
         var p=writer.prepare(1L,option(imported(true),"00170","0008"),null,false);
         assertThat(p.steps().getFirst().path()).endsWith("/prices/170");assertThat(JSON.readTree(p.steps().getFirst().expectedJson()).path("salePrice").asInt()).isEqualTo(170);
     }
-    @Test void createIdentityDoesNotClaimUnreflectedShippingOrBrandSucceeded(){
+    @Test void createRequiresKnownStatusAndDistinguishesRegistrationFromChangedValues(){
         var p=writer.prepare(1L,fresh(),null,false);var s=p.steps().getFirst();var actual=JSON.readTree(s.expectedJson()).deepCopy().asObject();actual.put("sellerProductId",555);actual.path("items").get(0).asObject().put("sellerProductItemId",111);actual.path("items").get(0).asObject().putNull("vendorItemId");actual.put("brand","다른 브랜드");when(client.rawProduct("555")).thenReturn(actual);
         var previous=new Result(State.ACCEPTED,new Mapping("account","555",p.mapping().options()),"SUCCESS","접수",NOW);
         var unreflected=writer.reconcile(1L,p,s,previous);assertThat(unreflected.state()).isEqualTo(State.ACCEPTED);assertThat(unreflected.mapping().options().getFirst().sellerProductItemId()).isEqualTo("111");
-        actual.put("brand","브랜드");assertThat(writer.reconcile(1L,p,s,previous).state()).isEqualTo(State.CONFIRMED);
-        actual.put("deliveryCharge",100);assertThat(writer.reconcile(1L,p,s,previous).state()).isEqualTo(State.ACCEPTED);
+        actual.put("brand","브랜드");actual.put("statusName","임시저장");assertThat(writer.reconcile(1L,p,s,previous).state()).isEqualTo(State.CONFIRMED);
+        actual.put("deliveryCharge",100);var different=writer.reconcile(1L,p,s,previous);assertThat(different.state()).isEqualTo(State.CONFIRMED);assertThat(different.code()).isEqualTo("CREATED_VALUES_DIFFER");
+    }
+    @Test void approvedCreateConfirmsKnownProductAndOptionsDespiteDatesCdnAndContentDifferences(){
+        var p=writer.prepare(1L,fresh(),null,true);var step=p.steps().getFirst();var actual=JSON.readTree(step.expectedJson()).deepCopy().asObject();
+        actual.put("sellerProductId",555).put("statusName","승인완료").put("saleStartedAt","2026-10-14T16:47:46").put("saleEndedAt","2099-12-31T00:00:00");
+        var item=actual.path("items").get(0).asObject().put("sellerProductItemId",111).put("vendorItemId",222);
+        item.path("images").get(0).asObject().put("vendorPath","01.jpg").put("cdnPath","vendor_inventory/normalized.jpg");
+        item.path("contents").get(0).path("contentDetails").get(0).asObject().put("content","쿠팡에서 정규화된 설명");when(client.rawProduct("555")).thenReturn(actual);
+        var previous=new Result(State.ACCEPTED,new Mapping("account","555",p.mapping().options()),"SUCCESS","접수",NOW);
+        var result=writer.reconcile(1L,p,step,previous);assertThat(result.state()).isEqualTo(State.CONFIRMED);assertThat(result.code()).isEqualTo("CREATED_VALUES_DIFFER");assertThat(result.message()).contains("등록 요청과 다릅니다");assertThat(result.attemptedAt()).isEqualTo(NOW);
+        assertThat(result.mapping().options()).containsExactly(new OptionMapping(p.mapping().options().getFirst().optionId(),"111","222"));
+        assertThat(writer.reconcile(1L,p,step,result).state()).isEqualTo(State.CONFIRMED);verify(client,never()).write(any(),any(),any(),any());
+    }
+    @Test void knownCreateUsesVerifiedIdsAfterRemoteNamesAndSellerCodesChange(){
+        var p=writer.prepare(1L,fresh(),null,true);var step=p.steps().getFirst();var actual=JSON.readTree(step.expectedJson()).deepCopy().asObject();
+        actual.put("sellerProductId",555).put("statusName","승인완료").put("sellerProductName","변경된 상품명");var item=actual.path("items").get(0).asObject().put("sellerProductItemId",111).put("vendorItemId",222).put("itemName","쿠팡 표시명");when(client.rawProduct("555")).thenReturn(actual);
+        var previous=new Result(State.ACCEPTED,new Mapping("account","555",p.mapping().options()),"SUCCESS","접수",NOW);
+        var first=writer.reconcile(1L,p,step,previous);assertThat(first.state()).isEqualTo(State.CONFIRMED);assertThat(first.code()).isEqualTo("CREATED_VALUES_DIFFER");
+        item.put("externalVendorSku","외부 수정 코드");assertThat(writer.reconcile(1L,p,step,first).state()).isEqualTo(State.CONFIRMED);
+        item.put("vendorItemId",333);assertThat(writer.reconcile(1L,p,step,first).code()).isEqualTo("CREATE_OPTIONS_UNCONFIRMED");verify(client,never()).write(any(),any(),any(),any());
+    }
+    @Test void createNeverConfirmsUnknownRejectedPartialApprovalOrMissingApprovedOptionIds(){
+        var p=writer.prepare(1L,fresh(),null,true);var step=p.steps().getFirst();var actual=JSON.readTree(step.expectedJson()).deepCopy().asObject();actual.put("sellerProductId",555);actual.path("items").get(0).asObject().put("sellerProductItemId",111);
+        when(client.rawProduct("555")).thenReturn(actual);var previous=new Result(State.ACCEPTED,new Mapping("account","555",p.mapping().options()),"SUCCESS","접수",NOW);
+        for(String status:List.of("심사중","승인대기중","부분승인완료","승인반려","상품삭제","", "승인완료")){
+            actual.put("statusName",status);assertThat(writer.reconcile(1L,p,step,previous).state()).as(status).isEqualTo(State.ACCEPTED);
+        }
+        actual.put("statusName","승인완료");actual.path("items").get(0).asObject().put("vendorItemId",222);actual.put("sellerProductId",556);
+        assertThat(writer.reconcile(1L,p,step,previous).code()).isEqualTo("MAPPING_CHANGED");actual.put("sellerProductId",555).put("vendorId","different-account");assertThat(writer.reconcile(1L,p,step,previous).code()).isEqualTo("MAPPING_CHANGED");verify(client,never()).write(any(),any(),any(),any());
+    }
+    @Test void duplicateOrExtraLiveOptionsNeverCompleteACreate(){
+        var p=writer.prepare(1L,fresh(),null,true);var step=p.steps().getFirst();var actual=JSON.readTree(step.expectedJson()).deepCopy().asObject();actual.put("sellerProductId",555).put("statusName","승인완료");var row=actual.path("items").get(0).asObject().put("sellerProductItemId",111).put("vendorItemId",222);actual.path("items").asArray().add(row.deepCopy());when(client.rawProduct("555")).thenReturn(actual);
+        var previous=new Result(State.ACCEPTED,new Mapping("account","555",p.mapping().options()),"SUCCESS","접수",NOW);assertThat(writer.reconcile(1L,p,step,previous).code()).isEqualTo("CREATE_OPTIONS_UNCONFIRMED");verify(client,never()).write(any(),any(),any(),any());
     }
     @Test void descriptionPrivateAndRelativeImagesAreBlocked(){
         var d=fresh();for(String html:List.of("<img src='/missing.jpg'>","<img src='/api/marketplaces/assets/unselected'>","<img src=https://127.0.0.1/a.jpg>")){
@@ -359,13 +510,31 @@ class CoupangWriteGatewayTest {
         assertThat(writer.execute(1L,p,p.steps().getFirst(),p.mapping()).code()).isEqualTo("BASELINE_CHANGED");verify(client,never()).write(any(),any(),any(),any());
         when(client.rawProduct("123")).thenAnswer(i->JSON.readTree(BASE));assertThatThrownBy(()->writer.execute(1L,p,p.steps().getFirst(),p.mapping(),s->{throw new IllegalStateException("snapshot persistence failure");})).isInstanceOf(IllegalStateException.class);verify(client,never()).write(any(),any(),any(),any());
     }
+    @Test void purchaseValueUsesFreshPermissionAndRechecksImmediatelyBeforeDispatch(){
+        var observed=imported(true);var id=observed.options().getFirst().id();
+        var raw=JSON.readTree(BASE).deepCopy().asObject();raw.path("items").get(0).path("attributes").get(0).asObject().put("editable","true");
+        when(client.rawProduct("123")).thenAnswer(i->raw.deepCopy());
+        var prepared=writer.prepareSelected(1L,observed,mapping(observed),true,observed,List.of(change("markets.COUPANG.coupang.options.attributes",id,List.of(new CoupangCatalog.Attribute("색상","브라운","EXPOSED")))));
+        var body=JSON.readTree(prepared.steps().getFirst().bodyJson());assertThat(body.path("items").get(0).path("itemName").asString()).isEqualTo("블랙");
+        assertThat(body.path("items").get(0).path("attributes").get(0).path("futureAttr").asString()).isEqualTo("keep");assertThat(body.path("requested").asBoolean()).isTrue();
+        raw.path("items").get(0).path("attributes").get(0).asObject().put("editable",false);
+        var result=writer.execute(1L,prepared,prepared.steps().getFirst(),prepared.mapping());
+        assertThat(result.state()).isEqualTo(State.FAILED);assertThat(result.message()).contains("권한");verify(client,never()).write(any(),any(),any(),any());
+    }
+    @Test void existingItemNameCannotBeEditedDirectly(){
+        var observed=imported(true);assertThatThrownBy(()->writer.prepareSelected(1L,observed,mapping(observed),true,observed,List.of(change("options.name",observed.options().getFirst().id(),"새 옵션명")))).isInstanceOf(InputValidationFailure.class).hasMessageContaining("등록 옵션명");
+    }
+    @Test void purchasePermissionsCannotBeSuppliedAsWritableAttributes(){
+        var observed=imported(true);var id=observed.options().getFirst().id();
+        assertThatThrownBy(()->CoupangEditPatch.apply(observed,List.of(change("markets.COUPANG.coupang.options.attributes",id,List.of(Map.of("name","색상","value","브라운","exposed","EXPOSED","editable",true)))))).isInstanceOf(InputValidationFailure.class);
+    }
     @Test void selectedTypedPatchRejectsRawIdsAndReadOnlyPurchaseAttributes(){
         var observed=imported(true);var id=observed.options().getFirst().id();
         assertThatThrownBy(()->CoupangEditPatch.apply(observed,List.of(change("markets.COUPANG.coupang.sellerProductId",null,"999")))).isInstanceOf(InputValidationFailure.class);
         assertThatThrownBy(()->CoupangEditPatch.apply(observed,List.of(change("media.contents",id,List.of(Map.of("id",UUID.randomUUID().toString(),"type","HTML","value","본문","optionId",id,"rawPrivate",true)))))).isInstanceOf(InputValidationFailure.class);
         assertThatThrownBy(()->CoupangEditPatch.apply(observed,List.of(change("media.images",id,List.of(Map.of("id",UUID.randomUUID().toString(),"url","https://images.example.com/a.jpg","representative","true","order",0,"optionId",id)))))).isInstanceOf(InputValidationFailure.class);
         assertThatThrownBy(()->writer.prepareSelected(1L,observed,mapping(observed),false,observed,List.of(change("options.price",id,"90071992547409920")))).isInstanceOf(InputValidationFailure.class).hasMessageContaining("범위");
-        assertThatThrownBy(()->writer.prepareSelected(1L,observed,mapping(observed),false,observed,List.of(change("markets.COUPANG.coupang.options.attributes",id,List.of(new CoupangCatalog.Attribute("색상","화이트","EXPOSED")))))).isInstanceOf(InputValidationFailure.class).hasMessageContaining("구매 속성");
+        assertThatThrownBy(()->writer.prepareSelected(1L,observed,mapping(observed),false,observed,List.of(change("markets.COUPANG.coupang.options.attributes",id,List.of(new CoupangCatalog.Attribute("색상","화이트","EXPOSED")))))).isInstanceOf(InputValidationFailure.class).hasMessageContaining("수정 권한");
     }
     @Test void projectionKeepsStableOptionAndMediaIdsWithoutOverwritingReference(){
         var reference=imported(true);var source=reference.markets().get(Market.COUPANG).coupang().source();var a=CoupangEditingProjection.latest(reference,mapping(reference),source);var b=CoupangEditingProjection.latest(reference,mapping(reference),source);
@@ -385,8 +554,8 @@ class CoupangWriteGatewayTest {
         var parser=new CoupangProductClient("A-test","fake-access","fake-secret",JSON);var observed=CoupangEditingProjection.latest(seed,links,parser.editorDocument(original,Map.of(),Map.of()));
         var reversed=original.deepCopy();var rows=JSON.createArrayNode();rows.add(second);rows.add(original.path("items").get(0));reversed.set("items",rows);when(client.rawProduct("123")).thenReturn(reversed);
         assertThat(writer.prepareSelected(1L,observed,links,false,observed,List.of()).steps()).isEmpty();
-        var p=writer.prepareSelected(1L,observed,links,false,observed,List.of(change("options.name",firstId,"새 옵션명")));var body=JSON.readTree(p.steps().getFirst().bodyJson());
-        assertThat(body.path("items").get(0).path("sellerProductItemId").asInt()).isEqualTo(333);assertThat(body.path("items").get(1).path("itemName").asString()).isEqualTo("새 옵션명");
+        var p=writer.prepareSelected(1L,observed,links,false,observed,List.of(change("markets.COUPANG.coupang.options.registration.modelNo",firstId,"새 품번")));var body=JSON.readTree(p.steps().getFirst().bodyJson());
+        assertThat(body.path("items").get(0).path("sellerProductItemId").asInt()).isEqualTo(333);assertThat(body.path("items").get(1).path("modelNo").asString()).isEqualTo("새 품번");
         when(client.write(any(),any(),any(),any())).thenAnswer(i->{var sent=JSON.readTree((String)i.getArgument(3)).deepCopy().asObject();var freshRows=JSON.createArrayNode();freshRows.add(sent.path("items").get(1));freshRows.add(sent.path("items").get(0));sent.set("items",freshRows);when(client.rawProduct("123")).thenReturn(sent);return new CoupangHttpTransport.Response(200,"{\"code\":\"SUCCESS\"}".getBytes());});
         assertThat(writer.execute(1L,p,p.steps().getFirst(),links).state()).isEqualTo(State.CONFIRMED);verify(client,never()).rawInventory(anyString());
     }
@@ -460,5 +629,11 @@ class CoupangWriteGatewayTest {
         var next=writer.prepareSelected(1L,observed,links,false,observed,List.of(wanted,change("options.price",firstId,"170")));assertThat(next.steps()).extracting(Step::type).containsExactly(Type.PRICE);assertThat(next.changes()).hasSize(1);verify(client,times(1)).rawInventory("222",true,false);
         doAnswer(i->{doReturn(JSON.readTree("{\"salePrice\":170,\"amountInStock\":9,\"onSale\":true}")).when(client).rawInventory("222");return new CoupangHttpTransport.Response(200,"{\"code\":\"SUCCESS\"}".getBytes());}).when(client).write(any(),any(),any(),any());var sent=new ArrayList<Step>();assertThat(writer.execute(1L,next,next.steps().getFirst(),next.mapping(),sent::add).state()).isEqualTo(State.CONFIRMED);assertThat(sent).extracting(Step::type).containsExactly(Type.PRICE);assertThat(sent.getFirst().path()).endsWith("/prices/170");
         latest.path("items").get(0).asObject().set("searchTags",JSON.readTree("[\"외부 변경 블랙\"]"));assertThatThrownBy(()->writer.prepareSelected(1L,observed,links,false,observed,List.of(wanted))).isInstanceOf(InputValidationFailure.class).hasMessageContaining("선택한 항목");
+    }
+
+    @Test void coldBrandRevalidationRunsBeforeAcquiringTheCoupangRequestSession(){
+        var inSession=new java.util.concurrent.atomic.AtomicBoolean();var brands=mock(CoupangBrands.class);doAnswer(i->{inSession.set(true);try{return ((Supplier<?>)i.getArgument(0)).get();}finally{inSession.set(false);}}).when(client).writeSession(any());
+        doAnswer(i->{assertThat(inSession.get()).isFalse();return null;}).when(brands).requireSelection(anyLong(),anyString(),anyString());
+        var gateway=new DefaultCoupangWriteGateway(mock(BusinessAccess.class),client,assets,JSON,brands,r2);assertThat(gateway.prepare(1L,fresh(),null,false).steps()).hasSize(1);verify(brands).requireSelection(1L,"KR-5","브랜드");
     }
 }

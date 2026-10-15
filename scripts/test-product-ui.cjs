@@ -57,7 +57,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs');
    await page.locator('#detail-summary [data-stock-product]').click();
    await page.locator('#stock-items [data-item="901"]').click();
    await page.locator('#purchase-delete').click();
-   await page.locator('#purchase-delete-form [type="submit"]').click();
+   await page.locator('#purchase-delete-confirm').click();
    await page.locator('#purchase-delete-dialog').waitFor({state:'hidden'});
    await page.waitForFunction(()=>document.querySelector('#detail-summary [data-inventory-summary]').textContent.includes('미입고 1개'));
    assert.equal(deleteCalls,1);

@@ -9,6 +9,8 @@
     const reconcilable=execution=>!active(execution)&&steps(execution).some(step=>['UNKNOWN','ACCEPTED'].includes(step.status));
     const fieldNames={vendorId:'업체코드',vendorUserId:'Wing 사용자 ID',brandId:'브랜드 ID',requested:'판매 승인 요청',itemName:'옵션명',amountInStock:'현재 재고',images:'이미지',imageOrder:'표시 순서',imageType:'이미지 유형',vendorPath:'이미지 주소',cdnPath:'이미지 주소',contents:'상품 설명',contentsType:'설명 유형',contentDetails:'설명 내용',detailType:'내용 유형',content:'내용',attributes:'속성',attributeTypeName:'속성명',attributeValueName:'속성값',exposed:'속성 구분',notices:'상품고시',noticeCategoryName:'고시 분류',noticeCategoryDetailName:'고시 항목',certifications:'인증',certificationType:'인증 유형',certificationCode:'인증 번호',requiredDocuments:'구비 서류',templateName:'서류명',documentPath:'서류 경로',vendorDocumentPath:'서류 주소',bundleInfo:'묶음 상품',bundleType:'묶음 유형',autoPricingInfo:'자동 가격'};
     function changeLabel(path,draft,spec={}){
+        const nativePrefix='markets.NAVER.naver.editorInput.';
+        if(String(path).startsWith(nativePrefix)){const key=String(path).slice(nativePrefix.length);return key.startsWith('fields.')?globalThis.NaverEditorModel?.spec?.[key.slice(7)]?.[0]||key.slice(7):({options:'옵션·추가금·재고',optionNames:'옵션 속성명',optionMode:'옵션 유형',images:'이미지',description:'상세설명'})[key]||key;}
         const parts=String(path).split('.'),labels=[];
         for(let n=0;n<parts.length;n++){
             const part=parts[n];
@@ -33,13 +35,12 @@
         const {$,escape:e}=AppUI;
         const dialog=$('common-submission-dialog'),section=$('common-submissions');
         let currentDraft=null,preview=null,key=null,preparing=false,submitting=false,timer=null,disposed=false,generation=0,page=0,totalPages=0,loading=false,refreshAgain=false,executions=new Map();
-        const names={COUPANG:'쿠팡',NAVER:'네이버',GMARKET:'G마켓',AUCTION:'옥션',LOTTEON:'롯데ON'};
+        const names={COUPANG:'쿠팡',NAVER:'스마트스토어',GMARKET:'G마켓',AUCTION:'옥션',LOTTEON:'롯데ON',ELEVENST:'11번가'};
         const mode=value=>value==='CREATE'?'신규 등록':value==='UPDATE'?'수정':value;
         function error(message){for(const id of ['common-submission-error','common-submission-dialog-error']){$(id).textContent=message||'';$(id).hidden=!message;}}
         function badge(status){return `<span class="badge ${status==='FAILED'?'fail':status==='SUCCEEDED'?'ok':'pending'}">${e(statuses[status]||status||'미확인')}</span>`;}
         function update(){
             $('common-market-save').disabled=preparing||submitting||!options.canAct();
-            $('common-requested').disabled=preparing||submitting||!options.canAct();
             $('common-submission-confirm').disabled=submitting||preparing||!preview?.executable;
             $('common-submission-dismiss').disabled=submitting;
             $('common-submission-refresh').disabled=loading||submitting;
@@ -49,18 +50,19 @@
         }
         function close(){if(submitting)return;dialog.close();preview=null;key=null;}
         function renderPreview(value){
-            $('common-submission-preview').innerHTML=`<p class="common-preview-summary">초안 버전 ${e(String(value.revision))} · ${value.requested?'저장 후 판매 승인 요청':'판매 승인 요청 없이 저장'}</p>`+(value.targets||[]).map(target=>`<article class="common-submission-target"><h3>${e(names[target.market]||target.market)} · ${e(mode(target.mode))}</h3>${(target.issues||[]).length?`<ul class="form-error">${target.issues.map(issue=>`<li>${e(issue.message)}</li>`).join('')}</ul>`:''}<div class="common-planned-steps">${(target.steps||[]).map(step=>`<span>${e(step.label)}</span>`).join('')}</div>${(target.changes||[]).length?`<div class="table-scroll"><table class="common-submission-changes"><thead><tr><th>항목</th><th>현재 값</th><th>변경 값</th></tr></thead><tbody>${target.changes.map(change=>`<tr><th>${e(changeLabel(change.path,currentDraft,window.CoupangEditorModel?.spec))}</th><td>${e(change.before??'—')}</td><td>${e(change.after??'—')}</td></tr>`).join('')}</tbody></table></div>`:'<p class="product-meta">변경된 항목 없음</p>'}</article>`).join('');
+            $('common-submission-preview').innerHTML=`<p class="common-preview-summary">초안 버전 ${e(String(value.revision))} · ${(value.targets||[]).some(t=>(t.steps||[]).some(s=>s.type==='APPROVAL'))?'쿠팡 저장 후 판매 승인 요청':'상품 저장'}</p>`+(value.targets||[]).map(target=>`<article class="common-submission-target"><h3>${e(names[target.market]||target.market)} · ${e(mode(target.mode))}</h3>${target.market==='NAVER'&&options.summary?options.summary(target):''}${(target.issues||[]).length?`<ul class="form-error">${target.issues.map(issue=>`<li>${e(issue.message)}</li>`).join('')}</ul>`:''}<div class="common-planned-steps">${(target.steps||[]).map(step=>`<span>${e(step.label)}</span>`).join('')}</div>${(target.changes||[]).length?`<div class="table-scroll"><table class="common-submission-changes"><thead><tr><th>항목</th><th>현재 값</th><th>변경 값</th></tr></thead><tbody>${target.changes.map(change=>`<tr><th>${e(changeLabel(change.path,currentDraft,window.CoupangEditorModel?.spec))}</th><td>${e(change.before??'—')}</td><td>${e(change.after??'—')}</td></tr>`).join('')}</tbody></table></div>`:'<p class="product-meta">변경된 항목 없음</p>'}</article>`).join('');
             update();
         }
         async function prepare(){
             if(preparing||submitting||!options.canAct())return;
+            if(options.beforePrepare&&!options.beforePrepare())return;
             preparing=true;error('');preview=null;key=null;update();
             try{
                 const saved=await options.save();
                 if(!saved)return;
                 currentDraft=saved;
                 options.busy(true);
-                const value=await apiPost('/api/marketplaces/submissions/prepare',{draftId:saved.id,revision:saved.revision,...(options.prepare?options.prepare():{}),requested:$('common-requested').checked});
+                const value=await apiPost('/api/marketplaces/submissions/prepare',{draftId:saved.id,revision:saved.revision,...(options.prepare?options.prepare():{}),requested:options.requested?options.requested():true});
                 if(disposed)return;
                 if(value?.draftId!==saved.id||value.revision!==saved.revision)throw Error('전송 미리보기를 다시 확인해 주세요.');
                 preview=value;key=AppUI.uuid();renderPreview(value);dialog.showModal();$('common-submission-dismiss').focus();
@@ -87,7 +89,7 @@
             executions=new Map(items.map(execution=>[execution.id,execution]));
             totalPages=pages;
             section.hidden=!currentDraft?.id;
-            $('common-submission-list').innerHTML=items.length?items.map(execution=>`<article class="common-execution" data-execution="${e(execution.id)}"><div class="common-execution-heading"><div><strong>실행 ${e(execution.id)}</strong> · 초안 버전 ${e(String(execution.revision))} ${badge(execution.status)}<p class="product-meta">${e(execution.createdAt||'')}</p></div><div class="common-execution-actions">${retryable(execution,currentDraft?.revision)?`<button type="button" class="btn small" data-submission-action="retry" data-execution-id="${e(execution.id)}">실패 작업 재시도</button>`:''}${revisable(execution)?`<button type="button" class="btn small" data-submission-action="revise" data-execution-id="${e(execution.id)}">입력 수정</button>`:''}${reconcilable(execution)?`<button type="button" class="btn small" data-submission-action="reconcile" data-execution-id="${e(execution.id)}">결과 확인</button>`:''}</div></div>${execution.revised?'<p class="product-meta">기존 처리 결과를 보존했습니다. 입력을 수정한 뒤 새 변경 확인을 진행해 주세요.</p>':revisable(execution)?'<p class="product-meta">입력 수정은 기존 처리 결과를 보존하고 아직 실행하지 않은 작업을 종료합니다. 작성 중인 입력은 유지됩니다.</p>':''}${steps(execution).some(step=>step.status==='FAILED')&&!execution.revised&&!revisable(execution)&&!retryable(execution,currentDraft?.revision)&&!reconcilable(execution)?'<p class="product-meta">입력을 확인하고 현재 초안으로 새 변경 확인을 진행해 주세요.</p>':''}${(execution.targets||[]).map(target=>`<div class="common-submission-target"><h3>${e(names[target.market]||target.market)} · ${e(mode(target.mode))} ${badge(target.status)}</h3>${target.externalProductId?`<p class="product-meta">등록상품 ID ${e(target.externalProductId)}</p>`:''}<ul class="common-execution-steps">${(target.steps||[]).map(step=>`<li><span>${e(step.label)}</span>${badge(step.status)}<span class="common-step-message">${e(step.message||'')}</span></li>`).join('')}</ul></div>`).join('')}</article>`).join(''):'<p class="common-empty">전송 기록 없음</p>';
+            $('common-submission-list').innerHTML=items.length?items.map(execution=>`<article class="common-execution" data-execution="${e(execution.id)}"><div class="common-execution-heading"><div><strong>실행 ${e(execution.id)}</strong> · 초안 버전 ${e(String(execution.revision))} ${badge(execution.status)}<p class="product-meta">${e(execution.createdAt||'')}</p></div><div class="common-execution-actions">${(!execution.draftId||execution.draftId===currentDraft?.id)&&retryable(execution,currentDraft?.revision)?`<button type="button" class="btn small" data-submission-action="retry" data-execution-id="${e(execution.id)}">실패 작업 재시도</button>`:''}${revisable(execution)?`<button type="button" class="btn small" data-submission-action="revise" data-execution-id="${e(execution.id)}">입력 수정</button>`:''}${reconcilable(execution)?`<button type="button" class="btn small" data-submission-action="reconcile" data-execution-id="${e(execution.id)}">결과 확인</button>`:''}</div></div>${execution.revised?'<p class="product-meta">기존 처리 결과를 보존했습니다. 입력을 수정한 뒤 새 변경 확인을 진행해 주세요.</p>':revisable(execution)?'<p class="product-meta">입력 수정은 기존 처리 결과를 보존하고 아직 실행하지 않은 작업을 종료합니다. 작성 중인 입력은 유지됩니다.</p>':''}${steps(execution).some(step=>step.status==='FAILED')&&!execution.revised&&!revisable(execution)&&!retryable(execution,currentDraft?.revision)&&!reconcilable(execution)?'<p class="product-meta">입력을 확인하고 현재 초안으로 새 변경 확인을 진행해 주세요.</p>':''}${(execution.targets||[]).map(target=>`<div class="common-submission-target"><h3>${e(names[target.market]||target.market)} · ${e(mode(target.mode))} ${badge(target.status)}</h3>${target.externalProductId?`<p class="product-meta">등록상품 ID ${e(target.externalProductId)}</p>${['COUPANG','NAVER','ELEVENST','LOTTEON'].includes(target.market)&&(target.market==='LOTTEON'?/^[A-Za-z0-9_-]{1,30}$/:/^\d{1,30}$/).test(target.externalProductId)?`<a class="btn small" href="/marketplaces/${target.market.toLowerCase()}/products/${encodeURIComponent(target.externalProductId)}/edit">${names[target.market]} 상품 수정</a>`:''}`:''}<ul class="common-execution-steps">${(target.steps||[]).map(step=>`<li><span>${e(step.label)}</span>${badge(step.status)}<span class="common-step-message">${e(step.message||'')}</span></li>`).join('')}</ul></div>`).join('')}</article>`).join(''):'<p class="common-empty">전송 기록 없음</p>';
             $('common-submission-previous').disabled=loading||page===0;
             $('common-submission-next').disabled=loading||page+1>=totalPages;
             $('common-submission-page').textContent=totalPages?`${page+1} / ${totalPages}`:'0 / 0';
@@ -109,7 +111,7 @@
         async function action(button){
             if(disposed||submitting||preparing||loading)return;
             const type=button.dataset.submissionAction,id=button.dataset.executionId,execution=executions.get(id);
-            if(!execution||!({retry:()=>retryable(execution,currentDraft?.revision),revise:()=>revisable(execution),reconcile:()=>reconcilable(execution)})[type]?.())return;
+            if(!execution||(execution.draftId&&execution.draftId!==currentDraft?.id)||!({retry:()=>retryable(execution,currentDraft?.revision),revise:()=>revisable(execution),reconcile:()=>reconcilable(execution)})[type]?.())return;
             const seq=generation,draftId=currentDraft?.id;
             submitting=true;error('');options.busy(true);update();
             try{
@@ -127,7 +129,6 @@
         $('common-submission-confirm').addEventListener('click',execute);
         $('common-submission-dismiss').addEventListener('click',close);
         dialog.addEventListener('cancel',event=>{if(submitting)event.preventDefault();else{preview=null;key=null;}});
-        $('common-requested').addEventListener('change',()=>{preview=null;key=null;});
         $('common-submission-refresh').addEventListener('click',()=>{error('');refresh();});
         $('common-submission-previous').addEventListener('click',()=>{if(!loading&&page>0){page--;refresh();}});
         $('common-submission-next').addEventListener('click',()=>{if(!loading){page++;refresh();}});

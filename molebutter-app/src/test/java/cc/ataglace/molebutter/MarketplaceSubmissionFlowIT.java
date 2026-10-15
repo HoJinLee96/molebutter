@@ -53,7 +53,7 @@ class MarketplaceSubmissionFlowIT {
  }
  @AfterEach void cleanup(){clear();for(long actor:List.of(staff,viewer))if(actor>0){db.update("DELETE FROM user_notification WHERE user_id=?",actor);users.deleteById(actor);}}
  @AfterAll static void cleanFiles()throws Exception{try(var s=Files.list(directory)){for(var p:s.toList())Files.deleteIfExists(p);}Files.deleteIfExists(directory);}
- void clear(){for(String table:List.of("marketplace_execution_attempt","marketplace_execution_step","marketplace_execution_target","marketplace_execution","marketplace_execution_asset","marketplace_submission_preview","marketplace_edit_session","marketplace_listing_mapping","marketplace_submission_account","marketplace_asset_publication","marketplace_draft_asset","marketplace_draft","marketplace_asset"))db.update("DELETE FROM "+table);}
+ void clear(){for(String table:List.of("marketplace_media_comparison","marketplace_image_edit","marketplace_editor_history_link","marketplace_execution_attempt","marketplace_execution_step","marketplace_execution_target","marketplace_execution","marketplace_execution_asset","marketplace_submission_preview","marketplace_edit_session","marketplace_listing_history_asset","marketplace_listing_history","marketplace_listing_state","marketplace_listing_mapping","marketplace_submission_account","marketplace_asset_publication","marketplace_draft_asset","marketplace_draft","marketplace_asset"))db.update("DELETE FROM "+table);}
  long account(UserRole role){return users.saveAndFlush(User.builder().email(UUID.randomUUID()+"@submission.test").name("전송 테스트").passwordHash("unused").role(role).status(UserStatus.ACTIVE).build()).getId();}
  Document blank(){return json.readValue("""
   {"common":{"productCode":"SUBMIT-1","name":"테스트 상품"},"options":[{"id":"10000000-1000-4000-8000-000000000001","name":"블랙","sku":"SKU-1","price":"1000","quantity":"9","attributes":[]}],"stockMode":"OPTION","productQuantity":"","services":[],"media":{"images":[],"contents":[]},"delivery":{},"selectedMarkets":["COUPANG"],"markets":{"COUPANG":{"categoryCode":"123"}}}
@@ -86,8 +86,8 @@ class MarketplaceSubmissionFlowIT {
   assertThatThrownBy(()->registrations.save(admin,d.id(),new CoupangProductRegistrations.Save(d.revision(),registrationInput()))).isInstanceOf(MarketplaceDraftFailure.class);
   assertThat(gateway.dispatches()).containsExactly("CREATE");
  }
- @Test void dedicatedRegistrationSaveOnlyAndAcceptedRemainLinked(){
-  var d=registrations.create(admin,registrationInput());var p=registrations.prepare(admin,d.id(),new CoupangProductRegistrations.Prepare(d.revision(),false));assertThat(p.requested()).isFalse();
+ @Test void dedicatedRegistrationForcesApprovalIntentAndAcceptedRemainLinked(){
+  var d=registrations.create(admin,registrationInput());var p=registrations.prepare(admin,d.id(),new CoupangProductRegistrations.Prepare(d.revision(),false));assertThat(p.requested()).isTrue();
   gateway.outcomes("CREATE","ACCEPTED");var e=start(p);worker.runPending();assertThat(submissions.get(admin,e.id()).status()).isEqualTo(Status.ACCEPTED);
   assertThat(registrations.get(admin,d.id()).externalProductId()).isEqualTo("9001");assertThat(registrations.get(admin,d.id()).blocked()).isTrue();
   submissions.reconcile(admin,e.id());worker.runPending();assertThat(submissions.get(admin,e.id()).status()).isEqualTo(Status.SUCCEEDED);assertThat(gateway.dispatches()).containsExactly("CREATE");
@@ -137,6 +137,28 @@ class MarketplaceSubmissionFlowIT {
   db.update("UPDATE marketplace_submission_preview SET prepared_json=JSON_SET(prepared_json,'$.schemaVersion',1) WHERE id=?",Long.parseLong(p.id()));
   submissions.reconcile(admin,e.id());worker.runPending();assertThat(submissions.get(admin,e.id()).status()).isEqualTo(Status.SUCCEEDED);
   assertThat(gateway.readbacks()).containsExactly("CREATE");assertThat(gateway.dispatches()).containsExactly("CREATE");
+ }
+ @Test void saveThenApprovalAreDurableAndOnlyFailedApprovalIsRetried(){
+  gateway.saveThenApprove();gateway.rebaseActualRequest();gateway.outcomes("APPROVAL","FAILED","CONFIRMED");var d=drafts.create(admin,blank());var preview=preview(d);assertThat(preview.requested()).isTrue();assertThat(preview.targets().getFirst().steps()).extracting(PlannedStep::type).containsExactly(StepType.CREATE,StepType.APPROVAL);
+  var execution=start(preview);worker.runPending();assertThat(gateway.dispatches()).containsExactly("CREATE");assertThat(submissions.get(admin,execution.id()).status()).isEqualTo(Status.QUEUED);
+  assertThat(db.queryForObject("SELECT applied_revision FROM marketplace_listing_mapping WHERE draft_id=?",Long.class,Long.parseLong(d.id()))).isNull();
+  worker.runPending();assertThat(gateway.dispatches()).containsExactly("CREATE","APPROVAL");assertThat(submissions.get(admin,execution.id()).status()).isEqualTo(Status.PARTIAL);
+  var approvalRequest=json.readTree(db.queryForObject("SELECT request_json FROM marketplace_execution_attempt WHERE execution_id=? AND step_id='approval'",String.class,Long.parseLong(execution.id())));var parent=json.readTree(approvalRequest.path("expectedJson").asString());assertThat(parent.path("bodyJson").asString()).contains("actual-request");
+  submissions.retry(admin,execution.id());worker.runPending();assertThat(submissions.get(admin,execution.id()).status()).isEqualTo(Status.SUCCEEDED);assertThat(gateway.dispatches()).containsExactly("CREATE","APPROVAL","APPROVAL");assertThat(db.queryForObject("SELECT applied_revision FROM marketplace_listing_mapping WHERE draft_id=?",Long.class,Long.parseLong(d.id()))).isEqualTo(d.revision());
+ }
+ @Test void ambiguousApprovalUsesReadbackWithoutRepeatingTheSaveOrApproval(){
+  gateway.saveThenApprove();gateway.outcomes("APPROVAL","UNKNOWN");var d=drafts.create(admin,blank());var execution=start(preview(d));worker.runPending();worker.runPending();assertThat(submissions.get(admin,execution.id()).status()).isEqualTo(Status.UNKNOWN);assertThatThrownBy(()->submissions.retry(admin,execution.id())).isInstanceOf(MarketplaceSubmissionFailure.class);
+  submissions.reconcile(admin,execution.id());worker.runPending();assertThat(submissions.get(admin,execution.id()).status()).isEqualTo(Status.SUCCEEDED);assertThat(gateway.dispatches()).containsExactly("CREATE","APPROVAL");assertThat(gateway.readbacks()).containsExactly("APPROVAL");
+ }
+ @Test void confirmedCreationWithDifferentValuesCompletesMappingAndUnlocksOnlyAfterReadback(){
+  gateway.outcomes("CREATE","ACCEPTED");var d=drafts.create(admin,blank());var execution=start(preview(d));worker.runPending();
+  assertThat(submissions.get(admin,execution.id()).status()).isEqualTo(Status.ACCEPTED);assertThatThrownBy(()->preview(d)).isInstanceOf(MarketplaceSubmissionFailure.class);
+  gateway.readbackOutcome("CONFIRMED","CREATED_VALUES_DIFFER");assertThat(submissions.reconcile(admin,execution.id()).status()).isEqualTo(Status.QUEUED);worker.runPending();
+  var completed=submissions.get(admin,execution.id());assertThat(completed.status()).isEqualTo(Status.SUCCEEDED);assertThat(completed.targets().getFirst().steps().getFirst().message()).contains("등록 요청과 다릅니다");
+  assertThat(db.queryForObject("SELECT applied_revision FROM marketplace_listing_mapping WHERE draft_id=? AND market='COUPANG'",Long.class,Long.parseLong(d.id()))).isEqualTo(d.revision());
+  assertThat(db.queryForObject("SELECT mapping_json FROM marketplace_listing_mapping WHERE draft_id=? AND market='COUPANG'",String.class,Long.parseLong(d.id()))).contains("9001","7001","8001");
+  assertThat(drafts.get(admin,d.id()).common()).isEqualTo(d.common());assertThat(gateway.dispatches()).containsExactly("CREATE");assertThat(gateway.readbacks()).containsExactly("CREATE");
+  assertThat(submissions.get(admin,execution.id()).targets().getFirst().steps().getFirst().code()).isEqualTo("CREATED_VALUES_DIFFER");
  }
  @Test void unsupportedSnapshotRetiresUnstartedWritesAndAllowsFreshPreview(){
   gateway.types("DELIVERY","PRICE","STOCK");var d=drafts.create(admin,blank());var p=preview(d);var e=start(p);

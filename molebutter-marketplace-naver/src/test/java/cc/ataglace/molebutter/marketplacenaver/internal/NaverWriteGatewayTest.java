@@ -20,8 +20,15 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class NaverWriteGatewayTest {
+    @Test void failedExecutionReadIsRetryableWithoutDispatchingAProductRequest(){
+        var p=edit(field(input(),"originProduct.name","새 상품명"));
+        when(gateway.product("123")).thenThrow(new MarketplaceFailure(MarketplaceFailure.Kind.NETWORK,"NAVER"));
+        var sent=new ArrayList<Step>();var result=writer.execute(1L,p,p.steps().getFirst(),mapping(),sent::add);
+        assertThat(result.state()).isEqualTo(State.FAILED);assertThat(result.requestJson()).isNull();assertThat(sent).isEmpty();verify(gateway,never()).write(any(),any(),any());
+    }
     final ObjectMapper json=new ObjectMapper();final NaverGateway gateway=mock(NaverGateway.class);final ImageAssets assets=mock(ImageAssets.class);
-    final DefaultNaverWriteGateway writer=new DefaultNaverWriteGateway(mock(BusinessAccess.class),gateway,assets,json);
+    final cc.ataglace.molebutter.media.api.R2Images r2=mock(cc.ataglace.molebutter.media.api.R2Images.class);
+    final DefaultNaverWriteGateway writer=new DefaultNaverWriteGateway(mock(BusinessAccess.class),gateway,assets,json,r2);
     final ObjectNode base=json.readTree("""
     {"originProduct":{"originProductNo":123,"statusType":"SALE","saleType":"NEW","leafCategoryId":"50000001","name":"스마트스토어 상품","salePrice":10000,"stockQuantity":5,"detailContent":"<p>SmartEditor 원문</p>","images":{"representativeImage":{"url":"https://shop-phinf.pstatic.net/original.jpg"},"optionalImages":[]},"futureField":{"keep":true},"detailAttribute":{"afterServiceInfo":{"afterServiceTelephoneNumber":"000-000-0000","afterServiceGuideContent":"A/S 안내"},"originAreaInfo":{"originAreaCode":"00"},"minorPurchasable":true,"sellerCodeInfo":{"sellerManagementCode":"SKU"},"productInfoProvidedNotice":{"productInfoProvidedNoticeType":"BAG","bag":{"returnCostReason":"1","noRefundReason":"1","qualityAssuranceStandard":"1","compensationProcedure":"1","troubleShootingContents":"1","type":"가방","material":"가죽","color":"검정","size":"상품상세 참조","manufacturer":"제조사","caution":"상품상세 참조","warrantyPolicy":"상품상세 참조","afterServiceDirector":"상품상세 참조"}}}},"smartstoreChannelProduct":{"channelProductNo":456,"naverShoppingRegistration":false,"channelProductDisplayStatusType":"ON","futureChannel":{"keep":true}}}
     """).asObject();
@@ -32,6 +39,11 @@ class NaverWriteGatewayTest {
     NaverEditor.Input field(NaverEditor.Input input,String name,Object value){var fields=new LinkedHashMap<>(input.fields());fields.put(name,value);return new NaverEditor.Input(fields,input.optionMode(),input.optionNames(),input.options(),input.images(),input.description());}
     Prepared edit(NaverEditor.Input desired){return writer.prepareSelected(1L,document(),mapping(),false,document(),NaverEditPatch.diff(input(),desired));}
     NaverGateway.Response response(int status,String body){return new NaverGateway.Response(status,body.getBytes(java.nio.charset.StandardCharsets.UTF_8),null,Map.of());}
+    @Test void editorValidationChecksNativeFieldsWithoutUploadingImages(){
+        var validation=new NaverWriteValidation(json);assertThatCode(()->validation.validateInput(input(),true)).doesNotThrowAnyException();
+        assertThatThrownBy(()->validation.validateInput(field(input(),"originProduct.salePrice",-1),true)).isInstanceOf(InputValidationFailure.class);
+        verify(gateway,never()).uploadImage(anyLong(),any());verify(gateway,never()).write(any(),any(),any());
+    }
     @ParameterizedTest @ValueSource(longs={0,5})
     void statusReadbackUsesFinalStockAndDoesNotRepeatAConfirmedPut(long stock){
         base.path("originProduct").asObject().put("statusType","SUSPENSION").put("stockQuantity",stock);
@@ -111,6 +123,15 @@ class NaverWriteGatewayTest {
         var desired=field(input(),"originProduct.salePrice","0");var prepared=edit(desired);assertThat(prepared.steps()).hasSize(1);var step=prepared.steps().getFirst();var body=json.readTree(step.bodyJson());
         assertThat(body.path("originProduct").path("salePrice").isIntegralNumber()).isTrue();assertThat(body.path("originProduct").path("salePrice").asLong()).isZero();assertThat(body.path("originProduct").has("detailContent")).isFalse();assertThat(body.path("originProduct").path("futureField").path("keep").asBoolean()).isTrue();assertThat(body.path("originProduct").has("originProductNo")).isFalse();assertThat(body.path("smartstoreChannelProduct").path("futureChannel").path("keep").asBoolean()).isTrue();assertThat(body.has("requested")).isFalse();
     }
+    @Test void commonProjectionCompilesOneCreateWithAbsolutePricesConvertedToDeltas(){
+        var original=document();String first=UUID.randomUUID().toString(),second=UUID.randomUUID().toString();var config=original.markets().get(MarketplaceDrafts.Market.NAVER);var n=config.naver();
+        var state=new MarketplaceDrafts.EditorState(1,List.of(),"COMMON","COMMON","COMMON",null,"COMMON",null,List.of());
+        var nativeConfig=new MarketplaceDrafts.Naver(n.channelId(),n.status(),n.saleType(),n.originCode(),n.deliveryTemplateId(),n.afterServiceTelephone(),n.attributes(),n.notices(),n.channelProductName(),n.naverShoppingRegistration(),n.channelProductDisplayStatusType(),n.editorInput(),n.brandId(),state);
+        var common=new MarketplaceDrafts.Document(original.id(),original.revision(),original.common(),List.of(new MarketplaceDrafts.Option(first,"검정","B","10000","0",List.of()),new MarketplaceDrafts.Option(second,"흰색","W","20000","3",List.of())),MarketplaceDrafts.StockMode.OPTION,"",List.of(),original.media(),original.delivery(),List.of(MarketplaceDrafts.Market.COUPANG,MarketplaceDrafts.Market.NAVER),Map.of(MarketplaceDrafts.Market.NAVER,new MarketplaceDrafts.MarketConfig(config.categoryCode(),config.overrides(),null,nativeConfig,null),MarketplaceDrafts.Market.COUPANG,new MarketplaceDrafts.MarketConfig("cp-category",null,null,null,null)));
+        var projected=NaverCommonProjection.project(common);var prepared=writer.prepare(1L,projected,null,true);assertThat(prepared.steps()).singleElement().satisfies(s->{assertThat(s.type()).isEqualTo(Type.CREATE);assertThat(s.method()).isEqualTo("POST");assertThat(s.path()).isEqualTo("/v2/products");});
+        var body=json.readTree(prepared.steps().getFirst().bodyJson());assertThat(body.path("originProduct").path("name").asString()).isEqualTo(common.common().name());assertThat(body.path("smartstoreChannelProduct").path("channelProductName").asString()).isEqualTo(common.common().name());assertThat(body.has("requested")).isFalse();assertThat(body.path("originProduct").path("salePrice").asLong()).isEqualTo(10000);assertThat(body.path("originProduct").path("stockQuantity").asLong()).isEqualTo(3);
+        var rows=body.path("originProduct").path("detailAttribute").path("optionInfo").path("optionCombinations");assertThat(rows.get(0).path("price").asLong()).isZero();assertThat(rows.get(1).path("price").asLong()).isEqualTo(10000);assertThat(rows.get(0).has("id")).isFalse();assertThat(rows.get(0).path("sellerManagerCode").asString()).isEqualTo("B");assertThat(rows.get(1).path("optionName1").asString()).isEqualTo("흰색");assertThat(common.options().getFirst().price()).isEqualTo("10000");verify(gateway,never()).write(any(),any(),any());
+    }
     @Test void soldOutProductNameCanBeUpdatedWithoutRestockingOrForcingApprovalStateToSale(){
         base.path("originProduct").asObject().put("statusType","OUTOFSTOCK").put("stockQuantity",0);
         var prepared=edit(field(input(),"originProduct.name","품절 상품명 수정"));var step=prepared.steps().getFirst();var body=json.readTree(step.bodyJson());
@@ -150,7 +171,9 @@ class NaverWriteGatewayTest {
         switch(mismatch){case "missing"->channel.remove("naverShoppingRegistration");case "null"->channel.putNull("naverShoppingRegistration");case "string"->channel.put("naverShoppingRegistration","false");case "reverse"->channel.put("naverShoppingRegistration",true);case "price"->registered.path("originProduct").asObject().put("salePrice",20000);case "channelStatus"->channel.put("channelProductDisplayStatusType","SUSPENSION");}
         when(gateway.product("123")).thenReturn(registered);
         var result=writer.reconcile(1L,prepared,step,new Result(State.ACCEPTED,mapping(),"ACCEPTED",null,Instant.now(),step.bodyJson()));
-        assertThat(result.state()).isEqualTo(State.ACCEPTED);assertThat(result.code()).isEqualTo("REFLECTION_PENDING");verify(gateway,never()).write(any(),any(),any());
+        if(Set.of("missing","null","string").contains(mismatch)){assertThat(result.state()).isEqualTo(State.ACCEPTED);assertThat(result.code()).isEqualTo("VERIFY_UNAVAILABLE");}
+        else {assertThat(result.state()).isEqualTo(State.CONFIRMED);assertThat(result.code()).isEqualTo("CREATED_VALUES_DIFFER");}
+        verify(gateway,never()).write(any(),any(),any());
     }
     @ParameterizedTest @ValueSource(booleans={false,true})
     void lostCreateWithShoppingNormalizationCannotIdentifyTheCreatingRequest(boolean ambiguous){
@@ -184,8 +207,19 @@ class NaverWriteGatewayTest {
         var desired=field(input(),"originProduct.salePrice",20000L);var prepared=edit(desired);base.path("originProduct").asObject().put("salePrice",15000);var result=writer.execute(1L,prepared,prepared.steps().getFirst(),mapping());assertThat(result.state()).isEqualTo(State.FAILED);assertThat(result.code()).isEqualTo("BASELINE_CHANGED");verify(gateway,never()).write(any(),any(),any());
         base.set("groupProduct",json.createObjectNode().put("groupProductNo",99));assertThatThrownBy(()->edit(desired)).isInstanceOf(InputValidationFailure.class).hasMessageContaining("그룹");
     }
+    @Test void invalidOrLegacyImageIsBlockedBeforeAnyNaverUpload(){
+        var before=input();String url="https://assets.example.com/products/CODE/official/missing.jpg";
+        when(r2.resolve(1L,url)).thenThrow(new InputValidationFailure("삭제된 이미지"));
+        var image=new NaverEditor.Image(UUID.randomUUID().toString(),null,url,true,0);
+        var desired=new NaverEditor.Input(before.fields(),before.optionMode(),before.optionNames(),before.options(),List.of(image),before.description());
+        assertThatThrownBy(()->edit(desired)).isInstanceOf(InputValidationFailure.class).hasMessageContaining("삭제");
+        var local=new NaverEditor.Image(image.id(),UUID.randomUUID().toString(),"/api/marketplaces/assets/local",true,0);
+        var legacy=new NaverEditor.Input(before.fields(),before.optionMode(),before.optionNames(),before.options(),List.of(local),before.description());
+        assertThatThrownBy(()->edit(legacy)).isInstanceOf(InputValidationFailure.class).hasMessageContaining("R2");
+        verify(gateway,never()).uploadImage(anyLong(),any());verify(gateway,never()).write(any(),any(),any());
+    }
     @Test void uploadedImageReadbackAndFollowingChannelStepUseResolvedUrlsWithoutRepeatingUpload(){
-        var before=input();String asset=UUID.randomUUID().toString();var replacement=new NaverEditor.Image(UUID.randomUUID().toString(),asset,"/api/marketplaces/assets/"+asset,true,0);var desired=new NaverEditor.Input(field(before,"smartstoreChannelProduct.channelProductDisplayStatusType","SUSPENSION").fields(),before.optionMode(),before.optionNames(),before.options(),List.of(replacement),"<p>변경된 본문</p>");var prepared=edit(desired);assertThat(prepared.steps()).hasSize(2);assertThat(prepared.steps().getFirst().path()).contains("origin-products");assertThat(prepared.steps().getLast().path()).contains("channel-products");
+        var before=input();String asset=UUID.randomUUID().toString();var replacement=new NaverEditor.Image(UUID.randomUUID().toString(),null,"https://assets.example.com/products/CODE/official/01.jpg",true,0);var desired=new NaverEditor.Input(field(before,"smartstoreChannelProduct.channelProductDisplayStatusType","SUSPENSION").fields(),before.optionMode(),before.optionNames(),before.options(),List.of(replacement),"<p>변경된 본문</p>");var prepared=edit(desired);assertThat(prepared.steps()).hasSize(2);assertThat(prepared.steps().getFirst().path()).contains("origin-products");assertThat(prepared.steps().getLast().path()).contains("channel-products");
         when(gateway.write(any(),any(),any())).thenAnswer(i->{var body=((JsonNode)i.getArgument(2)).deepCopy().asObject();var origin=body.path("originProduct").asObject();origin.put("originProductNo",123);if(!origin.has("detailContent"))origin.put("detailContent",base.path("originProduct").path("detailContent").asString());body.path("smartstoreChannelProduct").asObject().put("channelProductNo",456);base.removeAll();for(var e:body.properties())base.set(e.getKey(),e.getValue());return response(200,"{\"originProductNo\":123,\"smartstoreChannelProductNo\":456}");});
         var first=writer.execute(1L,prepared,prepared.steps().getFirst(),mapping());assertThat(first.state()).isEqualTo(State.CONFIRMED);var second=writer.execute(1L,prepared,prepared.steps().getLast(),first.mapping());assertThat(second.state()).isEqualTo(State.CONFIRMED);assertThat(base.path("originProduct").path("detailContent").asString()).isEqualTo("<p>변경된 본문</p>");assertThat(base.path("originProduct").path("images").path("representativeImage").path("url").asString()).endsWith("uploaded.jpg");verify(gateway,times(1)).uploadImage(anyLong(),any());
     }
@@ -244,5 +278,55 @@ class NaverWriteGatewayTest {
         base.path("originProduct").asObject().set("customerBenefit",json.readTree("{\"immediateDiscountPolicy\":{\"discountMethod\":{\"value\":1000,\"unitType\":\"WON\"}}}"));
         var before=input();var desired=field(field(before,"originProduct.customerBenefit.immediateDiscountPolicy.discountMethod.value",null),"originProduct.customerBenefit.immediateDiscountPolicy.discountMethod.unitType","PERCENT");var prepared=edit(desired);var step=prepared.steps().getFirst();var body=json.readTree(step.bodyJson());assertThat(body.path("originProduct").path("customerBenefit").has("immediateDiscountPolicy")).isFalse();
         base.path("originProduct").asObject().set("customerBenefit",json.createObjectNode());var result=writer.reconcile(1L,prepared,step,new Result(State.ACCEPTED,mapping(),"ACCEPTED",null,Instant.now()));assertThat(result.state()).isEqualTo(State.CONFIRMED);
+    }
+
+    @Test void knownCreateIdConfirmsRegistrationAfterExternalPriceAndDescriptionChanges(){
+        var prepared=writer.prepare(1L,document(),null,false);var step=prepared.steps().getFirst();
+        base.path("originProduct").asObject().put("salePrice",128000).put("detailContent","<p>판매자가 수정한 본문</p>");
+        var previous=new Result(State.ACCEPTED,mapping(),"REFLECTION_PENDING",null,Instant.now(),step.bodyJson());
+        var result=writer.reconcile(1L,prepared,step,previous);
+        assertThat(result.state()).isEqualTo(State.CONFIRMED);assertThat(result.code()).isEqualTo("CREATED_VALUES_DIFFER");
+        assertThat(result.mapping()).isEqualTo(mapping());assertThat(result.requestJson()).isEqualTo(step.bodyJson());
+        assertThat(writer.execute(1L,prepared,step,result.mapping()).code()).isEqualTo("ALREADY_REGISTERED");
+        verify(gateway,never()).write(any(),any(),any());verify(gateway,times(1)).product("123");
+    }
+    @Test void knownCreateDoesNotConfirmAChangedIdentityOrUnresolvedApproval(){
+        var prepared=writer.prepare(1L,document(),null,false);var step=prepared.steps().getFirst();
+        var previous=new Result(State.ACCEPTED,mapping(),"ACCEPTED",null,Instant.now(),step.bodyJson());
+        base.path("originProduct").asObject().put("originProductNo",789);
+        assertThat(writer.reconcile(1L,prepared,step,previous).code()).isEqualTo("MAPPING_CHANGED");
+        base.path("originProduct").asObject().put("originProductNo",123).put("statusType","WAIT").put("salePrice",128000);
+        assertThat(writer.reconcile(1L,prepared,step,previous).state()).isEqualTo(State.ACCEPTED);
+        verify(gateway,never()).write(any(),any(),any());
+    }
+    @Test void confirmedCreateCannotSilentlyLoseAnOptionMapping(){
+        var rows=json.createArrayNode().add(json.createObjectNode().put("id",7).put("optionName1","검정").put("price",0).put("stockQuantity",5).put("sellerManagerCode","BLACK").put("usable",true));
+        var info=json.createObjectNode().set("optionCombinations",rows);info.asObject().set("optionCombinationGroupNames",json.createObjectNode().put("optionGroupName1","색상"));base.path("originProduct").path("detailAttribute").asObject().set("optionInfo",info);
+        var d=document();var prepared=writer.prepare(1L,d,null,false);var step=prepared.steps().getFirst();
+        var bound=new Mapping("naver-account","123",List.of(new OptionMapping(input().options().getFirst().id(),"7",null)),"456");
+        base.path("originProduct").asObject().put("salePrice",128000);rows.removeAll();
+        var result=writer.reconcile(1L,prepared,step,new Result(State.ACCEPTED,bound,"ACCEPTED",null,Instant.now(),step.bodyJson()));
+        assertThat(result.state()).isEqualTo(State.ACCEPTED);assertThat(result.code()).isEqualTo("CREATE_OPTIONS_UNCONFIRMED");verify(gateway,never()).write(any(),any(),any());
+    }
+    @ParameterizedTest @ValueSource(strings={"WAIT","UNADMISSION","REJECTION","DELETE","PROHIBITION",""})
+    void knownCreateNeverConfirmsAnUnresolvedOrRejectedStatusEvenWhenValuesMatch(String status){
+        var p=writer.prepare(1L,document(),null,false);var step=p.steps().getFirst();var source=json.readTree(step.bodyJson()).deepCopy().asObject();source.path("originProduct").asObject().put("originProductNo",123).put("statusType",status);source.path("smartstoreChannelProduct").asObject().put("channelProductNo",456);when(gateway.product("123")).thenReturn(source);
+        var result=writer.reconcile(1L,p,step,new Result(State.ACCEPTED,mapping(),"ACCEPTED",null,Instant.now(),step.bodyJson()));assertThat(result.state()).isEqualTo(State.ACCEPTED);assertThat(result.code()).isEqualTo(Set.of("WAIT","UNADMISSION").contains(status)?"APPROVAL_PENDING":status.equals("REJECTION")?"APPROVAL_REJECTED":"CREATE_STATUS_UNCONFIRMED");verify(gateway,never()).write(any(),any(),any());
+    }
+    @Test void creationConfirmationUsesSelectedOptionChangesAndPreservesTheirUuids(){
+        var observed=document();var original=input();String id=UUID.randomUUID().toString();
+        var options=List.of(new NaverEditor.Option(id,List.of("선택 옵션"),0L,5L,"SELECTED",true));
+        var desired=new NaverEditor.Input(original.fields(),"COMBINATION",List.of("색상"),options,original.images(),original.description());
+        var p=writer.prepareSelected(1L,observed,null,false,observed,NaverEditPatch.diff(original,desired));var step=p.steps().getFirst();var source=json.readTree(step.bodyJson()).deepCopy().asObject();source.path("originProduct").asObject().put("originProductNo",123);source.path("smartstoreChannelProduct").asObject().put("channelProductNo",456);source.path("originProduct").path("detailAttribute").path("optionInfo").path("optionCombinations").get(0).asObject().put("id",7);when(gateway.product("123")).thenReturn(source);
+        var previous=new Result(State.ACCEPTED,new Mapping("naver-account","123",List.of(),"456"),"ACCEPTED",null,Instant.now(),step.bodyJson());var result=writer.reconcile(1L,p,step,previous);assertThat(result.state()).isEqualTo(State.CONFIRMED);assertThat(result.mapping().options()).containsExactly(new OptionMapping(id,"7",null));verify(gateway,never()).write(any(),any(),any());
+    }
+    @Test void commonNormalPriceIsSentBeforeDiscountAndNeverDiscountedTwice(){
+        var original=document();var config=original.markets().get(MarketplaceDrafts.Market.NAVER);var n=config.naver();String discount="originProduct.customerBenefit.immediateDiscountPolicy.discountMethod.";
+        var desired=field(field(field(input(),"originProduct.salePrice",128000L),discount+"value",41000L),discount+"unitType","WON");
+        var state=new MarketplaceDrafts.EditorState(1,List.of("fields."+discount+"value","fields."+discount+"unitType"),"COMMON","COMMON","COMMON",null,"COMMON",null,List.of());
+        var nativeConfig=new MarketplaceDrafts.Naver(n.channelId(),n.status(),n.saleType(),n.originCode(),n.deliveryTemplateId(),n.afterServiceTelephone(),n.attributes(),n.notices(),n.channelProductName(),n.naverShoppingRegistration(),n.channelProductDisplayStatusType(),desired,n.brandId(),state);
+        var common=new MarketplaceDrafts.Document(original.id(),original.revision(),original.common(),List.of(new MarketplaceDrafts.Option(UUID.randomUUID().toString(),"레트 패턴","WCWA705R2","87000","50",List.of(),"128000")),MarketplaceDrafts.StockMode.OPTION,"",List.of(),original.media(),original.delivery(),List.of(MarketplaceDrafts.Market.NAVER),Map.of(MarketplaceDrafts.Market.NAVER,new MarketplaceDrafts.MarketConfig(config.categoryCode(),config.overrides(),null,nativeConfig,null)));
+        var projected=NaverCommonProjection.project(common);var prepared=writer.prepare(1L,projected,null,false);var body=json.readTree(prepared.steps().getFirst().bodyJson()).path("originProduct");
+        assertThat(body.path("salePrice").asLong()).isEqualTo(128000);assertThat(body.path("customerBenefit").path("immediateDiscountPolicy").path("discountMethod").path("value").asLong()).isEqualTo(41000);assertThat(body.path("detailAttribute").path("optionInfo").path("optionCombinations").get(0).path("price").asLong()).isZero();verify(gateway,never()).write(any(),any(),any());
     }
 }

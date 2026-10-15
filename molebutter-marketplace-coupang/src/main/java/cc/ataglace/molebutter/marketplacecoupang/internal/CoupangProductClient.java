@@ -12,6 +12,7 @@ import cc.ataglace.molebutter.common.api.InputValidationFailure;
 import cc.ataglace.molebutter.marketplace.api.CoupangCatalog.*;
 import cc.ataglace.molebutter.marketplace.api.CoupangEditor.*;
 import cc.ataglace.molebutter.marketplace.api.MarketplaceFailure;
+import cc.ataglace.molebutter.marketplace.api.MarketplaceListingMissing;
 import static cc.ataglace.molebutter.marketplace.api.MarketplaceFailure.Kind.*;
 @Component
 final class CoupangProductClient {
@@ -75,6 +76,10 @@ final class CoupangProductClient {
     }
     boolean orderConfigured(){return !vendor.isBlank()&&!access.isBlank()&&!secret.isBlank();}
     String vendorId(){return vendor;}
+    @Value("${marketplace.coupang.vendor-user-id:}")
+    private String vendorUserId="";
+    static final String REGISTRATION_USER_REQUIRED="서버 설정에 coupang_vendor_user_id(쿠팡 Wing 로그인 ID)를 추가해 주세요. coupang_access_id(업체코드)와 다른 값입니다.";
+    String registrationUserId(){return vendorUserId==null?"":vendorUserId.trim();}
     String accountKey(){try{return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(vendor.getBytes(StandardCharsets.UTF_8)));}catch(java.security.NoSuchAlgorithmException e){throw new IllegalStateException("SHA-256 unavailable");}}
     java.time.Instant now(){return clock.instant();}
     <T> T writeSession(java.util.function.Supplier<T> work){
@@ -197,11 +202,21 @@ final class CoupangProductClient {
             var i=d.items().get(n);var raw=source.path("items").get(n);
             var registration=new ArrayList<Field>(i.settings());
             registration.addAll(fields(raw,new String[]{"autoPricingInfo.minSalePrice","autoPricingInfo.active"}));
-            options.add(new EditOption(i.sellerProductItemId(),i.vendorItemId(),i.itemName(),i.current(),i.currentError(),i.vendorItemId()!=null,i.attributes(),i.images(),i.contents(),i.notices(),List.copyOf(registration),i.certifications()));
+            options.add(new EditOption(i.sellerProductItemId(),i.vendorItemId(),i.itemName(),i.current(),i.currentError(),i.vendorItemId()!=null,i.attributes(),i.images(),i.contents(),i.notices(),List.copyOf(registration),i.certifications(),attributePermissions(raw)));
         }
         var documents=new ArrayList<Document>();
         for(var row:array(source,"requiredDocuments"))documents.add(new Document(text(row,"templateName"),text(row,"documentPath"),text(row,"vendorDocumentPath")));
         return new EditorDocument(new Basic(p.sellerProductId(),p.productId(),p.sellerProductName(),d.displayProductName(),d.generalProductName(),p.brand(),d.productGroup(),d.displayCategoryCode(),p.statusName()),new Limits(true,true,true),List.copyOf(options),d.delivery(),d.settings(),List.copyOf(documents));
+    }
+    static Boolean editable(JsonNode value){
+        if(value.isBoolean())return value.asBoolean();
+        if(value.isString()){if("true".equalsIgnoreCase(value.asString().trim()))return true;if("false".equalsIgnoreCase(value.asString().trim()))return false;}
+        return null;
+    }
+    private List<AttributePermission> attributePermissions(JsonNode item){
+        var result=new ArrayList<AttributePermission>();
+        for(var a:array(item,"attributes"))result.add(new AttributePermission(text(a,"attributeTypeName"),editable(a.path("editable"))));
+        return List.copyOf(result);
     }
     public cc.ataglace.molebutter.marketplace.api.CoupangBrands.Page brands(String name,int page){
         if(name==null||name.isBlank()||name.length()>200||page<1||page>1_000_000)throw new InputValidationFailure("브랜드 검색어와 페이지를 확인해 주세요.");
@@ -221,8 +236,9 @@ final class CoupangProductClient {
     }
     public cc.ataglace.molebutter.marketplace.api.CoupangShippingPlaces.Page outboundPlace(String code){
         if(code==null||!code.matches("[0-9]{1,30}"))throw new InputValidationFailure("출고지 코드를 확인해 주세요.");
-        return writeSession(()->parseShippingPlaces(request("/v2/providers/marketplace_openapi/apis/api/v2/vendor/shipping-place/outbound","placeCodes="+code),false));
+        return writeSession(()->rawOutboundPlace(code));
     }
+    cc.ataglace.molebutter.marketplace.api.CoupangShippingPlaces.Page rawOutboundPlace(String code){if(code==null||!code.matches("[0-9]{1,30}"))throw new InputValidationFailure("출고지 코드를 확인해 주세요.");return parseShippingPlaces(request("/v2/providers/marketplace_openapi/apis/api/v2/vendor/shipping-place/outbound","placeCodes="+code),false);}
     public cc.ataglace.molebutter.marketplace.api.CoupangShippingPlaces.Page shippingPlaces(boolean returns,int page){
         if(page<1||page>1_000_000)throw new InputValidationFailure("주소록 페이지를 확인해 주세요.");
         String path=returns?"/v2/providers/openapi/apis/api/v5/vendors/"+encode(vendor)+"/returnShippingCenters":"/v2/providers/marketplace_openapi/apis/api/v2/vendor/shipping-place/outbound";
@@ -244,18 +260,45 @@ final class CoupangProductClient {
                 if(code==null)throw new MarketplaceFailure(RESPONSE);
                 var addresses=new ArrayList<cc.ataglace.molebutter.marketplace.api.CoupangShippingPlaces.Address>();
                 for(var a:place.path("placeAddresses"))addresses.add(new cc.ataglace.molebutter.marketplace.api.CoupangShippingPlaces.Address(requiredText(a,"addressType"),requiredText(a,"returnZipCode"),requiredText(a,"returnAddress"),a.path("returnAddressDetail").asString(""),a.path("companyContactNumber").asString("")));
-                items.add(new cc.ataglace.molebutter.marketplace.api.CoupangShippingPlaces.Place(code,requiredText(place,"shippingPlaceName"),place.path("usable").asBoolean(),List.copyOf(addresses)));
+                var remote=new ArrayList<cc.ataglace.molebutter.marketplace.api.CoupangShippingPlaces.Remote>();
+                for(var r:place.path("remoteInfos")){var fee=r.has("jejuFee")?r.path("jejuFee"):r.path("jeju");if(r.has("jejuFee")&&r.has("jeju")&&new java.math.BigDecimal(r.path("jejuFee").asString()).compareTo(new java.math.BigDecimal(r.path("jeju").asString()))!=0)throw new MarketplaceFailure(RESPONSE);remote.add(new cc.ataglace.molebutter.marketplace.api.CoupangShippingPlaces.Remote(r.path("deliveryCode").asString(""),fee.asString(""),r.path("notJeju").asString(""),r.path("usable").isBoolean()&&r.path("usable").asBoolean()));}
+                items.add(new cc.ataglace.molebutter.marketplace.api.CoupangShippingPlaces.Place(code,requiredText(place,"shippingPlaceName"),place.path("usable").asBoolean(),List.copyOf(addresses),List.copyOf(remote)));
             }
             return new cc.ataglace.molebutter.marketplace.api.CoupangShippingPlaces.Page(List.copyOf(items),(int)page,total,page<pages);
         }catch(MarketplaceFailure e){throw e;}catch(RuntimeException e){throw new MarketplaceFailure(RESPONSE);}
+    }
+    public List<CategoryChoice> categories(){
+        if(vendor.isBlank()||access.isBlank()||secret.isBlank())throw new MarketplaceFailure(CONFIGURATION);
+        enter();
+        try{return parseCategories(request("/v2/providers/seller_api/apis/api/v1/marketplace/meta/display-categories",""));}
+        finally{synchronized(this){running=false;}}
+    }
+    List<CategoryChoice> parseCategories(byte[] bytes){
+        try{
+            var root=json.readTree(bytes);
+            if(root==null||!root.isObject()||!root.path("code").isString())throw new MarketplaceFailure(RESPONSE);
+            if(!"SUCCESS".equals(root.path("code").asString()))throw new MarketplaceFailure(REJECTED);
+            var result=new ArrayList<CategoryChoice>();categoryLeaves(root.path("data"),"",result,0);
+            return List.copyOf(result);
+        }catch(MarketplaceFailure e){throw e;}catch(RuntimeException e){throw new MarketplaceFailure(RESPONSE);}
+    }
+    private void categoryLeaves(JsonNode row,String parent,List<CategoryChoice> result,int depth){
+        if(depth>32||result.size()>50000||!row.isObject()||!row.path("child").isArray())throw new MarketplaceFailure(RESPONSE);
+        var code=id(row,"displayItemCategoryCode",true);var name=requiredText(row,"name");var status=requiredText(row,"status");
+        if(!Set.of("ACTIVE","READY","DISABLED").contains(status))throw new MarketplaceFailure(RESPONSE);
+        if(!"ACTIVE".equals(status))return;
+        String path=depth==0&&"0".equals(code)?"":parent.isEmpty()?name:parent+" > "+name;
+        if(row.path("child").isEmpty()){if(!"0".equals(code))result.add(new CategoryChoice(code,path));}
+        else for(var child:row.path("child"))categoryLeaves(child,path,result,depth+1);
     }
     public CategoryRules category(String code){
         if(code==null||!code.matches("[0-9]{1,15}"))throw new InputValidationFailure("유효한 카테고리 코드를 입력해 주세요.");
         if(vendor.isBlank()||access.isBlank()||secret.isBlank())throw new MarketplaceFailure(CONFIGURATION);
         enter();
-        try{return parseCategory(request("/v2/providers/seller_api/apis/api/v1/marketplace/meta/category-related-metas/display-category-codes/"+code,""),code);}
+        try{return rawCategory(code);}
         finally{synchronized(this){running=false;}}
     }
+    CategoryRules rawCategory(String code){return parseCategory(request("/v2/providers/seller_api/apis/api/v1/marketplace/meta/category-related-metas/display-category-codes/"+code,""),code);}
     CategoryRules parseCategory(byte[] bytes,String code){
         try{
             var root=json.readTree(bytes);
@@ -354,7 +397,9 @@ final class CoupangProductClient {
             if(root==null||!root.isObject()||!root.path("code").isString())throw new MarketplaceFailure(RESPONSE);
             if(!"SUCCESS".equals(root.path("code").asString()))throw new MarketplaceFailure(REJECTED);
             var row=root.path("data");
-            if(!row.isObject()||!vendor.equals(requiredText(row,"vendorId"))||!requestedId.equals(id(row,"sellerProductId",true))||!row.path("items").isArray())throw new MarketplaceFailure(RESPONSE);
+            if(!row.isObject()||!vendor.equals(requiredText(row,"vendorId"))||!requestedId.equals(id(row,"sellerProductId",true)))throw new MarketplaceFailure(RESPONSE);
+            if(Set.of("상품삭제","DELETED").contains(Objects.toString(text(row,"statusName"),"")))throw new MarketplaceListingMissing("COUPANG_DELETED");
+            if(!row.path("items").isArray())throw new MarketplaceFailure(RESPONSE);
             var items=new ArrayList<ProductOption>();
             for(var item:row.path("items")){
                 if(!item.isObject())throw new MarketplaceFailure(RESPONSE);
@@ -362,7 +407,7 @@ final class CoupangProductClient {
             }
             var product=new Product(id(row,"sellerProductId",true),requiredText(row,"sellerProductName"),text(row,"brand"),text(row,"statusName"),id(row,"productId",false),text(row,"createdAt"));
             return new ProductDetail(product,text(row,"displayProductName"),text(row,"generalProductName"),text(row,"productGroup"),id(row,"displayCategoryCode",false),id(row,"categoryId",false),text(row,"saleStartedAt"),text(row,"saleEndedAt"),items,fields(row,DELIVERY_FIELDS),fields(row,PRODUCT_FIELDS));
-        }catch(MarketplaceFailure e){throw e;}catch(RuntimeException e){throw new MarketplaceFailure(RESPONSE);}
+        }catch(MarketplaceListingMissing e){throw e;}catch(MarketplaceFailure e){throw e;}catch(RuntimeException e){throw new MarketplaceFailure(RESPONSE);}
     }
     private static final String[] DELIVERY_FIELDS={"deliveryMethod","deliveryCompanyCode","deliveryChargeType","deliveryCharge","freeShipOverAmount","deliveryChargeOnReturn","remoteAreaDeliverable","unionDeliveryType","outboundShippingPlaceCode","returnCenterCode","returnChargeName","companyContactNumber","returnZipCode","returnAddress","returnAddressDetail","returnCharge"};
     private static final String[] PRODUCT_FIELDS={"saleStartedAt","saleEndedAt","manufacture","brandId","productGroup","vendorUserId","requested","extraInfoMessage","bundleInfo.bundleType"};

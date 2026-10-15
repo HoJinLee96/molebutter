@@ -4,6 +4,7 @@
   <parent><groupId>cc.ataglace</groupId><artifactId>molebutter</artifactId><version>0.0.1-SNAPSHOT</version><relativePath>../pom.xml</relativePath></parent>
   <artifactId>molebutter-marketplace</artifactId>
   <dependencies>
+    <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-marketplace-contracts</artifactId></dependency>
     <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-media</artifactId></dependency>
     <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-common</artifactId></dependency>
     <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-identity</artifactId></dependency>

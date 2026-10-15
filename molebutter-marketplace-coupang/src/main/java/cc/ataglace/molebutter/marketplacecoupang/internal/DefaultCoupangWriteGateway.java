@@ -1,8 +1,10 @@
 package cc.ataglace.molebutter.marketplacecoupang.internal;
 import cc.ataglace.molebutter.marketplace.api.MarketplaceWriteGateway;
 import cc.ataglace.molebutter.marketplace.api.MarketplaceDocuments;
+import cc.ataglace.molebutter.marketplace.api.MarketplaceCommonSettings;
 import cc.ataglace.molebutter.marketplace.api.MarketplaceEditConflict;
 import cc.ataglace.molebutter.media.api.ImageAssets;
+import cc.ataglace.molebutter.media.api.R2Images;
 
 import java.math.BigInteger;
 import java.net.URI;
@@ -29,15 +31,33 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
     private final BusinessAccess access;
     private final CoupangProductClient client;
     private final ImageAssets assets;
+    private final R2Images r2;
     private final ObjectMapper json;
     private final CoupangBrands brands;
+    private final cc.ataglace.molebutter.media.api.ImageInspection inspection;
     private static final Set<String> NUMBERS=Set.of("displayCategoryCode","sellerProductId","sellerProductItemId","vendorItemId","outboundShippingPlaceCode","deliveryCharge","freeShipOverAmount","deliveryChargeOnReturn","returnCharge","originalPrice","salePrice","maximumBuyCount","maximumBuyForPerson","maximumBuyForPersonPeriod","outboundShippingTimeDay","unitCount","autoPricingInfo.minSalePrice");
     private static final Set<String> BOOLS=Set.of("requested","pccNeeded","bestPriceGuaranteed3P","emptyBarcode","autoPricingInfo.active");
-    private static final Set<String> SETTINGS=Set.of("saleStartedAt","saleEndedAt","manufacture","vendorUserId","brandId","productGroup","extraInfoMessage","bundleInfo.bundleType");
+    private static final Set<String> SETTINGS=Set.of("saleStartedAt","saleEndedAt","manufacture","brandId","productGroup","extraInfoMessage","bundleInfo.bundleType");
     private static final Set<String> REGISTRATION=Set.of("externalVendorSku","originalPrice","salePrice","maximumBuyCount","maximumBuyForPerson","maximumBuyForPersonPeriod","outboundShippingTimeDay","unitCount","adultOnly","taxType","parallelImported","overseasPurchased","pccNeeded","bestPriceGuaranteed3P","barcode","emptyBarcode","emptyBarcodeReason","modelNo","searchTags","offerCondition","offerDescription","autoPricingInfo.minSalePrice","autoPricingInfo.active");
-    DefaultCoupangWriteGateway(BusinessAccess access,CoupangProductClient client,ImageAssets assets,ObjectMapper json,CoupangBrands brands){this.access=access;this.client=client;this.assets=assets;this.json=json;this.brands=brands;}
+    DefaultCoupangWriteGateway(BusinessAccess access,CoupangProductClient client,ImageAssets assets,ObjectMapper json,CoupangBrands brands,R2Images r2){this(access,client,assets,json,brands,r2,null);}
+    @org.springframework.beans.factory.annotation.Autowired
+    DefaultCoupangWriteGateway(BusinessAccess access,CoupangProductClient client,ImageAssets assets,ObjectMapper json,CoupangBrands brands,R2Images r2,cc.ataglace.molebutter.media.api.ImageInspection inspection){this.r2=r2;this.access=access;this.client=client;this.assets=assets;this.json=json;this.brands=brands;this.inspection=inspection;}
 
     public boolean validateCommonDraft(){return true;}
+    @Override public Prepared saveWorkflow(Prepared p){
+        if(p.steps().stream().anyMatch(s->s.type()==Type.APPROVAL))return p;
+        var parent=p.steps().stream().filter(s->s.type()==Type.CREATE||s.type()==Type.PRODUCT&&s.path().equals(CoupangProductClient.PATH)).reduce((a,b)->b).orElse(null);
+        if(parent==null)return p; // Dedicated price/stock/delivery updates need no sales approval.
+        var steps=new ArrayList<Step>();
+        for(var s:p.steps()){
+            if(s==parent){var body=json.readTree(s.bodyJson()).deepCopy().asObject();body.put("requested",false);var expected=json.readTree(s.expectedJson()).deepCopy().asObject();if(s.type()==Type.CREATE||expected.has("requested"))expected.put("requested",false);parent=new Step(s.id(),s.type(),s.optionId(),s.method(),s.path(),s.query(),wire(body),s.baselineJson(),wire(expected));steps.add(parent);}
+            else steps.add(s);
+        }
+        steps.add(new Step(UUID.randomUUID().toString(),Type.APPROVAL,null,"PUT",CoupangProductClient.PATH+"/{sellerProductId}/approvals","",null,"{}",json.writeValueAsString(parent)));
+        return new Prepared(p.accountKey(),p.mapping(),List.copyOf(steps),p.changes().stream().filter(c->!"requested".equals(c.path())).toList(),p.preparedAt(),p.expectedSkus(),p.editIntent(),p.market(),p.schemaVersion());
+    }
+    private static boolean approvalFollows(Prepared p,Step step){return p.steps().stream().anyMatch(s->s.type()==Type.APPROVAL)&&(step.type()==Type.CREATE||step.type()==Type.PRODUCT&&step.path().equals(CoupangProductClient.PATH));}
+    private Result saved(Prepared p,Step step,Result result){return approvalFollows(p,step)&&result.state()==State.ACCEPTED&&"SUCCESS".equals(result.code())?new Result(State.CONFIRMED,result.mapping(),"SAVED_FOR_APPROVAL","쿠팡 저장을 완료했습니다. 이어서 판매 승인을 요청합니다.",result.attemptedAt(),result.requestJson()):result;}
     public Document projectChanges(Document document,List<MarketplaceEditing.Change> changes){return CoupangEditPatch.apply(document,changes,json);}
     public Prepared prepare(Long actor,Document input,Mapping existing,boolean requested){
         access.productActor(actor,true);
@@ -50,10 +70,15 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
         }
         if(mapping!=null&&!client.accountKey().equals(mapping.accountKey()))throw invalid("쿠팡 계정이 변경되었습니다. 연결 정보를 확인해 주세요.");
         final Mapping selected=mapping;
-        return client.writeSession(()->build(actor,d,m,selected,requested));
+        if(selected==null){
+            MarketplaceCommonSettings.validate(d);requireRegistrationUser();
+            var creationIssues=CoupangCreateValidation.issues(d,m);if(!creationIssues.isEmpty())throw invalid(creationIssues.getFirst().message());
+            brands.requireSelection(actor,settings(d,m).get("brandId"),m.overrides()==null?d.common().brand():inherited(m.overrides().brand(),d.common().brand()));
+        }
+        return client.writeSession(()->{if(selected==null)requireRegionalPolicy(d,m);return build(actor,d,m,selected,requested);});
     }
     public Prepared prepareSelected(Long actor,Document reference,Mapping mapping,boolean requested,Document observed,List<MarketplaceEditing.Change> changes){
-        access.productActor(actor,true);CoupangEditPatch.check(changes);
+        access.productActor(actor,true);
         if(mapping==null||mapping.sellerProductId()==null){var p=prepare(actor,CoupangEditPatch.apply(observed,changes,json),mapping,requested);return new Prepared(p.accountKey(),p.mapping(),p.steps(),p.changes(),p.preparedAt(),p.expectedSkus(),new EditIntent(observed,List.copyOf(changes)));}
         if(mapping==null||mapping.sellerProductId()==null||!client.accountKey().equals(mapping.accountKey()))throw invalid("쿠팡 상품 연결을 확인해 주세요.");
         var expanded=CoupangEditPatch.expand(observed,changes,json);
@@ -82,10 +107,12 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
             if(Set.of("markets.COUPANG.overrides.description","markets.COUPANG.overrides.imageIds").contains(c.path()))throw invalid("기존 상품의 이미지·설명은 옵션별 이미지·설명 항목에서 변경해 주세요.");
             validateSelected(c,desired,latest);
         }
+        if(changes.stream().anyMatch(c->c.path().startsWith("delivery.")||c.path().startsWith("markets.COUPANG.coupang.delivery")))requireRegionalPolicy(desired,desired.markets().get(Market.COUPANG));
         var p=build(actor,desired,desired.markets().get(Market.COUPANG),mapping,requested,raw,changes,inventoryValues);
         var visible=new ArrayList<Change>();for(var c:changes){var before=CoupangEditPatch.value(latest,c,json);var after=CoupangEditPatch.value(desired,c,json);if(!CoupangEditPatch.equivalent(before,after,c))diff(c.optionId()==null?c.path()+".":"옵션."+c.optionId()+"."+c.path()+".",CoupangEditPatch.displayValue(before,c),CoupangEditPatch.displayValue(after,c),visible);}
         return new Prepared(p.accountKey(),p.mapping(),p.steps(),List.copyOf(visible),p.preparedAt(),p.expectedSkus(),new EditIntent(latest,List.copyOf(changes)));
     }
+    private void requireRegionalPolicy(Document d,MarketConfig m){CoupangDeliveryPolicy.verify(client,d,m);}
     private static Long inventoryNumber(JsonNode value,String field){var number=value.path(field);return number.isIntegralNumber()&&number.canConvertToLong()&&number.asLong()>=0?number.asLong():null;}
     private static boolean selected(List<MarketplaceEditing.Change> changes,String path,String optionId){return changes==null||changes.stream().anyMatch(c->(c.path().equals(path)||c.path().startsWith(path+"."))&&(c.optionId()==null||Objects.equals(c.optionId(),optionId)));}
     static boolean editableField(String prefix,String key){return prefix.endsWith(".settings")?SETTINGS.contains(key):prefix.endsWith(".registration")?REGISTRATION.contains(key):DELIVERY_INPUT.containsKey(key);}
@@ -101,7 +128,7 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
             if(p.equals("options.price"))validateWireField("salePrice",text);
             if(p.equals("options.quantity"))validateWireField("maximumBuyCount",text);
             if(p.equals("common.taxType")&&!Set.of("TAX","FREE").contains(text)||p.equals("common.adultOnly")&&!Set.of("EVERYONE","ADULT_ONLY").contains(text))throw invalid("과세·성인 설정을 확인해 주세요.");
-            if(p.startsWith("delivery."))validateWireField(deliveryWire(p.substring(9)),text);
+            if(p.startsWith("delivery.")&&!Set.of("delivery.jejuCharge","delivery.remoteCharge").contains(p))validateWireField(deliveryWire(p.substring(9)),text);
             for(String base:List.of("markets.COUPANG.coupang.settings","markets.COUPANG.coupang.delivery","markets.COUPANG.coupang.options.registration"))if(p.startsWith(base+".")){
                 String key=p.substring(base.length()+1);validateWireField(key,text);
                 if(base.endsWith(".registration")&&Set.of("salePrice","maximumBuyCount").contains(key))throw invalid("가격·재고는 옵션 가격·수량 항목에서 변경해 주세요.");
@@ -131,6 +158,11 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
         if(key.equals("searchTags")){var tags=Arrays.stream(value.split(",")).map(String::trim).filter(t->!t.isEmpty()).toList();if(tags.size()>20||tags.stream().anyMatch(t->t.codePointCount(0,t.length())>20))throw invalid("검색어는 각 20자 이하, 20개 이하로 입력해 주세요.");}
         if(key.equals("emptyBarcodeReason")&&value.codePointCount(0,value.length())>100||key.equals("offerDescription")&&value.codePointCount(0,value.length())>700)throw invalid("설정 내용의 길이를 줄여 주세요.");
     }
+    private String requireRegistrationUser(){
+        String id=client.registrationUserId();
+        if(blank(id))throw invalid(CoupangProductClient.REGISTRATION_USER_REQUIRED);
+        return id;
+    }
     private Prepared build(Long actor,Document d,MarketConfig m,Mapping mapping,boolean requested){
         return build(actor,d,m,mapping,requested,mapping==null?json.createObjectNode():(ObjectNode)client.rawProduct(mapping.sellerProductId()),null,null);
     }
@@ -139,7 +171,6 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
         if(mapping==null){
             var creationIssues=CoupangCreateValidation.issues(d,m);
             if(!creationIssues.isEmpty())throw invalid(creationIssues.getFirst().message());
-            brands.requireSelection(actor,settings(d,m).get("brandId"),m.overrides()==null?d.common().brand():inherited(m.overrides().brand(),d.common().brand()));
         }
         if(mapping!=null&&(selected(selectedChanges,"common.brand",null)||selected(selectedChanges,"markets.COUPANG.overrides.brand",null))&&!Objects.equals(scalar(baseline.path("brand")),m.overrides()==null?d.common().brand():inherited(m.overrides().brand(),d.common().brand())))throw invalid("기존 쿠팡 브랜드는 변경할 수 없습니다.");
         ObjectNode desired=baseline.deepCopy();
@@ -151,7 +182,7 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
         else if(!m.categoryCode().equals(scalar(baseline.path("displayCategoryCode"))))throw invalid("수정할 상품의 카테고리가 변경되었습니다. 다시 가져와 주세요.");
         for(var e:settings(d,m).entrySet()){
             if(!selected(selectedChanges,"markets.COUPANG.coupang.settings."+e.getKey(),null)&&!(e.getKey().equals("manufacture")&&selected(selectedChanges,"common.manufacturer",null)))continue;
-            if("requested".equals(e.getKey()))continue;
+            if(Set.of("requested","vendorUserId").contains(e.getKey()))continue; // Legacy draft identity is server-owned.
             if(!SETTINGS.contains(e.getKey()))throw invalid("쿠팡 설정 "+e.getKey()+"의 전송 규격 확인이 필요합니다.");
             if(mapping!=null&&"brandId".equals(e.getKey())){
                 String old=scalar(baseline.path("brandId")),next=e.getValue();
@@ -160,7 +191,7 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
             }
             set(desired,e.getKey(),e.getValue());
         }
-        if(mapping==null&&blank(scalar(desired.path("vendorUserId"))))throw invalid("쿠팡 Wing 사용자 ID를 입력해 주세요.");
+        if(mapping==null)set(desired,"vendorUserId",requireRegistrationUser());
         var sourceItems=baseline.path("items");var output=json.createArrayNode();
         var mappings=new ArrayList<OptionMapping>();var currentSteps=new ArrayList<Step>();var changes=new ArrayList<Change>();var skus=new ArrayList<String>();
         if(mapping!=null&&(!sourceItems.isArray()||sourceItems.size()!=d.options().size()||mapping.options().size()!=d.options().size()))throw invalid("원격 옵션 구성이 변경되었습니다. 다시 가져와 주세요.");
@@ -174,7 +205,11 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
                 if(om.vendorItemId()==null&&optionalId(source.path("vendorItemId"))!=null)om=new OptionMapping(om.optionId(),om.sellerProductItemId(),optionalId(source.path("vendorItemId")));
             }
             ObjectNode item=source==null?json.createObjectNode():source.deepCopy();var cfg=optionConfig(m,o);var over=override(m,o);
-            if(selected(selectedChanges,"options.name",o.id()))set(item,"itemName",over==null?o.name():inherited(over.name(),o.name()));
+            if(selected(selectedChanges,"options.name",o.id())){
+                String wantedName=over==null?o.name():inherited(over.name(),o.name());
+                if(source!=null&&!Objects.equals(wantedName,scalar(source.path("itemName"))))throw invalid("기존 등록 옵션명은 직접 변경할 수 없습니다. 구매옵션 값을 수정해 주세요.");
+                if(source==null)set(item,"itemName",wantedName);
+            }
             var registration=registration(d,m,o);
             // A common/explicit option change wins over the preserved imported registration settings.
             String wantedPrice=over==null?o.price():inherited(over.price(),o.price());
@@ -201,11 +236,13 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
             if(source!=null&&cfg!=null){
                 var original=original(m,om.sellerProductItemId());
                 // Omitted read-only fields and unrepresented nested values stay in the fresh server baseline.
-                if(selected(selectedChanges,"markets.COUPANG.coupang.options.attributes",o.id())&&original!=null&&!Objects.equals(cfg.attributes(),original.attributes())){
-                    if(selectedChanges!=null&&!cfg.attributes().stream().filter(a->"EXPOSED".equals(a.exposed())).toList().equals(original.attributes().stream().filter(a->"EXPOSED".equals(a.exposed())).toList()))throw invalid("기존 쿠팡 구매 속성은 변경할 수 없습니다.");
-                    item.set("attributes",merge(source.path("attributes"),attributeRows(cfg,o),"attributeTypeName",original.attributes().stream().map(a->a.name()).toList()));
+                var originalAttributes=original==null?CoupangPurchaseAttributes.read(source.path("attributes")):original.attributes();
+                if(selected(selectedChanges,"markets.COUPANG.coupang.options.attributes",o.id())&&!Objects.equals(cfg.attributes(),originalAttributes)){
+                    boolean purchaseChanged=CoupangPurchaseAttributes.changed(originalAttributes,cfg.attributes());
+                    var categoryRules=purchaseChanged?client.rawCategory(m.categoryCode()):new cc.ataglace.molebutter.marketplace.api.CoupangEditor.CategoryRules(m.categoryCode(),null,List.of(),List.of(),List.of(),List.of(),List.of());
+                    item.set("attributes",CoupangPurchaseAttributes.patch(json,source.path("attributes"),originalAttributes,cfg.attributes(),categoryRules));
                 }
-                else if(original==null)item.set("attributes",merge(source.path("attributes"),attributeRows(cfg,o),"attributeTypeName",List.of()));
+
                 if(selected(selectedChanges,"markets.COUPANG.coupang.options.notices",o.id())&&original!=null&&!Objects.equals(cfg.notices(),original.notices()))item.set("notices",mergeNotices(source.path("notices"),noticeRows(cfg),original.notices()));
                 else if(original==null&&cfg.notices()!=null&&!cfg.notices().isEmpty())item.set("notices",mergeNotices(source.path("notices"),noticeRows(cfg),List.of()));
                 if(selected(selectedChanges,"markets.COUPANG.coupang.options.certifications",o.id())&&original!=null&&!Objects.equals(cfg.certifications(),original.certifications())){
@@ -217,19 +254,21 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
             }
             var imageRows=selected(selectedChanges,"media.images",o.id())||selected(selectedChanges,"markets.COUPANG.overrides.imageIds",null)?images(actor,d,m,o,source):null;
             if(imageRows!=null)item.set("images",imageRows);
-            if((selected(selectedChanges,"media.contents",o.id())||selected(selectedChanges,"markets.COUPANG.overrides.description",null))&&(source==null||!sameContents(m,om.sellerProductItemId(),d,m,o))){var next=contents(actor,d,m,o);item.set("contents",source==null?next:mergeContents(source.path("contents"),next));}
+            if((selected(selectedChanges,"media.contents",o.id())||selected(selectedChanges,"markets.COUPANG.overrides.description",null))&&(source==null||!sameContents(m,om.sellerProductItemId(),d,m,o))){var next=contents(actor,d,m,o,source);item.set("contents",source==null?next:mergeContents(source.path("contents"),next));}
             if(source!=null&&om.vendorItemId()!=null&&(selected(selectedChanges,"options.price",o.id())||selected(selectedChanges,"options.quantity",o.id()))){
                 String price=over==null?o.price():inherited(over.price(),o.price());String quantity=d.stockMode()==StockMode.PRODUCT?d.productQuantity():over==null?o.quantity():inherited(over.quantity(),o.quantity());
                 var inventory=inventoryValues==null?client.rawInventory(om.vendorItemId()):inventoryValues.get(om.vendorItemId());
                 if(selected(selectedChanges,"options.price",o.id())){if(number(price).mod(BigInteger.TEN).signum()!=0)throw invalid("현재 판매가는 10원 단위로 입력해 주세요.");if(!numericEqual(price,inventory.path("salePrice")))currentSteps.add(currentStep(Type.PRICE,o.id(),om.vendorItemId(),price,inventory));}
                 if(selected(selectedChanges,"options.quantity",o.id())){if(number(quantity).compareTo(BigInteger.valueOf(99999))>0)throw invalid("현재 재고는 99999 이하로 입력해 주세요.");if(!numericEqual(quantity,inventory.path("amountInStock")))currentSteps.add(currentStep(Type.STOCK,o.id(),om.vendorItemId(),quantity,inventory));}
             }
+            if(mapping==null)item.put("itemName",CoupangPurchaseAttributes.itemName(item.path("attributes")));
             mappings.add(om);output.add(item);String sku=scalar(item.path("externalVendorSku"));if(!blank(sku))skus.add(sku);
         }
         if(selectedChanges!=null){var ordered=json.createArrayNode();for(var remote:sourceItems){JsonNode matching=null;for(var row:output)if(remote.path("sellerProductItemId").equals(row.path("sellerProductItemId")))matching=row;if(matching==null)throw invalid("상품 옵션 연결을 확인해 주세요.");ordered.add(matching);}output=ordered;}
         desired.set("items",output);
         if(selected(selectedChanges,"markets.COUPANG.coupang.documents",null)&&mapping!=null&&m.coupang()!=null&&m.coupang().source()!=null&&!Objects.equals(m.coupang().documents(),m.coupang().source().documents()))desired.set("requiredDocuments",documentRows(m.coupang(),baseline.path("requiredDocuments")));
         if(mapping==null){
+            CoupangPurchaseAttributes.create(output,client.rawCategory(m.categoryCode()));
             desired.put("requested",requested);for(var e:delivery(d,m).entrySet())set(desired,e.getKey(),e.getValue());
             if(m.coupang()!=null)desired.set("requiredDocuments",documentRows(m.coupang(),json.createArrayNode()));
             if(skus.isEmpty())throw invalid("응답 유실 시 등록 여부를 확인할 판매자 상품코드를 입력해 주세요.");
@@ -251,7 +290,7 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
             diff("배송.",beforeDelivery,comparison,changes);steps.add(new Step(UUID.randomUUID().toString(),Type.DELIVERY,null,"PUT",CoupangProductClient.PATH+"/"+mapping.sellerProductId()+"/partial","",wire(afterDelivery),wire(beforeDelivery),wire(comparison)));
         }
         for(var step:currentSteps){var before=json.readTree(step.baselineJson());var after=json.readTree(step.expectedJson());diff("옵션."+step.optionId()+".",before,after,changes);steps.add(step);}
-        steps.sort(Comparator.comparingInt(step->switch(step.type()){case DELIVERY->0;case ORIGINAL_PRICE->1;case PRICE->2;case STOCK->3;case PRODUCT->4;case CREATE->5;}));
+        steps.sort(Comparator.comparingInt(step->switch(step.type()){case DELIVERY->0;case ORIGINAL_PRICE->1;case PRICE->2;case STOCK->3;case PRODUCT->4;case CREATE->5;case APPROVAL->6;}));
         return new Prepared(client.accountKey(),new Mapping(client.accountKey(),mapping.sellerProductId(),List.copyOf(mappings)),List.copyOf(steps),List.copyOf(changes),client.now(),List.copyOf(skus));
     }
 
@@ -261,54 +300,101 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
     @Override public Result execute(Long actor,Prepared prepared,Step step,Mapping current,java.util.function.Consumer<Step> beforeDispatch){
         access.productActor(actor,true);Instant attempted=client.now();Mapping mapping=current==null?prepared.mapping():current;
         if(!validAccount(prepared,mapping))return result(State.FAILED,mapping,"ACCOUNT_CHANGED","쿠팡 계정이 변경되었습니다. 다시 준비해 주세요.",attempted);
-        if(!prepared.steps().contains(step))return result(State.FAILED,mapping,"INVALID_STEP","전송 단계를 확인해 주세요.",attempted);
+        if(!prepared.steps().stream().anyMatch(s->s.id().equals(step.id())&&s.type()==step.type()&&Objects.equals(s.optionId(),step.optionId())))return result(State.FAILED,mapping,"INVALID_STEP","전송 단계를 확인해 주세요.",attempted);
+        if(step.type()==Type.APPROVAL)return executeApproval(actor,prepared,step,mapping,attempted,beforeDispatch);
         if(step.type()==Type.CREATE&&mapping.sellerProductId()!=null)return result(State.FAILED,mapping,"ALREADY_CREATED","이미 연결된 상품입니다.",attempted);
         if(prepared.editIntent()!=null&&step.type()!=Type.CREATE)return executeSelected(actor,prepared,step,mapping,attempted,beforeDispatch);
+        var dispatched=new java.util.concurrent.atomic.AtomicBoolean();
         try{return client.writeSession(()->{
             access.productActor(actor,true);
             if(step.type()!=Type.CREATE&&(!Objects.equals(prepared.mapping().sellerProductId(),mapping.sellerProductId())||!Objects.equals(prepared.mapping().options(),mapping.options())))return result(State.FAILED,mapping,"MAPPING_CHANGED","상품 연결이 변경되었습니다. 다시 준비해 주세요.",attempted);
             if(step.type()!=Type.CREATE&&!baselineMatches(step,mapping))return result(State.FAILED,mapping,"BASELINE_CHANGED","쿠팡 상품이 변경되었습니다. 다시 준비해 주세요.",attempted);
+            if(step.type()==Type.PRODUCT){
+                var fresh=client.rawProduct(mapping.sellerProductId());var proposed=json.readTree(step.bodyJson());
+                for(var next:proposed.path("items"))for(var old:fresh.path("items"))if(old.path("sellerProductItemId").equals(next.path("sellerProductItemId"))){
+                    var before=CoupangPurchaseAttributes.read(old.path("attributes"));var after=CoupangPurchaseAttributes.read(next.path("attributes"));
+                    if(CoupangPurchaseAttributes.changed(before,after))CoupangPurchaseAttributes.patch(json,old.path("attributes"),before,after,client.rawCategory(scalar(fresh.path("displayCategoryCode"))));
+                }
+            }
             Step actual=step;
             if(step.type()==Type.CREATE){
+                if(prepared.editIntent()!=null){var d=CoupangEditPatch.apply(prepared.editIntent().observed(),prepared.editIntent().changes(),json);requireRegionalPolicy(d,d.markets().get(Market.COUPANG));}
+                var createBody=json.readTree(step.bodyJson());
+                if(inspection!=null&&prepared.editIntent()!=null){var input=CoupangEditPatch.apply(prepared.editIntent().observed(),prepared.editIntent().changes(),json);var config=input.markets().get(Market.COUPANG);var checks=new ArrayList<cc.ataglace.molebutter.media.api.ImageInspection.Input>();for(var option:input.options()){for(var image:DraftCoupangProjection.images(input,config,option))checks.add(new cc.ataglace.molebutter.media.api.ImageInspection.Input("COUPANG",image.imageType(),option.id(),image.id(),image.url(),image.assetId(),false));String override=config.overrides()==null?null:config.overrides().description();if(override!=null)checks.addAll(cc.ataglace.molebutter.media.api.ImageInspection.descriptionInputs("COUPANG",override,""));else for(var content:MarketplaceDocuments.contentsFor(input,option.id()))checks.addAll(cc.ataglace.molebutter.media.api.ImageInspection.descriptionInputs("COUPANG",content.type().equals("IMAGE")?"<img src=\""+escape(content.value())+"\">":content.value(),""));}inspection.require(actor,checks);}
+                else for(var item:createBody.path("items")){for(var image:item.path("images")){var a=r2.resolve(actor,image.path("vendorPath").asString(""));if(a.bytes()>3*1024*1024||a.width()!=a.height()||a.width()<500||a.width()>5000)throw invalid("쿠팡 이미지 규격을 확인해 주세요.");}for(var content:item.path("contents"))for(var part:content.path("contentDetails")){String value=part.path("content").asString("");r2.validateDescription(actor,part.path("detailType").asString("").equals("IMAGE")?"<img src=\""+escape(value)+"\">":value,"");}}
+                CoupangPurchaseAttributes.create(createBody.path("items"),client.rawCategory(scalar(createBody.path("displayCategoryCode"))));
                 try{actual=new Step(step.id(),step.type(),step.optionId(),step.method(),step.path(),step.query(),step.bodyJson(),wire(createBaseline(prepared.expectedSkus())),step.expectedJson());}
                 catch(MarketplaceFailure failure){return result(State.FAILED,mapping,failure.kind().name(),"등록 전 기존 상품을 조회하지 못해 전송하지 않았습니다. 다시 확인해 주세요.",attempted);}
             }
             access.productActor(actor,true);
             beforeDispatch.accept(actual);
+            dispatched.set(true);
             var response=client.write(actual.method(),actual.path(),actual.query(),actual.bodyJson());
             if(response.status()!=200)return httpFailure(response.status(),response.body(),mapping,attempted);
             var accepted=parseOutcome(response.body(),step,mapping,attempted);
             if(accepted.state()!=State.ACCEPTED)return accepted;
+            if(approvalFollows(prepared,step))return saved(prepared,step,accepted);
             try{return verifyKnown(prepared,step,accepted);}catch(RuntimeException verificationFailure){return accepted;}
         });}catch(MarketplaceFailure e){
-            boolean definite=Set.of(MarketplaceFailure.Kind.CONFIGURATION,MarketplaceFailure.Kind.BUSY,MarketplaceFailure.Kind.RATE_LIMIT).contains(e.kind());
+            boolean definite=!dispatched.get()||Set.of(MarketplaceFailure.Kind.CONFIGURATION,MarketplaceFailure.Kind.BUSY,MarketplaceFailure.Kind.RATE_LIMIT).contains(e.kind());
             return result(definite?State.FAILED:State.UNKNOWN,mapping,e.kind().name(),definite?e.getMessage():"처리 결과를 확인하지 못했습니다. 등록 여부를 확인 중입니다.",attempted);
         }catch(InputValidationFailure e){return result(State.FAILED,mapping,"VALIDATION",e.getMessage(),attempted);}
     }
     private Result executeSelected(Long actor,Prepared prepared,Step step,Mapping mapping,Instant attempted,java.util.function.Consumer<Step> beforeDispatch){
         var attemptedRequest=new java.util.concurrent.atomic.AtomicReference<String>();
+        var dispatched=new java.util.concurrent.atomic.AtomicBoolean();
         try{return client.writeSession(()->{
             access.productActor(actor,true);
             if(!Objects.equals(prepared.mapping(),mapping))return result(State.FAILED,mapping,"MAPPING_CHANGED","상품 연결이 변경되었습니다. 다시 준비해 주세요.",attempted);
-            var intent=prepared.editIntent();boolean requested=step.type()==Type.PRODUCT&&step.bodyJson()!=null&&json.readTree(step.bodyJson()).path("requested").asBoolean();var fresh=buildSelected(actor,intent.observed(),mapping,requested,intent.observed(),intent.changes());
+            var intent=prepared.editIntent();boolean requested=!approvalFollows(prepared,step)&&step.type()==Type.PRODUCT&&step.bodyJson()!=null&&json.readTree(step.bodyJson()).path("requested").asBoolean();var fresh=buildSelected(actor,intent.observed(),mapping,requested,intent.observed(),intent.changes());
             var next=fresh.steps().stream().filter(s->s.type()==step.type()&&Objects.equals(s.optionId(),step.optionId())).findFirst().orElse(null);
             if(next==null)return result(State.CONFIRMED,fresh.mapping(),"ALREADY_APPLIED","선택한 변경이 이미 반영되어 있습니다.",attempted);
             // Recompose a full product payload from the immediately preceding server read; untouched values are not taken from the old preview.
             var request=json.createObjectNode();request.put("method",next.method());request.put("path",next.path());request.put("query",next.query());if(next.bodyJson()!=null)request.set("body",json.readTree(next.bodyJson()));
-            attemptedRequest.set(wire(request));access.productActor(actor,true);beforeDispatch.accept(next);
+            String requestJson=wire(request);access.productActor(actor,true);beforeDispatch.accept(next);attemptedRequest.set(requestJson);dispatched.set(true);
             var response=client.write(next.method(),next.path(),next.query(),next.bodyJson());
             var outcome=response.status()==200?parseOutcome(response.body(),next,fresh.mapping(),attempted):httpFailure(response.status(),response.body(),fresh.mapping(),attempted);
-            if(outcome.state()==State.ACCEPTED)try{outcome=verifyKnown(fresh,next,outcome);}catch(RuntimeException verificationFailure){}
+            if(approvalFollows(prepared,step))outcome=saved(prepared,step,outcome);
+            else if(outcome.state()==State.ACCEPTED)try{outcome=verifyKnown(fresh,next,outcome);}catch(RuntimeException verificationFailure){}
             return withRequest(outcome,attemptedRequest.get());
         });}catch(InputValidationFailure conflict){return result(State.FAILED,mapping,"BASELINE_CHANGED",conflict.getMessage(),attempted);}
-        catch(MarketplaceFailure failure){boolean definite=Set.of(MarketplaceFailure.Kind.CONFIGURATION,MarketplaceFailure.Kind.BUSY,MarketplaceFailure.Kind.RATE_LIMIT).contains(failure.kind());return withRequest(result(definite?State.FAILED:State.UNKNOWN,mapping,failure.kind().name(),definite?failure.getMessage():"처리 결과를 확인하지 못했습니다.",attempted),attemptedRequest.get());}
+        catch(MarketplaceFailure failure){boolean definite=!dispatched.get()||Set.of(MarketplaceFailure.Kind.CONFIGURATION,MarketplaceFailure.Kind.BUSY,MarketplaceFailure.Kind.RATE_LIMIT).contains(failure.kind());return withRequest(result(definite?State.FAILED:State.UNKNOWN,mapping,failure.kind().name(),definite?failure.getMessage():"처리 결과를 확인하지 못했습니다.",attempted),attemptedRequest.get());}
     }
     private static Result withRequest(Result result,String request){return new Result(result.state(),result.mapping(),result.code(),result.message(),result.attemptedAt(),request);}
+    private Result executeApproval(Long actor,Prepared prepared,Step step,Mapping mapping,Instant attempted,java.util.function.Consumer<Step> beforeDispatch){
+        if(mapping.sellerProductId()==null)return result(State.FAILED,mapping,"MAPPING_CHANGED","저장된 등록상품 ID를 확인해 주세요.",attempted);
+        var sent=new java.util.concurrent.atomic.AtomicBoolean();
+        try{return client.writeSession(()->{
+            String path=CoupangProductClient.PATH+"/"+mapping.sellerProductId()+"/approvals";
+            var actual=new Step(step.id(),Type.APPROVAL,null,"PUT",path,"",null,step.baselineJson(),step.expectedJson());
+            access.productActor(actor,true);beforeDispatch.accept(actual);sent.set(true);
+            var response=client.write("PUT",path,"",null);
+            if(response.status()!=200){
+                if(response.status()==400&&approvalProcessing(response.body()))return result(State.FAILED,mapping,"APPROVAL_NOT_READY","쿠팡이 상품을 처리 중입니다. 10분 후 승인 요청만 재시도해 주세요.",attempted);
+                return httpFailure(response.status(),response.body(),mapping,attempted);
+            }
+            var accepted=parseOutcome(response.body(),actual,mapping,attempted);
+            if(accepted.state()!=State.ACCEPTED)return accepted;
+            try{return verifyApproval(prepared,actual,accepted);}catch(MarketplaceFailure e){return result(State.ACCEPTED,mapping,"APPROVAL_PENDING","판매 승인 요청 접수 · 승인 결과 확인 필요",attempted);}
+        });}catch(MarketplaceFailure e){return result(sent.get()?State.UNKNOWN:State.FAILED,mapping,e.kind().name(),sent.get()?"판매 승인 요청 결과를 확인하지 못했습니다. 재전송하지 말고 결과를 확인해 주세요.":"승인 요청을 보내지 못했습니다.",attempted);}
+    }
+    private boolean approvalProcessing(byte[] body){try{String message=json.readTree(body).path("message").asString("");return message.contains("상품 정보가 등록 또는 수정되고 있습니다");}catch(RuntimeException e){return false;}}
+    private Result verifyApproval(Prepared p,Step approval,Result previous){
+        var save=json.readValue(approval.expectedJson(),Step.class);var mapping=previous.mapping();
+        if(save.type()==Type.CREATE){var expected=json.readTree(save.expectedJson()).deepCopy().asObject();expected.put("requested",true);return verifyKnown(p,new Step(save.id(),Type.CREATE,null,save.method(),save.path(),save.query(),save.bodyJson(),save.baselineJson(),wire(expected)),previous);}
+        if(save.type()!=Type.PRODUCT)throw invalid("승인 요청의 저장 단계를 확인해 주세요.");
+        var actual=client.rawProduct(mapping.sellerProductId());String status=Objects.toString(scalar(actual.path("statusName")),"");
+        if(Set.of("승인반려","REJECTED").contains(status))return result(State.ACCEPTED,mapping,"APPROVAL_REJECTED","쿠팡 승인 반려 사유를 확인해 주세요.",previous.attemptedAt());
+        if(!Set.of("승인완료","APPROVED").contains(status))return result(State.ACCEPTED,mapping,"APPROVAL_PENDING","판매 승인 결과를 기다리고 있습니다.",previous.attemptedAt());
+        var expected=json.readTree(save.expectedJson()).deepCopy().asObject();expected.remove("requested");
+        return result(subset(expected,actual)?State.CONFIRMED:State.ACCEPTED,mapping,subset(expected,actual)?"VERIFIED":"REFLECTION_PENDING",subset(expected,actual)?"상품 변경과 판매 승인을 확인했습니다.":"판매 승인은 완료되었으며 변경값 반영 확인이 필요합니다.",previous.attemptedAt());
+    }
     public Result reconcile(Long actor,Prepared prepared,Step step,Result previous){
         access.productActor(actor,true);Mapping mapping=previous.mapping()==null?prepared.mapping():previous.mapping();
         if(!validAccount(prepared,mapping))return result(State.FAILED,mapping,"ACCOUNT_CHANGED","쿠팡 계정이 변경되었습니다. 연결 정보를 확인해 주세요.",previous.attemptedAt());
         if(step.type()==Type.CREATE&&mapping.sellerProductId()==null&&Duration.between(previous.attemptedAt(),client.now()).compareTo(Duration.ofMinutes(1))<0)return result(State.UNKNOWN,mapping,"WAIT_RECONCILE","등록 여부 확인을 기다리고 있습니다.",previous.attemptedAt());
         try{return client.writeSession(()->{
+            if(step.type()==Type.APPROVAL)return verifyApproval(prepared,step,previous);
             if(step.type()==Type.CREATE&&mapping.sellerProductId()==null){
                 var candidates=new LinkedHashSet<String>();for(String sku:prepared.expectedSkus())for(var row:client.rawSummary(sku))candidates.add(scalar(row.path("sellerProductId")));
                 for(var id:json.readTree(step.baselineJson()).path("knownSellerProductIds"))candidates.remove(id.asString());
@@ -333,13 +419,28 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
         Mapping mapping=accepted.mapping();
         if(step.type()==Type.CREATE){
             var actual=client.rawProduct(mapping.sellerProductId());var expected=json.readTree(step.expectedJson());
-            if(matchesCreate(expected,actual)){
-                mapping=mappingFor(prepared.mapping(),actual,expected);
-                boolean confirmed=!"NEEDS_CORRECTION".equals(accepted.code())&&createApplied(expected,actual)&&createApprovalApplied(expected,actual);
-                String message=confirmed?"쿠팡 등록·반영을 확인했습니다.":createApplied(expected,actual)&&!createApprovalApplied(expected,actual)?"상품 등록을 확인했습니다. 판매 승인을 기다리고 있습니다.":accepted.message();
-                return result(confirmed?State.CONFIRMED:State.ACCEPTED,mapping,accepted.code(),message,accepted.attemptedAt());
-            }
-            return accepted;
+            if(!Objects.equals(mapping.sellerProductId(),optionalId(actual.path("sellerProductId")))
+                    ||!expected.path("vendorId").equals(actual.path("vendorId")))
+                return result(State.ACCEPTED,mapping,"MAPPING_CHANGED","등록 상품의 식별자를 확인하지 못했습니다.",accepted.attemptedAt());
+            try{mapping=mappingFor(mapping,actual,expected);}
+            catch(InputValidationFailure e){return result(State.ACCEPTED,mapping,"CREATE_OPTIONS_UNCONFIRMED","상품은 조회되지만 옵션 연결을 확인하지 못했습니다.",accepted.attemptedAt());}
+            String status=Objects.toString(scalar(actual.path("statusName")),"");boolean approved=Set.of("승인완료","APPROVED").contains(status);
+            if(Set.of("승인반려","REJECTED").contains(status))return result(State.ACCEPTED,mapping,"APPROVAL_REJECTED","쿠팡 심사에서 반려되었습니다. Wing에서 사유를 확인해 주세요.",accepted.attemptedAt());
+            if(Set.of("심사중","승인대기중","부분승인완료","IN_REVIEW","PENDING_APPROVAL").contains(status))
+                return result(State.ACCEPTED,mapping,"APPROVAL_PENDING","상품 등록을 확인했습니다. 판매 승인을 기다리고 있습니다.",accepted.attemptedAt());
+            if(!approved&&!Set.of("임시저장","SAVED").contains(status))
+                return result(State.ACCEPTED,mapping,"CREATE_STATUS_UNCONFIRMED","등록 상품의 현재 상태를 확인하지 못했습니다.",accepted.attemptedAt());
+            if(expected.path("requested").asBoolean()&&!approved)
+                return result(State.ACCEPTED,mapping,"APPROVAL_PENDING","상품 등록을 확인했습니다. 판매 승인을 기다리고 있습니다.",accepted.attemptedAt());
+            if(!cc.ataglace.molebutter.marketplace.api.MarketplaceCreationConfirmation.completeOptions(mapping,
+                    prepared.mapping().options().stream().map(OptionMapping::optionId).toList(),approved))
+                return result(State.ACCEPTED,mapping,"CREATE_OPTIONS_UNCONFIRMED","상품은 조회되지만 옵션 연결을 확인하지 못했습니다.",accepted.attemptedAt());
+            if("NEEDS_CORRECTION".equals(accepted.code())&&!approved)return result(State.ACCEPTED,mapping,accepted.code(),accepted.message(),accepted.attemptedAt());
+            // Dates, CDN URLs and content can change after a successful registration.
+            // Report those differences without keeping a verified creation locked forever.
+            boolean reflected=createApplied(expected,actual);
+            return result(State.CONFIRMED,mapping,reflected?"CREATED_CONFIRMED":"CREATED_VALUES_DIFFER",
+                    reflected?"쿠팡 등록·옵션 연결을 확인했습니다.":"등록·옵션 연결을 확인했습니다. 현재 상품값이 등록 요청과 다릅니다. 상품 수정에서 최신값을 확인해 주세요.",accepted.attemptedAt());
         }
         if("NEEDS_CORRECTION".equals(accepted.code()))return accepted;
         return expectedMatches(step,mapping)?result(State.CONFIRMED,mapping,"VERIFIED","쿠팡 반영을 확인했습니다.",accepted.attemptedAt()):accepted;
@@ -375,41 +476,8 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
         for(var item:product.path("items"))if(Objects.equals(option.sellerProductItemId(),optionalId(item.path("sellerProductItemId")))&&Objects.equals(option.vendorItemId(),optionalId(item.path("vendorItemId"))))return item;
         return json.createObjectNode();
     }
-    Result parseOutcome(byte[] body,Step step,Mapping mapping,Instant attempted){
-        JsonNode root;
-        try{root=json.readTree(body);}catch(RuntimeException e){return result(State.UNKNOWN,mapping,"INVALID_RESPONSE","쿠팡 처리 결과를 확인하지 못했습니다.",attempted);}
-        if(root==null||!root.isObject())return result(State.UNKNOWN,mapping,"INVALID_RESPONSE","쿠팡 처리 결과를 확인하지 못했습니다.",attempted);
-        var response=root;
-        if("200".equals(scalar(root.path("code")))&&root.path("data").isObject())response=root.path("data");
-        String code=scalar(response.path("code"));
-        if("ERROR".equals(code)){
-            var reason=CoupangWriteRejection.classify(root);
-            return result(State.FAILED,mapping,reason==null?"HTTP_200_REJECTED":reason,reason==null?CoupangWriteRejection.message("HTTP_200_REJECTED"):CoupangWriteRejection.message(reason),attempted);
-        }
-        if(!"SUCCESS".equals(code))return result(State.UNKNOWN,mapping,"INVALID_RESPONSE","쿠팡 처리 결과를 확인하지 못했습니다.",attempted);
-        if(step.type()==Type.CREATE){
-            String id=optionalId(response.path("data"));if(id==null)return result(State.UNKNOWN,mapping,"INVALID_RESPONSE","쿠팡 등록 결과의 상품 ID를 확인하지 못했습니다.",attempted);
-            mapping=new Mapping(mapping.accountKey(),id,mapping.options());
-        }
-        boolean warning=hasWarnings(root);
-        // Raw messages can contain contacts or other seller data; only fixed classification crosses the API.
-        return result(State.ACCEPTED,mapping,warning?"NEEDS_CORRECTION":"SUCCESS",warning?"상품은 저장되었으나 옵션 속성 보완이 필요합니다.":"쿠팡이 요청을 접수했습니다.",attempted);
-    }
-    private static boolean hasWarnings(JsonNode n){
-        if(n.isObject())for(var entry:n.properties()){
-            var value=entry.getValue();if("errorItems".equals(entry.getKey())&&value.isArray()&&!value.isEmpty())return true;
-            if("details".equals(entry.getKey())&&value.isString()&&!value.asString().isBlank()&&!Set.of("[]","{}").contains(value.asString().trim()))return true;
-            if(hasWarnings(value))return true;
-        }else if(n.isArray())for(var value:n)if(hasWarnings(value))return true;
-        return false;
-    }
-    Result httpFailure(int status,byte[] body,Mapping mapping,Instant now){
-        String reason=null;
-        if(status>=400&&status<500&&!Set.of(401,403,429).contains(status))try{reason=CoupangWriteRejection.classify(json.readTree(body));}catch(RuntimeException ignored){}
-        String code=reason!=null?reason:switch(status){case 401->"AUTHENTICATION";case 403->"PERMISSION";case 429->"RATE_LIMIT";default->status>=500?"UPSTREAM":"HTTP_"+status+"_REJECTED";};
-        String message=switch(status){case 401->"쿠팡 인증에 실패했습니다.";case 403->"쿠팡 접근이 거절되었습니다. 허용 IP와 권한을 확인해 주세요.";case 429->"쿠팡 호출 제한입니다. 잠시 후 다시 시도해 주세요.";default->status>=500?"쿠팡 처리 결과를 확인하지 못했습니다.":"쿠팡이 전송을 거절했습니다. 입력 규격을 확인해 주세요.";};
-        return result(status>=500||status<400?State.UNKNOWN:State.FAILED,mapping,code,CoupangWriteRejection.message(code)==null?message:CoupangWriteRejection.message(code),now);
-    }
+    Result parseOutcome(byte[] body,Step step,Mapping mapping,Instant attempted){return new CoupangWriteOutcome(json).parseOutcome(body,step,mapping,attempted);}
+    Result httpFailure(int status,byte[] body,Mapping mapping,Instant now){return new CoupangWriteOutcome(json).httpFailure(status,body,mapping,now);}
     private Step currentStep(Type type,String optionId,String vendorItemId,String value,JsonNode inventory){
         var before=json.createObjectNode();var after=json.createObjectNode();String key=switch(type){case ORIGINAL_PRICE->"originalPrice";case PRICE->"salePrice";case STOCK->"amountInStock";default->throw new IllegalArgumentException("Not a current value step");};
         value=number(value).toString();before.set(key,inventory.path(key));after.set(key,json.readTree(value));
@@ -428,29 +496,38 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
         var rows=json.createArrayNode();int order=0;
         for(var i:selected){
             String url;
-            if(i.assetId()!=null){var a=assets.metadata(actor,i.assetId());if(a.bytes()>3*1024*1024||a.width()!=a.height()||a.width()<500||a.width()>5000)throw invalid("쿠팡 이미지는 3MiB 이하, 500~5000px 정사각형이어야 합니다.");url=assets.submissionUrl(actor,i.assetId());}
-            else url=https(i.url()); // Dimensions remain unverified; Coupang owns downloading this public seller URL.
+            if(i.assetId()!=null){if(inspection!=null)inspection.require(actor,List.of(new cc.ataglace.molebutter.media.api.ImageInspection.Input("COUPANG",i.imageType(),o.id(),i.id(),i.url(),i.assetId(),false)));var a=assets.readEdited(actor,i.assetId()).metadata();var errors=cc.ataglace.molebutter.media.api.ImageRules.errors("COUPANG",i.imageType(),a.mimeType(),a.width(),a.height(),a.bytes());if(!errors.isEmpty())throw invalid(String.join(" ",errors));url=assets.submissionUrl(actor,i.assetId());var edited=json.createObjectNode();edited.put("imageOrder",order++);edited.put("imageType",i.imageType());edited.put("vendorPath",url);rows.add(edited);continue;}
             ObjectNode row=json.createObjectNode();
-            if(source!=null&&i.assetId()==null)for(var old:source.path("images"))if(Objects.equals(i.url(),CoupangProductClient.imageUrl(optionalText(old.path("cdnPath")),optionalText(old.path("vendorPath")))))row=(ObjectNode)old.deepCopy();
+            if(source!=null)for(var old:source.path("images"))if(Objects.equals(i.url(),CoupangProductClient.imageUrl(optionalText(old.path("cdnPath")),optionalText(old.path("vendorPath")))))row=(ObjectNode)old.deepCopy();
+            url=https(i.url());
+            if(row.isEmpty()){
+                var a=r2.resolve(actor,url);var errors=cc.ataglace.molebutter.media.api.ImageRules.errors("COUPANG",i.imageType(),a.mimeType(),a.width(),a.height(),a.bytes());if(!errors.isEmpty())throw invalid(String.join(" ",errors));
+                url=a.url();if(url.length()>200)throw invalid("쿠팡 이미지 주소는 200자 이하로 선택해 주세요.");
+            }
             row.put("imageOrder",order++);row.put("imageType",i.imageType());
             if(!row.hasNonNull("cdnPath")&&!row.hasNonNull("vendorPath"))row.put("vendorPath",https(url));
             rows.add(row);
         }
         return rows;
     }
-    private ArrayNode contents(Long actor,Document d,MarketConfig m,Option o){
+    private ArrayNode contents(Long actor,Document d,MarketConfig m,Option o,ObjectNode source){
         var rows=json.createArrayNode();String override=m.overrides()==null?null:m.overrides().description();
-        var selected=override!=null?List.of(new Content("override","HTML",override,o.id())):d.media().contents().stream().filter(c->c.optionId()==null||c.optionId().equals(o.id())).toList();
+        var selected=override!=null?List.of(new Content("override","HTML",override,o.id())):MarketplaceDocuments.contentsFor(d,o.id());
         if(selected.isEmpty())throw invalid("옵션 설명을 입력해 주세요.");
-        for(var c:selected){boolean image="IMAGE".equals(c.type());var row=json.createObjectNode();row.put("contentsType",image?"IMAGE":"HTML");var details=json.createArrayNode();var part=json.createObjectNode();part.put("detailType",image?"IMAGE":"TEXT");part.put("content",image?https(c.value()):publishHtml(actor,d,c.value()));details.add(part);row.set("contentDetails",details);rows.add(row);}return rows;
+        String previous=previousDescription(source);
+        for(var c:selected){boolean image="IMAGE".equals(c.type());if(inspection!=null)inspection.require(actor,cc.ataglace.molebutter.media.api.ImageInspection.descriptionInputs("COUPANG",image?"<img src=\""+escape(c.value())+"\">":c.value(),previous));String description=cc.ataglace.molebutter.media.api.EditedImages.description(actor,image?"<img src=\""+escape(c.value())+"\">":c.value(),previous,r2,assets);var row=json.createObjectNode();row.put("contentsType",image?"IMAGE":"HTML");var details=json.createArrayNode();var part=json.createObjectNode();part.put("detailType",image?"IMAGE":"TEXT");part.put("content",image?(c.assetId()!=null?assets.submissionUrl(actor,c.assetId()):https(c.value())):publishHtml(actor,d,description));details.add(part);row.set("contentDetails",details);rows.add(row);}return rows;
     }
     private String publishHtml(Long actor,Document d,String html){
         String result=html;
-        for(var image:d.media().images())if(image.assetId()!=null&&result.contains("/api/marketplaces/assets/"+image.assetId()))result=result.replace("/api/marketplaces/assets/"+image.assetId(),assets.submissionUrl(actor,image.assetId()));
-        if(result.contains("/api/marketplaces/assets/")||result.contains("/marketplace-images/" )&&!result.contains("https://"))throw invalid("설명 이미지의 공개 주소를 확인해 주세요.");
+        if(result.contains("/api/marketplaces/assets/")||result.contains("blob:"))throw invalid("기존 로컬 설명 이미지를 R2 이미지로 다시 선택해 주세요.");
         var pattern=java.util.regex.Pattern.compile("<img\\b[^>]*?\\bsrc\\s*=\\s*(?:[\\\"']([^\\\"']*)[\\\"']|([^\\s>]+))",java.util.regex.Pattern.CASE_INSENSITIVE|java.util.regex.Pattern.DOTALL);
         var matcher=pattern.matcher(result);while(matcher.find())https(matcher.group(1)==null?matcher.group(2):matcher.group(1));
         return result;
+    }
+    private static String previousDescription(ObjectNode source){
+        if(source==null)return "";var html=new StringBuilder();for(var content:source.path("contents"))for(var part:content.path("contentDetails")){
+            String value=part.path("content").asString("");if(part.path("detailType").asString("").equals("IMAGE")&&!value.startsWith("https://")&&value.matches("(?:vendor_inventory|image)/[a-zA-Z0-9_./%-]+"))value="https://img1a.coupangcdn.com/image/"+value.replaceFirst("^image/","");if(part.path("detailType").asString("").equals("IMAGE"))html.append("<img src=\"").append(escape(value)).append("\">");else html.append(value);
+        }return html.toString();
     }
     private boolean sameContents(MarketConfig market,String itemId,Document d,MarketConfig m,Option o){
         var original=original(market,itemId);if(original==null)return false;
@@ -460,12 +537,12 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
             else expected.add("HTML|"+("HTML".equals(c.type())?value:"<pre>"+escape(value)+"</pre>"));
         }
         if(m.overrides()!=null&&m.overrides().description()!=null)return false;
-        return expected.equals(d.media().contents().stream().filter(c->c.optionId()==null||c.optionId().equals(o.id())).map(c->c.type()+"|"+c.value()).toList());
+        return expected.equals(MarketplaceDocuments.contentsFor(d,o.id()).stream().map(c->c.type()+"|"+c.value()).toList());
     }
     private cc.ataglace.molebutter.marketplace.api.CoupangEditor.EditOption original(MarketConfig m,String itemId){return m.coupang()==null||m.coupang().source()==null?null:m.coupang().source().options().stream().filter(i->Objects.equals(i.sellerProductItemId(),itemId)).findFirst().orElse(null);}
     private ArrayNode attributeRows(CoupangOption cfg,Option o){
         var rows=json.createArrayNode();if(cfg!=null)for(var a:nullableList(cfg.attributes())){var row=json.createObjectNode();row.put("attributeTypeName",a.name());row.put("attributeValueName",a.value());row.put("exposed",a.exposed());rows.add(row);}
-        for(var a:o.attributes())if(!rows.valueStream().anyMatch(r->a.name().equals(scalar(r.path("attributeTypeName"))))){var row=json.createObjectNode();row.put("attributeTypeName",a.name());row.put("attributeValueName",a.value());row.put("exposed","EXPOSED");rows.add(row);}return rows;
+        if(cfg==null)for(var a:o.attributes())if(!rows.valueStream().anyMatch(r->a.name().equals(scalar(r.path("attributeTypeName"))))){var row=json.createObjectNode();row.put("attributeTypeName",a.name());row.put("attributeValueName",a.value());row.put("exposed","EXPOSED");rows.add(row);}return rows;
     }
     private ArrayNode noticeRows(CoupangOption cfg){var rows=json.createArrayNode();if(cfg!=null)for(var n:nullableList(cfg.notices())){var row=json.createObjectNode();row.put("noticeCategoryName",n.category());row.put("noticeCategoryDetailName",n.name());row.put("content",n.content());rows.add(row);}return rows;}
     private ArrayNode certificationRows(CoupangOption cfg){var rows=json.createArrayNode();if(cfg!=null)for(var c:nullableList(cfg.certifications())){if(!nullableList(c.attachments()).isEmpty())throw invalid("인증 첨부의 전송 경로 확인이 필요합니다.");var row=json.createObjectNode();row.put("certificationType",c.type());row.put("certificationCode",c.code());rows.add(row);}return rows;}
@@ -494,14 +571,24 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
     }
     private static String noticeKey(JsonNode row){return scalar(row.path("noticeCategoryName"))+"|"+scalar(row.path("noticeCategoryDetailName"));}
     private Mapping mappingFor(Mapping original,JsonNode actual,JsonNode expected){
+        if(!actual.path("items").isArray()||actual.path("items").size()!=original.options().size()
+                ||expected.path("items").size()!=original.options().size())throw invalid("등록 옵션 구성이 변경되었습니다.");
         var options=new ArrayList<OptionMapping>();
         for(int n=0;n<original.options().size();n++){
-            JsonNode row=null;
-            var wanted=expected.path("items").get(n);for(var got:actual.path("items"))if(wanted.path("externalVendorSku").equals(got.path("externalVendorSku"))&&wanted.path("itemName").equals(got.path("itemName"))){if(row!=null)throw invalid("등록 옵션 연결을 확인해 주세요.");row=got;}
+            JsonNode row=null;var link=original.options().get(n);var wanted=expected.path("items").get(n);
+            for(var got:actual.path("items"))if(link.sellerProductItemId()!=null
+                    ?Objects.equals(link.sellerProductItemId(),optionalId(got.path("sellerProductItemId")))
+                    :wanted.path("externalVendorSku").equals(got.path("externalVendorSku"))&&wanted.path("itemName").equals(got.path("itemName"))){if(row!=null)throw invalid("등록 옵션 연결을 확인해 주세요.");row=got;}
+            // Only use a unique seller code inside the product ID returned by the POST.
+            // Preserve verified option IDs if display names or seller codes later change.
+            if(row==null&&link.sellerProductItemId()==null)for(var got:actual.path("items"))if(wanted.path("externalVendorSku").equals(got.path("externalVendorSku"))){if(row!=null)throw invalid("등록 옵션 연결을 확인해 주세요.");row=got;}
             if(row==null||optionalId(row.path("sellerProductItemId"))==null)throw invalid("등록 옵션 연결을 확인해 주세요.");
+            if(link.vendorItemId()!=null&&!Objects.equals(link.vendorItemId(),optionalId(row.path("vendorItemId"))))throw invalid("등록 옵션 번호가 변경되었습니다.");
             options.add(new OptionMapping(original.options().get(n).optionId(),optionalId(row.path("sellerProductItemId")),optionalId(row.path("vendorItemId"))));
         }
-        return new Mapping(original.accountKey(),optionalId(actual.path("sellerProductId")),List.copyOf(options));
+        var mapping=new Mapping(original.accountKey(),optionalId(actual.path("sellerProductId")),List.copyOf(options));
+        if(!cc.ataglace.molebutter.marketplace.api.MarketplaceCreationConfirmation.completeOptions(mapping,original.options().stream().map(OptionMapping::optionId).toList(),false))throw invalid("등록 옵션 연결이 중복되거나 누락되었습니다.");
+        return mapping;
     }
     private boolean matchesCreate(JsonNode expected,JsonNode actual){
         for(String key:List.of("sellerProductName","displayCategoryCode","vendorId"))if(!expected.path(key).equals(actual.path(key)))return false;
@@ -577,7 +664,7 @@ final class DefaultCoupangWriteGateway implements MarketplaceWriteGateway {
         return false;
     }
     private String wire(JsonNode n){String value=json.writeValueAsString(n);if(value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>5*1024*1024)throw invalid("쿠팡 전송 내용은 5MiB 이하로 줄여 주세요.");return value;}
-    private void diff(String path,JsonNode before,JsonNode after,List<Change> changes){if(before.equals(after))return;if(before.isObject()||after.isObject()){var keys=new LinkedHashSet<String>();if(before.isObject())before.properties().forEach(p->keys.add(p.getKey()));if(after.isObject())after.properties().forEach(p->keys.add(p.getKey()));for(var key:keys)diff(path+key+".",before.path(key),after.path(key),changes);return;}if(before.isArray()||after.isArray()){for(int n=0;n<Math.max(before.size(),after.size());n++){var a=before.isArray()&&n<before.size()?before.get(n):json.nullNode();var b=after.isArray()&&n<after.size()?after.get(n):json.nullNode();diff(path+"["+(n+1)+"].",a,b,changes);}return;}String a=summary(before),b=summary(after);if(before.isString()&&after.isString()&&Math.max(before.asString().length(),after.asString().length())>200){String x=before.asString(),y=after.asString();int at=0;while(at<Math.min(x.length(),y.length())&&x.charAt(at)==y.charAt(at))at++;int start=Math.max(0,at-70);a=snippet(x,start);b=snippet(y,start);}changes.add(new Change(path.replaceFirst("\\.$",""),a,b));}
+    private void diff(String path,JsonNode before,JsonNode after,List<Change> changes){if(path.equals("vendorUserId."))return;if(before.equals(after))return;if(before.isObject()||after.isObject()){var keys=new LinkedHashSet<String>();if(before.isObject())before.properties().forEach(p->keys.add(p.getKey()));if(after.isObject())after.properties().forEach(p->keys.add(p.getKey()));for(var key:keys)diff(path+key+".",before.path(key),after.path(key),changes);return;}if(before.isArray()||after.isArray()){for(int n=0;n<Math.max(before.size(),after.size());n++){var a=before.isArray()&&n<before.size()?before.get(n):json.nullNode();var b=after.isArray()&&n<after.size()?after.get(n):json.nullNode();diff(path+"["+(n+1)+"].",a,b,changes);}return;}String a=summary(before),b=summary(after);if(before.isString()&&after.isString()&&Math.max(before.asString().length(),after.asString().length())>200){String x=before.asString(),y=after.asString();int at=0;while(at<Math.min(x.length(),y.length())&&x.charAt(at)==y.charAt(at))at++;int start=Math.max(0,at-70);a=snippet(x,start);b=snippet(y,start);}changes.add(new Change(path.replaceFirst("\\.$",""),a,b));}
     private static String snippet(String value,int start){start=Math.min(start,value.length());int end=Math.min(value.length(),start+200);return (start>0?"…":"")+value.substring(start,end)+(end<value.length()?"…":"");}
     private String summary(JsonNode n){if(n.isMissingNode()||n.isNull())return null;if(n.isArray()||n.isObject())return "정보 "+n.size()+"개";String v=scalar(n);return v!=null&&v.length()>200?v.substring(0,200)+"…":v;}
     private static Result result(State s,Mapping m,String c,String message,Instant at){return new Result(s,m,c,message,at);}

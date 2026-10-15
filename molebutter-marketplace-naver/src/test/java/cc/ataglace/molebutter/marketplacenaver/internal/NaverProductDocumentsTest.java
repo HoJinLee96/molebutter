@@ -25,4 +25,11 @@ class NaverProductDocumentsTest {
         var malformed=new Document(draft.id(),draft.revision(),draft.common(),draft.options(),draft.stockMode(),draft.productQuantity(),draft.services(),draft.media(),draft.delivery(),draft.selectedMarkets(),null);
         assertThat(documents.normalize(malformed)).isSameAs(malformed);verifyNoInteractions(catalog,gateway);
     }
+    @Test void nativeNormalizationPreservesCommonBrandSelectionWithoutAddingNativeFieldPatches(){
+        var original=documents.document(null,null,new NaverEditor.Input(Map.of("originProduct.salePrice","1000"),"NONE",List.of(),List.of(),List.of(),""));
+        var config=original.markets().get(Market.NAVER);var n=config.naver();
+        var selected=new Naver(n.channelId(),n.status(),n.saleType(),n.originCode(),n.deliveryTemplateId(),n.afterServiceTelephone(),n.attributes(),n.notices(),n.channelProductName(),n.naverShoppingRegistration(),n.channelProductDisplayStatusType(),n.editorInput(),"9007199254740993");
+        var input=new Document(original.id(),original.revision(),original.common(),original.options(),original.stockMode(),original.productQuantity(),original.services(),original.media(),original.delivery(),original.selectedMarkets(),Map.of(Market.NAVER,new MarketConfig(config.categoryCode(),config.overrides(),config.coupang(),selected,config.esm())));
+        var normalized=documents.normalize(MarketplaceDocuments.normalize(input));assertThat(normalized.markets().get(Market.NAVER).naver().brandId()).isEqualTo("9007199254740993");assertThat(documents.input(normalized).fields()).doesNotContainKey("originProduct.detailAttribute.naverShoppingSearchInfo.brandId");assertThat(documents.input(normalized).fields().get("originProduct.salePrice")).isInstanceOf(Number.class);verifyNoInteractions(catalog,gateway);
+    }
 }

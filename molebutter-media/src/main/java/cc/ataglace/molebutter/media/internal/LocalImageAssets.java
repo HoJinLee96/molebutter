@@ -56,7 +56,8 @@ public class LocalImageAssets implements ImageAssets {
         }catch(IOException e){removeFile(file);throw new OperationFailure("이미지를 저장하지 못했습니다. 다시 시도해 주세요.");}
     }
     record Inspected(String mimeType,int width,int height) {}
-    static Inspected inspect(byte[] bytes){
+    static Inspected inspect(byte[] bytes){return inspect(bytes,false);}
+    static Inspected inspect(byte[] bytes,boolean existingWebp){
         if(bytes==null||bytes.length==0||bytes.length>MAX_BYTES)throw new InputValidationFailure("이미지는 10MiB 이하 JPG·PNG 파일을 선택해 주세요.");
         try(var input=ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))){
             var readers=ImageIO.getImageReaders(input);
@@ -64,11 +65,11 @@ public class LocalImageAssets implements ImageAssets {
             var reader=readers.next();
             try{
                 String format=reader.getFormatName().toLowerCase(Locale.ROOT);
-                if(!Set.of("png","jpeg","jpg").contains(format))throw new InputValidationFailure("JPG·PNG 이미지가 필요합니다.");
+                if(!Set.of("png","jpeg","jpg").contains(format)&&!(existingWebp&&format.equals("webp")))throw new InputValidationFailure("JPG·PNG 이미지가 필요합니다.");
                 reader.setInput(input,true,true);int width=reader.getWidth(0),height=reader.getHeight(0);
                 if(width<=0||height<=0||(long)width*height>MAX_PIXELS)throw new InputValidationFailure("이미지는 2,500만 픽셀 이하로 선택해 주세요.");
                 var decoded=reader.read(0);if(decoded==null)throw new InputValidationFailure("이미지를 읽지 못했습니다.");decoded.flush();
-                return new Inspected(format.equals("png")?"image/png":"image/jpeg",width,height);
+                return new Inspected(format.equals("png")?"image/png":format.equals("webp")?"image/webp":"image/jpeg",width,height);
             }finally{reader.dispose();}
         }catch(IOException|IllegalArgumentException e){if(e instanceof InputValidationFailure input)throw input;throw new InputValidationFailure("이미지를 읽지 못했습니다. JPG·PNG 파일을 확인해 주세요.");}
     }
@@ -78,6 +79,12 @@ public class LocalImageAssets implements ImageAssets {
         catch(IOException e){throw new OperationFailure("이미지를 읽지 못했습니다. 다시 업로드해 주세요.");}
     }
     @Override public Asset metadata(Long actor,String id){return stored(actor,id).asset();}
+    @Override public Asset editedMetadata(Long actor,String id){
+        var image=metadata(actor,id);if(db.queryForObject("SELECT COUNT(*) FROM marketplace_image_edit WHERE asset_id=?",Long.class,id)!=1)throw new InputValidationFailure("기존 로컬 이미지를 R2 이미지로 다시 선택해 주세요.");return image;
+    }
+    private Set<String> dependencies(Set<String> ids){
+        var result=new HashSet<>(ids);for(String id:ids)checkId(id);for(String id:ids)result.addAll(db.queryForList("SELECT original_asset_id FROM marketplace_image_edit WHERE asset_id=?",String.class,id));return result;
+    }
     /** Only a saved draft image may be selected for external delivery. URLs never contain its private ID. */
     @Override public String publicUrl(Long actor,String id){return publicUrl(actor,id,false);}
     /** Submission preparation may use the actor's upload without modifying the common reference. */
@@ -90,7 +97,7 @@ public class LocalImageAssets implements ImageAssets {
             Long references=db.queryForObject("SELECT COUNT(*) FROM marketplace_draft_asset WHERE asset_id=?",Long.class,id);
             if(references==null||references==0){
                 Long owned=db.queryForObject("SELECT COUNT(*) FROM marketplace_asset WHERE id=? AND created_by=?",Long.class,id,actor);
-                Long pins=db.queryForObject("SELECT COUNT(*) FROM marketplace_execution_asset WHERE asset_id=?",Long.class,id);
+                Long pins=db.queryForObject("SELECT (SELECT COUNT(*) FROM marketplace_execution_asset WHERE asset_id=?) + (SELECT COUNT(*) FROM marketplace_listing_history_asset WHERE asset_id=?)",Long.class,id,id);
                 if(!submission||((owned==null||owned==0)&&(pins==null||pins==0)))throw new InputValidationFailure("전송할 이미지의 소유자와 저장 참조를 확인해 주세요.");
             }
             var tokens=db.queryForList("SELECT token FROM marketplace_asset_publication WHERE asset_id=?",String.class,id);
@@ -130,7 +137,7 @@ public class LocalImageAssets implements ImageAssets {
     @Override @Transactional(propagation=Propagation.MANDATORY)
     public void replaceReferences(Long actor,String draftId,Set<String> ids){
         // Save and reaping lock the same asset rows, so a referenced image cannot be deleted concurrently.
-        var sorted=new TreeSet<>(ids);
+        var sorted=new TreeSet<>(dependencies(ids));
         var previous=db.queryForList("SELECT asset_id FROM marketplace_draft_asset WHERE draft_id=?",String.class,Long.parseLong(draftId));
         var locked=new TreeSet<>(sorted);locked.addAll(previous);
         for(String id:locked)db.queryForList("SELECT id FROM marketplace_asset WHERE id=? FOR UPDATE",String.class,id);
@@ -141,12 +148,19 @@ public class LocalImageAssets implements ImageAssets {
         }
         db.update("DELETE FROM marketplace_draft_asset WHERE draft_id=?",Long.parseLong(draftId));
         for(String id:sorted){db.update("INSERT INTO marketplace_draft_asset(draft_id,asset_id) VALUES(?,?)",Long.parseLong(draftId),id);db.update("UPDATE marketplace_asset SET pending_delete_at=NULL WHERE id=?",id);}
-        for(String id:previous)if(!sorted.contains(id))db.update("UPDATE marketplace_asset a SET pending_delete_at=CURRENT_TIMESTAMP(6) WHERE id=? AND NOT EXISTS(SELECT 1 FROM marketplace_draft_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM marketplace_execution_asset r WHERE r.asset_id=a.id)",id);
+        for(String id:previous)if(!sorted.contains(id))db.update("UPDATE marketplace_asset a SET pending_delete_at=CURRENT_TIMESTAMP(6) WHERE id=? AND NOT EXISTS(SELECT 1 FROM marketplace_draft_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM marketplace_execution_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM marketplace_listing_history_asset h WHERE h.asset_id=a.id)",id);
+    }
+    @Override @Transactional(propagation=Propagation.MANDATORY)
+    public void pinListingHistory(Long actor,long historyId,String draftId,Set<String> ids){
+        for(String id:new TreeSet<>(dependencies(ids))){checkId(id);var found=db.queryForList("SELECT id FROM marketplace_asset WHERE id=? FOR UPDATE",String.class,id);if(found.isEmpty())throw new InputValidationFailure("이력에 보존할 이미지를 찾을 수 없습니다.");
+            Long allowed=db.queryForObject("SELECT COUNT(*) FROM marketplace_asset a WHERE a.id=? AND (a.created_by=? OR EXISTS(SELECT 1 FROM marketplace_draft_asset d WHERE d.asset_id=a.id AND d.draft_id=?))",Long.class,id,actor,Long.parseLong(draftId));if(allowed==null||allowed!=1)throw new InputValidationFailure("이력 이미지의 소유자를 확인해 주세요.");
+            db.update("INSERT INTO marketplace_listing_history_asset(history_id,asset_id) VALUES(?,?)",historyId,id);db.update("UPDATE marketplace_asset SET pending_delete_at=NULL WHERE id=?",id);
+        }
     }
     @Override @Transactional(propagation=Propagation.MANDATORY)
     public void pinReferences(Long actor,long submissionId,String draftId,Set<String> ids){
         // Pins and collection use the same rows and lock order as draft reference replacement.
-        for(String id:new TreeSet<>(ids)){
+        for(String id:new TreeSet<>(dependencies(ids))){
             checkId(id);
             var found=db.queryForList("SELECT id FROM marketplace_asset WHERE id=? FOR UPDATE",String.class,id);
             if(found.isEmpty())throw new InputValidationFailure("전송할 이미지를 찾을 수 없습니다.");
@@ -164,17 +178,18 @@ public class LocalImageAssets implements ImageAssets {
         var ids=db.queryForList("SELECT asset_id FROM marketplace_execution_asset WHERE submission_id=? ORDER BY asset_id",String.class,submissionId);
         for(String id:ids)db.queryForList("SELECT id FROM marketplace_asset WHERE id=? FOR UPDATE",String.class,id);
         db.update("DELETE FROM marketplace_execution_asset WHERE submission_id=?",submissionId);
-        for(String id:ids)db.update("UPDATE marketplace_asset a SET pending_delete_at=COALESCE(pending_delete_at,CURRENT_TIMESTAMP(6)) WHERE id=? AND NOT EXISTS(SELECT 1 FROM marketplace_draft_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM marketplace_execution_asset r WHERE r.asset_id=a.id)",id);
+        for(String id:ids)db.update("UPDATE marketplace_asset a SET pending_delete_at=COALESCE(pending_delete_at,CURRENT_TIMESTAMP(6)) WHERE id=? AND NOT EXISTS(SELECT 1 FROM marketplace_draft_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM marketplace_execution_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM marketplace_listing_history_asset h WHERE h.asset_id=a.id)",id);
     }
     @Override @Scheduled(fixedDelay=3600000,initialDelay=3600000)
     public void reapUnreferenced(){
         // Bounded batches; failed deletion keeps metadata for a later attempt.
-        var ids=db.queryForList("SELECT id FROM marketplace_asset a WHERE a.pending_delete_at < CURRENT_TIMESTAMP(6)-INTERVAL 24 HOUR AND NOT EXISTS(SELECT 1 FROM marketplace_draft_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM marketplace_execution_asset r WHERE r.asset_id=a.id) LIMIT 100",String.class);
+        var ids=db.queryForList("SELECT id FROM marketplace_asset a WHERE a.pending_delete_at < CURRENT_TIMESTAMP(6)-INTERVAL 24 HOUR AND NOT EXISTS(SELECT 1 FROM marketplace_image_edit e WHERE e.original_asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM marketplace_draft_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM marketplace_execution_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM marketplace_listing_history_asset h WHERE h.asset_id=a.id) LIMIT 100",String.class);
         for(String id:ids)transactions.executeWithoutResult(tx->{
             var paths=db.queryForList("SELECT relative_path FROM marketplace_asset WHERE id=? AND pending_delete_at < CURRENT_TIMESTAMP(6)-INTERVAL 24 HOUR FOR UPDATE",String.class,id);
             if(paths.isEmpty())return;
             Long count=db.queryForObject("SELECT COUNT(*) FROM marketplace_draft_asset WHERE asset_id=?",Long.class,id);if(count!=0)return;
             Long executions=db.queryForObject("SELECT COUNT(*) FROM marketplace_execution_asset WHERE asset_id=?",Long.class,id);if(executions!=0)return;
+            Long histories=db.queryForObject("SELECT COUNT(*) FROM marketplace_listing_history_asset WHERE asset_id=?",Long.class,id);if(histories!=0)return;
             try{Files.deleteIfExists(resolveFile(paths.getFirst()));db.update("DELETE FROM marketplace_asset WHERE id=?",id);}
             catch(IOException e){/* Preserve metadata; the next cleanup can retry without disclosing filesystem paths. */}
         });

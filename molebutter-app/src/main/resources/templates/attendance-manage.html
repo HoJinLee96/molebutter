@@ -18,7 +18,7 @@
             <div class="field"><label for="records-to">종료일</label><input id="records-to" name="to" type="date" required></div>
             <div class="field field--search"><label for="records-q">직원 이름 / 이메일</label><input id="records-q" name="q" maxlength="255" type="search" placeholder="이름 또는 이메일"></div>
             <div class="field field--short"><label for="records-status">근태 상태</label><select id="records-status" name="status"><option value="">전체</option><option value="COMPLETED">퇴근 완료</option><option value="WORKING">근무 중</option><option value="ON_BREAK">휴게 중</option><option value="MISSING">퇴근 누락</option></select></div>
-            <button class="btn primary" type="submit">조회</button><button id="records-download" class="btn" type="button">CSV 다운로드</button>
+            <button id="records-search" class="btn primary" type="submit">조회</button><button id="records-download" class="btn" type="button">CSV 다운로드</button>
         </form>
         <p id="records-count" class="field-hint" role="status"></p>
         <div class="table-wrap"><table class="data"><thead><tr><th>직원</th><th>계정 상태</th><th>근무일</th><th>근태 상태</th><th>출근</th><th>퇴근</th><th>확정 순근무</th><th>확정 휴게</th><th>상세</th></tr></thead><tbody id="records-body"></tbody></table></div>
@@ -28,7 +28,7 @@
         <form id="summary-filter" class="toolbar attendance-filters">
             <div class="field"><label for="summary-month">집계 월</label><input id="summary-month" name="month" type="month" required></div>
             <div class="field field--search"><label for="summary-q">직원 이름 / 이메일</label><input id="summary-q" name="q" maxlength="255" type="search" placeholder="이름 또는 이메일"></div>
-            <button class="btn primary" type="submit">조회</button><button id="summary-download" class="btn" type="button">CSV 다운로드</button>
+            <button id="summary-search" class="btn primary" type="submit">조회</button><button id="summary-download" class="btn" type="button">CSV 다운로드</button>
         </form>
         <p id="summary-count" class="field-hint" role="status"></p>
         <div class="table-wrap"><table class="data"><thead><tr><th>직원</th><th>계정 상태</th><th>기록일</th><th>퇴근 완료일</th><th>확정 순근무</th><th>확정 휴게</th><th>근무 중</th><th>휴게 중</th><th>퇴근 누락</th><th>미확정 합계</th></tr></thead><tbody id="summary-body"></tbody></table></div>

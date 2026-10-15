@@ -17,18 +17,21 @@ class ModuleArchitectureTest {
         Map.entry("procurement",Set.of("common","identity","operations","catalog")),
         Map.entry("inventory",Set.of("common","identity","operations","catalog")),
         Map.entry("attendance",Set.of("common","identity","operations")),
-        Map.entry("media",Set.of("common","identity")),
+        Map.entry("media",Set.of("common","identity","storage")),
         Map.entry("marketplace",Set.of("common","identity","media")),
         Map.entry("marketplacecoupang",Set.of("common","identity","marketplace","media")),
         Map.entry("marketplacenaver",Set.of("common","identity","marketplace","media")),
+        Map.entry("marketplacelotteon",Set.of("common","identity","marketplace","media")),
+        Map.entry("marketplaceelevenst",Set.of("common","identity","marketplace","media")),
+        Map.entry("marketplaceesm",Set.of("common","identity","marketplace","media")),
         Map.entry("imaging",Set.of("common")),
         Map.entry("storage",Set.of("common")),
-        Map.entry("app",Set.of("common","identity","operations","catalog","procurement","inventory","attendance","marketplace","marketplacecoupang","marketplacenaver","media","imaging","storage")));
+        Map.entry("app",Set.of("common","identity","operations","catalog","procurement","inventory","attendance","marketplace","marketplacecoupang","marketplacenaver","marketplacelotteon","marketplaceesm","marketplaceelevenst","media","imaging","storage")));
     private static String owner(String name) { return name.startsWith(ROOT) ? name.substring(ROOT.length()).split("\\.")[0] : ""; }
     private static boolean api(String name, String owner) { return name.equals(ROOT+owner+".api") || name.startsWith(ROOT+owner+".api."); }
     private static boolean sourceMatches(URI source, String owner) {
         String location = source.toString();
-        String module = switch(owner) { case "marketplacecoupang" -> "marketplace-coupang"; case "marketplacenaver" -> "marketplace-naver"; default -> owner; };
+        String module = switch(owner) { case "marketplacecoupang" -> "marketplace-coupang"; case "marketplacenaver" -> "marketplace-naver"; case "marketplacelotteon" -> "marketplace-lotteon"; case "marketplaceesm" -> "marketplace-esm"; case "marketplaceelevenst" -> "marketplace-elevenst"; default -> owner; };
         return location.contains("/molebutter-"+module+"/") || location.matches(".*[/!]molebutter-"+module+"-[^/!]+\\.jar.*");
     }
     private static void exposed(Type type, Set<Type> visited, Set<String> violations, String contract) {
@@ -83,7 +86,7 @@ class ModuleArchitectureTest {
             boolean persistence=from.equals("common") && pkg.equals(ROOT+"common.persistence");
             if (!(api(pkg,from)||pkg.equals(ROOT+from+".internal")||pkg.startsWith(ROOT+from+".internal.")||persistence))
                 violations.add("Outside API/internal packages: "+name);
-            if (type.getSource().isEmpty() || !sourceMatches(type.getSource().orElseThrow().getUri(),from)) violations.add("Wrong module: "+name);
+            if (type.getSource().isEmpty() || !sourceMatches(type.getSource().orElseThrow().getUri(),from.equals("marketplace") && api(pkg,from) ? "marketplace-contracts" : from)) violations.add("Wrong module: "+name);
             if (api(pkg,from)) publicSignatures(Class.forName(name,false,ModuleArchitectureTest.class.getClassLoader()),violations);
             for (var dependency:type.getDirectDependenciesFromSelf()) {
                 var target=dependency.getTargetClass();String to=owner(target.getName());
@@ -99,6 +102,35 @@ class ModuleArchitectureTest {
                 .importPackages("cc.ataglace.molebutter","db.migration");
         assertThat(violations(classes)).as("Module, package and public signature boundaries").isEmpty();
         slices().matching("cc.ataglace.molebutter.(*)..").should().beFreeOfCycles().check(classes);
+    }
+    @Test void marketplaceContractsContainNoExecutionOrPersistenceDependencies() {
+        var contracts = new ClassFileImporter().withImportOption(location ->
+                !location.toString().contains("/test-classes/")).importPackages(ROOT + "marketplace.api");
+        assertThat(contracts).isNotEmpty();
+        var forbidden = new TreeSet<String>();
+        for (var type : contracts) for (var dependency : type.getDirectDependenciesFromSelf()) {
+            String target = dependency.getTargetClass().getName();
+            if (target.startsWith("org.springframework.") || target.startsWith("java.sql.")
+                    || target.startsWith("javax.sql.") || target.startsWith("java.net.http.")
+                    || target.startsWith("jakarta.persistence.") || target.contains(".internal."))
+                forbidden.add(dependency.getDescription());
+        }
+        assertThat(forbidden).as("계약 모듈은 실행·저장 구현을 참조하지 않는다").isEmpty();
+    }
+    @Test void providersDependOnContractsArtifactInsteadOfCommonImplementation() throws Exception {
+        var root = java.nio.file.Path.of(System.getProperty("user.dir")).toAbsolutePath();
+        while (!java.nio.file.Files.isDirectory(root.resolve("molebutter-marketplace-contracts"))) {
+            root = root.getParent();
+            if (root == null) throw new AssertionError("Reactor root not found");
+        }
+        for (String provider : List.of("coupang", "naver", "lotteon", "esm")) {
+            var pom = java.nio.file.Files.readString(root.resolve("molebutter-marketplace-" + provider + "/pom.xml"));
+            assertThat(pom).as(provider).contains("<artifactId>molebutter-marketplace-contracts</artifactId>")
+                    .doesNotContain("<artifactId>molebutter-marketplace</artifactId>");
+        }
+        assertThat(java.nio.file.Files.exists(root.resolve(
+                "molebutter-marketplace/src/main/java/cc/ataglace/molebutter/marketplace/api")))
+                .as("계약 원본은 한 모듈에서만 관리한다").isFalse();
     }
     @Test void violationsCannotEscapeThroughUnknownPackagesMisplacedModulesOrGenericSignatures() throws Exception {
         var classes=new ClassFileImporter().importClasses(

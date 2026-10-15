@@ -36,6 +36,8 @@ public final class MarketplaceController {
     }
     @GetMapping("/products/{sellerProductId}/edit-data")
     public ApiResponse<CoupangEditor.EditorDocument> edit(@AuthenticationPrincipal UserPrincipal actor,@PathVariable String sellerProductId,@RequestHeader(value="X-Coupang-Request-Id",required=false) String requestId){return ApiResponse.success(editor.edit(actor.userId(),sellerProductId,requestId));}
+    @GetMapping("/categories")
+    public ApiResponse<java.util.List<CoupangEditor.CategoryChoice>> categories(@AuthenticationPrincipal UserPrincipal actor,@RequestHeader(value="X-Coupang-Request-Id",required=false) String requestId){return ApiResponse.success(editor.categories(actor.userId(),requestId));}
     @GetMapping("/categories/{categoryCode}/rules")
     public ApiResponse<CoupangEditor.CategoryRules> category(@AuthenticationPrincipal UserPrincipal actor,@PathVariable String categoryCode,@RequestHeader(value="X-Coupang-Request-Id",required=false) String requestId){return ApiResponse.success(editor.category(actor.userId(),categoryCode,requestId));}
     @PostMapping("/requests/{requestId}/cancel")

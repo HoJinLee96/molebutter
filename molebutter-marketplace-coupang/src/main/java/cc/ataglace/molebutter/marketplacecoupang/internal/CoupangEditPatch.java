@@ -15,11 +15,26 @@ final class CoupangEditPatch {
     private static final ObjectMapper JSON=new ObjectMapper();
     private static final Set<String> COMMON=Set.of("productCode","name","productName","brand","manufacturer","origin","material","model","afterService","taxType","adultOnly");
     private static final Set<String> OPTION=Set.of("name","sku","price","quantity");
-    private static final Set<String> DELIVERY=Set.of("method","carrier","chargeType","charge","freeOver","returnCharge","initialReturnCharge","remoteArea","bundle","outboundCode","returnCode","returnName","returnContact","returnZip","returnAddress","returnAddressDetail");
+    private static final Set<String> DELIVERY=Set.of("method","carrier","chargeType","charge","freeOver","returnCharge","initialReturnCharge","remoteArea","bundle","outboundCode","returnCode","returnName","returnContact","returnZip","returnAddress","returnAddressDetail","jejuCharge","remoteCharge");
     private static final Set<String> OVERRIDE=Set.of("name","productName","brand","description","imageIds");
     private static final Set<String> OPTION_LIST=Set.of("registration","attributes","notices","certifications");
     private static final List<String> FIELDS=List.of("markets.COUPANG.coupang.settings","markets.COUPANG.coupang.delivery","markets.COUPANG.coupang.options.registration");
     private CoupangEditPatch() {}
+    static List<MarketplaceEditing.Change> snapshot(Document d,ObjectMapper json){
+        var out=new ArrayList<MarketplaceEditing.Change>();
+        for(String name:COMMON)if(!Set.of("productCode","model","taxType","adultOnly").contains(name))add(out,d,"common."+name,null,json);
+        for(String name:DELIVERY)add(out,d,"delivery."+name,null,json);
+        var c=d.markets().get(Market.COUPANG).coupang();if(c==null)return out;
+        for(var row:c.settings())if(!"manufacture".equals(row.name())){String p="markets.COUPANG.coupang.settings."+row.name();if(row.name().equals("brandId")||DefaultCoupangWriteGateway.editableField("markets.COUPANG.coupang.settings",row.name()))add(out,d,p,null,json);}
+        for(var o:d.options())for(String name:OPTION)add(out,d,"options."+name,o.id(),json);
+        for(var o:c.options()){
+            for(var row:o.registration())if(!Set.of("salePrice","maximumBuyCount","externalVendorSku").contains(row.name())&&DefaultCoupangWriteGateway.editableField("markets.COUPANG.coupang.options.registration",row.name()))add(out,d,"markets.COUPANG.coupang.options.registration."+row.name(),o.optionId(),json);
+            for(String name:List.of("attributes","notices","certifications"))add(out,d,"markets.COUPANG.coupang.options."+name,o.optionId(),json);
+        }
+        for(String p:List.of("media.images","media.contents")){add(out,d,p,null,json);for(var o:d.options())add(out,d,p,o.id(),json);}
+        add(out,d,"markets.COUPANG.coupang.documents",null,json);return List.copyOf(out);
+    }
+    private static void add(List<MarketplaceEditing.Change> out,Document d,String path,String option,ObjectMapper json){var c=new MarketplaceEditing.Change(path,option,null);var value=value(d,c,json);if(!value.isMissingNode())out.add(new MarketplaceEditing.Change(path,option,json.convertValue(value,Object.class)));}
     static Document apply(Document document,List<MarketplaceEditing.Change> changes){return apply(document,changes,JSON);}
     /** Collection editors submit every row; retain fresh rows that the user did not change. */
     static List<MarketplaceEditing.Change> rebaseCollections(Document observed,Document latest,List<MarketplaceEditing.Change> changes,ObjectMapper json){
@@ -69,7 +84,7 @@ final class CoupangEditPatch {
             var before=new HashMap<String,String>();for(var row:old)before.put(text(row.path("name")),text(row.path("value")));
             for(var key:before.keySet())if(!next.containsKey(key))throw invalid("기존 설정 항목 삭제는 지원하지 않습니다.");
             for(var e:next.entrySet())if(!Objects.equals(before.get(e.getKey()),e.getValue()))result.add(new MarketplaceEditing.Change(c.path()+"."+e.getKey(),c.optionId(),e.getValue()));
-        }var normalized=result.stream().map(CoupangEditPatch::canonical).toList();check(normalized);return normalized;
+        }var normalized=result.stream().map(CoupangEditPatch::canonical).toList();check(normalized,isCreate(observed));return normalized;
     }
     private static MarketplaceEditing.Change canonical(MarketplaceEditing.Change c){
         String path=Map.of("markets.COUPANG.overrides.name","common.name","markets.COUPANG.overrides.brand","common.brand","markets.COUPANG.coupang.settings.manufacture","common.manufacturer","markets.COUPANG.coupang.options.registration.externalVendorSku","options.sku").get(c.path());
@@ -77,7 +92,7 @@ final class CoupangEditPatch {
         return path==null?c:new MarketplaceEditing.Change(path,c.optionId(),c.value());
     }
     static Document apply(Document document,List<MarketplaceEditing.Change> changes,ObjectMapper json){
-        check(changes);ObjectNode root=(ObjectNode)json.valueToTree(document);
+        check(changes,isCreate(document));ObjectNode root=(ObjectNode)json.valueToTree(document);
         for(var c:changes){var value=json.valueToTree(c.value());validateValue(c,value,json);assign(root,c,value,json);aliases(root,c,value,json);}
         try{return MarketplaceDocuments.normalize(json.treeToValue(root,Document.class));}catch(InputValidationFailure e){throw e;}catch(RuntimeException malformed){throw invalid("수정 입력의 형식을 확인해 주세요.");}
     }
@@ -91,16 +106,20 @@ final class CoupangEditPatch {
     }
     static boolean equivalent(JsonNode a,JsonNode b,MarketplaceEditing.Change c){
         if(c.path().equals("options.price")||c.path().equals("options.quantity"))return Objects.equals(number(a),number(b));
+        if(c.path().endsWith(".attributes"))return Objects.equals(CoupangComparison.value(new MarketplaceEditing.Change(c.path(),c.optionId(),a),JSON),CoupangComparison.value(new MarketplaceEditing.Change(c.path(),c.optionId(),b),JSON));
         if(c.path().startsWith("media."))return media(a).equals(media(b));
         if(c.path().endsWith(".registration.searchTags")&&a.isString()&&b.isString())return searchTags(a.asString()).equals(searchTags(b.asString()));
         return a.equals(b);
     }
-    static void check(List<MarketplaceEditing.Change> changes){
+    private static boolean isCreate(Document document){var m=document.markets().get(Market.COUPANG);return m!=null&&(m.coupang()==null||m.coupang().sellerProductId()==null);}
+    static void check(List<MarketplaceEditing.Change> changes){check(changes,false);}
+    private static void check(List<MarketplaceEditing.Change> changes,boolean create){
         if(changes==null||changes.size()>200)throw invalid("변경 항목은 200개 이하로 선택해 주세요.");
         var seen=new HashSet<String>();for(var c:changes){
             if(c==null||c.path()==null||c.value()==null)throw invalid("변경할 항목과 값을 확인해 주세요.");String p=c.path();
             boolean option=p.startsWith("options.")||p.startsWith("markets.COUPANG.coupang.options.");
             boolean allowed=Set.of("stockMode","productQuantity").contains(p)||p.startsWith("common.")&&COMMON.contains(p.substring(7))||p.startsWith("options.")&&OPTION.contains(p.substring(8))||p.startsWith("delivery.")&&DELIVERY.contains(p.substring(9))||Set.of("media.images","media.contents").contains(p)||p.startsWith("markets.COUPANG.overrides.")&&OVERRIDE.contains(p.substring("markets.COUPANG.overrides.".length()))||Set.of("markets.COUPANG.coupang.settings","markets.COUPANG.coupang.delivery","markets.COUPANG.coupang.documents").contains(p)||p.startsWith("markets.COUPANG.coupang.options.")&&OPTION_LIST.contains(p.substring("markets.COUPANG.coupang.options.".length()));
+            if(create&&p.equals("markets.COUPANG.categoryCode"))allowed=true;
             String prefix=fieldPrefix(p);if(prefix!=null)allowed=DefaultCoupangWriteGateway.editableField(prefix,p.substring(prefix.length()+1));
             if(!allowed||option&&c.optionId()==null||!option&&!p.startsWith("media.")&&c.optionId()!=null||c.optionId()!=null&&!c.optionId().matches("[a-fA-F0-9-]{36}"))throw invalid("수정할 수 없는 항목입니다: "+p);
             if(!seen.add(p+"|"+c.optionId()))throw invalid("같은 수정 항목을 중복 선택할 수 없습니다.");
@@ -111,8 +130,8 @@ final class CoupangEditPatch {
         if(!list){if(!value.isString()||value.asString().length()>10000)throw invalid("수정 입력의 형식을 확인해 주세요.");return;}
         if(!value.isArray()||value.size()>200)throw invalid("수정 목록은 200개 이하로 입력해 주세요.");
         Set<String> keys;
-        if(p.equals("media.images"))keys=Set.of("id","assetId","url","representative","order","optionId","type");
-        else if(p.equals("media.contents"))keys=Set.of("id","type","value","optionId");
+        if(p.equals("media.images"))keys=Set.of("id","assetId","url","representative","order","optionId","type","sourceId");
+        else if(p.equals("media.contents"))keys=Set.of("id","type","value","optionId","assetId","sourceId");
         else if(p.endsWith(".registration")||p.endsWith(".settings")||p.endsWith(".delivery"))keys=Set.of("name","value");
         else if(p.endsWith(".attributes"))keys=Set.of("name","value","exposed");
         else if(p.endsWith(".notices"))keys=Set.of("category","name","content");
@@ -136,7 +155,7 @@ final class CoupangEditPatch {
         String field=fieldPrefix(p);if(field!=null){var base=new MarketplaceEditing.Change(field,c.optionId(),List.of());field(valueFrom(root,base),p.substring(field.length()+1),value,json);return;}
         if(p.startsWith("options.")){option(root.path("options"),c.optionId(),"id").set(p.substring(8),value);return;}
         if(p.startsWith("markets.COUPANG.coupang.options.")){option(root.path("markets").path("COUPANG").path("coupang").path("options"),c.optionId(),"optionId").set(p.substring("markets.COUPANG.coupang.options.".length()),value);return;}
-        if(p.startsWith("media.")&&c.optionId()!=null){String key=p.substring(6);var rows=json.createArrayNode();for(var row:root.path("media").path(key))if(!Objects.equals(c.optionId(),text(row.path("optionId"))))rows.add(row);for(var row:value)rows.add(row);root.path("media").asObject().set(key,rows);return;}
+        if(p.startsWith("media.")&&c.optionId()!=null){String key=p.substring(6);var rows=json.createArrayNode();for(var row:root.path("media").path(key))if(!Objects.equals(c.optionId(),text(row.path("optionId"))))rows.add(row);for(var row:value)rows.add(row);var media=root.path("media").asObject();media.set(key,rows);String overrides=key.equals("images")?"imageOverrides":"contentOverrides";if(!media.path(overrides).isObject())media.putObject(overrides);media.path(overrides).asObject().put(c.optionId(),true);return;}
         var parts=p.split("\\.");ObjectNode at=root;for(int n=0;n<parts.length-1;n++){var next=at.path(parts[n]);if(!next.isObject())throw invalid("수정할 마켓 정보를 확인해 주세요.");at=next.asObject();}at.set(parts[parts.length-1],value);
     }
     private static ObjectNode option(JsonNode rows,String id,String key){for(var row:rows)if(Objects.equals(id,text(row.path(key))))return row.asObject();throw invalid("상품 옵션 연결을 확인해 주세요.");}
@@ -149,8 +168,8 @@ final class CoupangEditPatch {
         if(Set.of("common.name","common.brand").contains(p))market.path("overrides").asObject().set(p.substring(7),value);
         if(p.startsWith("options."))for(var row:market.path("overrides").path("options"))if(Objects.equals(c.optionId(),text(row.path("optionId"))))row.asObject().set(p.substring(8),value);
         if(p.equals("common.manufacturer"))field(market.path("coupang").path("settings").asArray(),"manufacture",value,json);
-        if(p.startsWith("delivery.")){String key=DefaultCoupangWriteGateway.deliveryWire(p.substring(9));field(market.path("coupang").path("delivery").asArray(),key,value,json);}
-        String key=Map.of("common.model","modelNo","common.taxType","taxType","common.adultOnly","adultOnly","options.sku","externalVendorSku").get(p);
+        if(p.startsWith("delivery.")&&!Set.of("delivery.jejuCharge","delivery.remoteCharge").contains(p)){String key=DefaultCoupangWriteGateway.deliveryWire(p.substring(9));field(market.path("coupang").path("delivery").asArray(),key,value,json);}
+        String key=Map.of("common.model","modelNo","common.taxType","taxType","common.adultOnly","adultOnly","options.sku","externalVendorSku","options.price","salePrice","options.quantity","maximumBuyCount").get(p);
         if(key!=null)for(var row:market.path("coupang").path("options"))if(c.optionId()==null||Objects.equals(c.optionId(),text(row.path("optionId"))))field(row.path("registration").asArray(),key,value,json);
     }
     private static void field(ArrayNode rows,String key,JsonNode value,ObjectMapper json){for(var row:rows)if(key.equals(text(row.path("name")))){row.asObject().set("value",value);return;}var next=json.createObjectNode();next.put("name",key);next.set("value",value);rows.add(next);}

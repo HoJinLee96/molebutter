@@ -16,10 +16,13 @@
 | procurement | 검색 기준, 매입처, 선정, 최신화, 추천, 변동·복구 | common, identity, operations, catalog |
 | inventory | 매입 주문, 재고, 수량 이력, 환불, 결제 수단 | common, identity, operations, catalog |
 | attendance | 근태, 정정·승인, 조회 | common, identity, operations |
-| media | 원본 이미지·소유권·공개 발행·참조·실행 핀 | common, identity |
-| marketplace | 공통 판매 초안·편집 세션·검증·실행·주문 이력 | common, identity, media |
-| marketplace-coupang | 쿠팡 인증·조회·전송·규격·응답 해석 | common, identity, marketplace, media |
-| marketplace-naver | 스마트스토어 인증·조회·전송·네이버 이미지 전달 | common, identity, marketplace, media |
+| media | 원본 이미지·소유권·공개 발행·참조·실행 핀·R2 이미지 조회와 검증 | common, identity, storage |
+| marketplace-contracts | 판매 마켓 공개 DTO·포트·오류·순수 입력 검사 | common, media |
+| marketplace | 공통 판매 초안·편집 세션·검증·실행·주문 이력 | marketplace-contracts, common, identity, media |
+| marketplace-coupang | 쿠팡 인증·조회·전송·규격·응답 해석 | common, identity, marketplace-contracts, media |
+| marketplace-naver | 스마트스토어 인증·조회·전송·네이버 이미지 전달 | common, identity, marketplace-contracts, media |
+| marketplace-lotteon | 롯데ON 브랜드·상품·메타정보 조회, 전용 입력·상속·검증·등록/수정 게이트웨이 | common, identity, marketplace-contracts, media |
+| marketplace-esm | ESM 인증·상품 매핑 기반, G마켓·옥션 채널 구분 | common, identity, marketplace-contracts, media |
 | imaging | LF몰 이미지 조회·정렬 산출물·사이즈 및 고시 렌더·임시 다운로드 | common |
 | app | HTTP·화면, 설정, 업무 간 연결, Flyway, 실행 | 모든 모듈 |
 
@@ -100,7 +103,7 @@ MySQL DDL 전체를 하나의 트랜잭션으로 되돌릴 수 있다고 가정�
 
 ## 판매 마켓 조회 모듈
 
-`molebutter-marketplace`는 common·identity·media 공개 계약에 의존하고 app이 조립한다. 공통 초안·편집 세션·실행·주문 이력은 marketplace, 쿠팡과 스마트스토어 인증·외부 요청·규격·응답 해석은 각각 marketplace-coupang과 marketplace-naver, 관리자 HTTP·화면·비밀 설정 연결은 app 소유다. catalog·procurement·inventory 테이블을 읽거나 수정하지 않는다. ArchUnit이 허용 의존성과 다른 모듈 internal 접근 금지를 검사한다. [쿠팡 구현 범위](market-api/coupang-wing.md)를 참고한다.
+`molebutter-marketplace`는 common·identity·media 공개 계약에 의존하고 app이 조립한다. 공통 초안·편집 세션·실행·주문 이력은 marketplace, 쿠팡과 스마트스토어 인증·외부 요청·규격·응답 해석은 각각 marketplace-coupang과 marketplace-naver, 롯데ON 브랜드 조회는 marketplace-lotteon, 관리자 HTTP·화면·비밀 설정 연결은 app 소유다. catalog·procurement·inventory 테이블을 읽거나 수정하지 않는다. ArchUnit이 허용 의존성과 다른 모듈 internal 접근 금지를 검사한다. [쿠팡 구현 범위](market-api/coupang-wing.md)와 [롯데ON 읽기 범위](market-api/lotteon.md)를 참고한다.
 
 판매용 공통 초안은 marketplace, 원본 이미지·공개 발행·참조·실행 핀은 media가 소유한다. 기존 기준 상품·매입처·보유 재고 테이블을 연결하거나 변경하지 않는다. 편집 DTO·외부 쓰기 전문·현재 판매값을 구분하고 초안 수정은 버전 검사와 이미지 참조 잠금을 사용한다. [공통 편집 구현](market-api/common-product-editor.md)을 참고한다.
 
@@ -120,20 +123,57 @@ MySQL DDL 전체를 하나의 트랜잭션으로 되돌릴 수 있다고 가정�
 
 | 모듈 | 책임 | 공개 계약 의존 |
 |---|---|---|
-| marketplace | 공통 초안·revision·관찰/편집 세션·순차 실행·재시도·주문 수집 이력 | common, identity, media |
-| marketplace-coupang | HMAC·조회·상품 생성/수정·가격/재고/배송·주문 응답 해석 | common, identity, marketplace, media |
-| marketplace-naver | OAuth·상품/카테고리 조회·원상품/채널상품 저장·네이버 이미지 업로드 | common, identity, marketplace, media |
+| marketplace-contracts | 공개 DTO·오류·포트·순수 입력 검사 | common, media |
+| marketplace | 공통 초안·revision·관찰/편집 세션·순차 실행·재시도·주문 수집 이력 | marketplace-contracts, common, identity, media |
+| marketplace-coupang | HMAC·조회·상품 생성/수정·가격/재고/배송·주문 응답 해석 | common, identity, marketplace-contracts, media |
+| marketplace-naver | OAuth·상품/카테고리 조회·원상품/채널상품 저장·네이버 이미지 업로드 | common, identity, marketplace-contracts, media |
+| marketplace-lotteon | 고정 상품속성 URL의 브랜드 조회·Bearer 인증·응답 검증·상품 매핑 기반 | common, identity, marketplace-contracts, media |
+| marketplace-esm | ESM 인증·상품 매핑 기반 | common, identity, marketplace-contracts, media |
 | media | 원본 자산·소유권·공개 토큰·초안 참조·실행 핀·정리 | common, identity |
 | imaging | LF몰 이미지 조회·치수/상품정보 렌더·편집·임시 ZIP | common |
 | storage | 공개/비공개 R2 객체 CRUD | common |
 | app | HTTP·화면·설정 주입·모듈 조립 | 각 모듈의 공개 API |
 
-공통 실행기는 `MarketplaceWriteGateway`, `MarketplaceProductAdapter`, `MarketplaceOrderGateway`를 사용하며 공급자 구현에 의존하지 않는다. 기존 전용 화면 DTO 및 신규/수정 워크플로 계약은 호환을 위해 marketplace.api에 남는다. 변환·검증·외부 전문 구성은 공급자 포트로 위임한다. 주문 수집의 DB 체크포인트·취소·재개는 공통 모듈에 남는다.
+공통 실행기는 `MarketplaceWriteGateway`, `MarketplaceProductAdapter`, `MarketplaceOrderGateway`를 사용하며 공급자 구현에 의존하지 않는다. 기존 전용 화면 DTO 및 신규/수정 워크플로 계약의 패키지는 호환을 위해 marketplace.api로 유지하되, 소스와 클래스 파일은 marketplace-contracts에서만 제공한다. 변환·검증·외부 전문 구성은 공급자 포트로 위임한다. 주문 수집의 DB 체크포인트·취소·재개는 공통 모듈에 남는다.
 
 저장된 Prepared JSON은 schemaVersion을 포함한다. 없는 기존 버전은 1로 읽고, 지원하지 않는 미래 버전은 쓰기 실행/재시도를 거부한다. 기존 마켓·상품·옵션 매핑 키와 CREATE 결과 확인 필요, 승인 대기, 부분 성공의 의미는 바꾸지 않는다.
 
-`MarketplaceChannels`는 여섯 채널의 식별자·표시명·공급자·기능별 구현 여부를 한 곳에서 관리한다. 계정 자격 증명 구성이나 실계정 성공을 뜻하지 않는다. G마켓·옥션은 ESM 공급자를 공유하되 채널 ID는 분리한다. 롯데ON·11번가는 준비 상태이며 비어 있는 어댑터나 외부 호출을 생성하지 않는다. 스마트스토어 주문 수집은 미구현이다. 공통 편집기의 네이버·ESM 준비 입력과 전용 화면 전송 가능 여부도 구분한다.
+`MarketplaceChannels`는 여섯 채널의 식별자·표시명·공급자·기능별 구현 여부를 한 곳에서 관리한다. 계정 자격 증명 구성이나 실계정 성공을 뜻하지 않는다. G마켓·옥션은 ESM 공급자를 공유하되 채널 ID는 분리한다. ESM 브랜드 검색은 추가 JWT 인증 설정이 필요해 준비 상태다. 11번가는 판매자 명세를 확보했지만 전용 어댑터가 미구현이며, 수집 범위에서 브랜드 검색 API가 확인되지 않아 외부 호출을 생성하지 않는다([문서·후속 범위](market-api/11st.md)). 롯데ON 상품·주문 전송도 준비 상태지만 브랜드 조회만 `LotteonBrands`의 읽기 전용 예외로 연결한다. 이 모듈은 DB·공통 쓰기 실행 포트·다른 공급자의 internal에 의존하지 않는다. 스마트스토어 주문 수집은 미구현이다. 공통 편집기의 네이버·ESM 준비 입력과 전용 화면 전송 가능 여부도 구분한다.
+
+통합 브랜드 UI는 app에서 쿠팡·스마트스토어·롯데ON의 공개 조회 API를 조합한다. 공통 브랜드명과 각 마켓의 정확한 선택 이름·ID는 marketplace 초안에 보관하고 브랜드 조회 모듈이 초안을 직접 수정하지 않는다. 기존 `MarketConfig` 생성자와 롯데ON 설정이 없는 JSON을 유지하며 쿠팡·네이버 문서 복사 시 롯데ON 준비값도 보존한다. [선택·저장 흐름](market-api/common-product-editor.md#통합-브랜드-선택-2026-10-09)과 [롯데ON 호출 계약·미해결 차이](market-api/lotteon.md#브랜드-조회-구현-2026-10-09)를 따른다. 브랜드 읽기 연결을 상품 쓰기나 실계정 검증 완료로 표시하지 않는다.
 
 `ImageAssets` 추출은 기존 자산 테이블·저장 경로·설정·HTTP URL을 그대로 사용한다. 기존 공개 R2 객체나 로컬 원본을 옮기지 않는다. 상품 이미지 도구의 R2 업로드 작업 registry는 현재 메모리 수명 정책을 유지하며, 영구 작업 기록·중단 복구와 자산 통합은 별도 마이그레이션 과제다. 기존 R2 prefix 중복 검사와 예약 CAS를 유지한다.
 
 ArchUnit은 새 패키지의 실제 모듈 위치, 공개 API만 사용하는 의존 방향과 순환 금지를 검사한다. 모듈 이동은 API 규격 변경이나 실제 판매 마켓 호출 성공을 의미하지 않는다.
+
+## 판매 마켓 계약 및 내부 역할 분리 (2026-10-10)
+
+공급자 네 모듈은 `molebutter-marketplace-contracts`에 의존한다. 공통 실행 구현인
+`molebutter-marketplace`를 공급자 빌드 의존성에서 제거했다. app은 계약과 공통 구현,
+공급자 구현을 조립한다. 공개 자바 클래스 이름과 JSON 필드는 유지하며 데이터 이전은 없다.
+계약 모듈 소스에는 Spring·JDBC·JPA·HTTP 클라이언트 실행 코드를 넣지 않는다.
+`ImageAssets.Asset`을 사용하는 기존 공개 계약 때문에 media 계약 의존성은 유지한다.
+
+`PartnerProductCatalog`는 형식이 정해진 목록 조건과 상세 관찰을,
+`PartnerProductMetadata`는 항목 종류·조회 조건·선택값 응답을,
+`PartnerProductInputs`는 화면 입력과 초안 변환을 담당한다.
+`PartnerProducts`는 조립용 합성 포트이며 임의 문자열 Map 조회와 Object 응답을 제거했다.
+현재 이 포트의 롯데ON·ESM 실제 조회 구현은 아직 연결 전이다.
+
+`PartnerFormSupport`의 공개 진입점은 유지하고 내부 변환은 `PartnerInputProjection`,
+변경 적용·비교·충돌 판단은 `PartnerInputChanges`에 위임한다. 두 도우미는 package-private이다.
+공통 주문 수집·조회·저장·스케줄러는 `marketplace.internal.orders`로 모았다.
+주문 커서 해시는 상품 실행 서비스 대신 내부 `MarketplaceHashes`를 사용하며 기존 값을 유지한다.
+상품 식별자 연결 검사는 `SubmissionMappingPolicy`로 분리했다. 실행 임대·워커 스레드·하트비트·외부 호출·결과 기록은 package-private `SubmissionWorker`로 분리하고, 서비스의 기존 스케줄 및 수동 실행 진입점은 위임 방식으로 유지한다.
+
+쿠팡 응답 판정은 `CoupangWriteOutcome`, 스마트스토어 요청 검사는 `NaverWriteValidation`이
+담당한다. 기존 게이트웨이가 실행과 재조회 흐름을 유지하며 순수 검사·판정에 위임한다.
+롯데ON·ESM 매핑 기반은 각 `internal.product`, ESM 서명 기반은 `internal.auth`로 나눴다.
+이 구조 변경이 미완성 상품 API·화면·쓰기 기능의 활성화를 의미하지 않는다.
+
+`ModuleArchitectureTest`는 계약 소스의 단일 소유, 공급자의 공통 구현 직접 의존 금지,
+계약의 실행·저장 라이브러리 참조 금지와 기존 순환·공개 서명 경계를 함께 검사한다.
+
+### 2026-10-13 11번가 상품 어댑터
+
+`molebutter-marketplace-elevenst`는 `marketplaceelevenst.internal`에서 XML 클라이언트·조회·폼 투영·전송을 소유한다. 앱은 `marketplace.api.ElevenstProducts`와 공통 편집·전송 계약만 사용한다. 기존 core·Coupang·Naver 내부 구현을 참조하지 않는다. `ModuleArchitectureTest`의 모듈 소유권·허용 의존성·API 내부 타입 노출·순환 검사에 포함했다.

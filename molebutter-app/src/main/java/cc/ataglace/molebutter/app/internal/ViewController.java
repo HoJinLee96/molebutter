@@ -80,23 +80,32 @@ public class ViewController {
     @GetMapping("/marketplaces/coupang/products/{sellerProductId}/edit")
     public String marketplaceEditor(@AuthenticationPrincipal UserPrincipal principal,Model model) {
         if(addLayoutModel(principal,model)==null)return "redirect:/signin";
-        return "marketplace-editor";
+        editorContext(model,"MARKET_EDIT","COUPANG");return "common-marketplace-editor";
     }
 
     @GetMapping("/marketplaces/coupang/products/new")
     public String legacyMarketplaceRegistration(@AuthenticationPrincipal UserPrincipal principal,Model model){
         if(addLayoutModel(principal,model)==null)return "redirect:/signin";
-        return "marketplace-editor";
+        editorContext(model,"MARKET_NEW","COUPANG");return "common-marketplace-editor";
     }
-    @GetMapping({"/marketplaces/naver/products/new","/marketplaces/naver/products/{originProductNo}/edit"})
+    @GetMapping({"/marketplaces/naver/products/new","/marketplaces/naver/products/{originProductNo}/edit","/marketplaces/elevenst/products/new","/marketplaces/elevenst/products/{productId}/edit","/marketplaces/lotteon/products/new","/marketplaces/lotteon/products/{lotteProductId}/edit"})
     public String naverProductEditor(@AuthenticationPrincipal UserPrincipal principal, Model model) {
         if(addLayoutModel(principal,model)==null)return "redirect:/signin";
-        return "naver-product-editor";
+        var request=((ServletRequestAttributes)RequestContextHolder.currentRequestAttributes()).getRequest();
+        editorContext(model,request.getRequestURI().endsWith("/new")?"MARKET_NEW":"MARKET_EDIT",request.getRequestURI().contains("/lotteon/")?"LOTTEON":request.getRequestURI().contains("/elevenst/")?"ELEVENST":"NAVER");return "common-marketplace-editor";
     }
     @GetMapping({"/marketplaces/products/new","/marketplaces/products/{draftId}/edit"})
     public String commonMarketplaceEditor(@AuthenticationPrincipal UserPrincipal principal,Model model){
         if(addLayoutModel(principal,model)==null)return "redirect:/signin";
-        return "common-marketplace-editor";
+        var request=((ServletRequestAttributes)RequestContextHolder.currentRequestAttributes()).getRequest();
+        editorContext(model,request.getRequestURI().endsWith("/new")?"COMMON_NEW":"COMMON_EDIT",null);return "common-marketplace-editor";
+    }
+    private void editorContext(Model model,String mode,String market){
+        var request=((ServletRequestAttributes)RequestContextHolder.currentRequestAttributes()).getRequest();
+        String path=request.getRequestURI();var parts=path.split("/");
+        model.addAttribute("editorMode",mode);model.addAttribute("editorMarket",market);
+        model.addAttribute("editorProductId","MARKET_EDIT".equals(mode)?parts[parts.length-2]:null);
+        model.addAttribute("editorDraftId","COMMON_EDIT".equals(mode)?parts[parts.length-2]:request.getParameter("draftId"));
     }
 
     @GetMapping("/inventory")

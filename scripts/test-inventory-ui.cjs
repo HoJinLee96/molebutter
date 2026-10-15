@@ -127,7 +127,8 @@ const server=http.createServer(async(req,res)=>{
    await second.locator('[name=orderedQuantity]').fill('3');await second.locator('[name=unitPrice]').fill('0');
    assert.equal(await page.locator('#purchase-amount').inputValue(),'250,000원');
    await purchase.locator('[name=paymentMethodId]').selectOption('1');await purchase.locator('[name=privateNote]').fill('결제 메모');
-   await purchase.locator('button[type=submit]').click();await page.locator('#purchase-view-dialog').waitFor({state:'visible'});
+   await second.locator('[name=unitPrice]').press('Enter');assert.equal(createRequests,0);
+   await page.locator('#purchase-create-submit').press('Enter');await page.locator('#purchase-view-dialog').waitFor({state:'visible'});
    assert.equal(createRequests,1);assert.equal(items.reduce((n,i)=>n+i.onHand,0),0);assert.equal(items.reduce((n,i)=>n+i.pending,0),8);
    await page.locator('[data-close=purchase-view-dialog]').click();const order=orders[0],item=items[0];
    await page.locator('[data-tab=items]').click();await page.locator('[data-stock-product="1"]').waitFor();

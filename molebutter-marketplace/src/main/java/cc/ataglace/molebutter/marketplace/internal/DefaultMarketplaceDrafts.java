@@ -20,6 +20,7 @@ import static cc.ataglace.molebutter.marketplace.api.MarketplaceDraftFailure.Kin
 public final class DefaultMarketplaceDrafts implements MarketplaceDrafts {
     private final BusinessAccess access;
     private final DraftStore store;
+    private final TargetEditStore pending;
     private final DraftValidation validation;
     private final ImageAssets assets;
     private final CoupangEditor coupang;
@@ -30,23 +31,36 @@ public final class DefaultMarketplaceDrafts implements MarketplaceDrafts {
     private final TransactionTemplate transactions;
     private final String importAccount;
     public DefaultMarketplaceDrafts(BusinessAccess access,DraftStore store,DraftValidation validation,
-            ImageAssets assets,CoupangEditor coupang,CoupangProductDocuments documents,List<MarketplaceProductAdapter> adapters,SubmissionStore submissions,ObjectMapper json,PlatformTransactionManager manager){
-        this.access=access;this.store=store;this.validation=validation;this.assets=assets;this.coupang=coupang;this.documents=documents;this.adapters=List.copyOf(adapters);this.submissions=submissions;this.json=json;this.transactions=new TransactionTemplate(manager);this.importAccount=documents.accountKey();
+            ImageAssets assets,CoupangEditor coupang,CoupangProductDocuments documents,List<MarketplaceProductAdapter> adapters,SubmissionStore submissions,ObjectMapper json,PlatformTransactionManager manager,TargetEditStore pending){
+        this.pending=pending;this.access=access;this.store=store;this.validation=validation;this.assets=assets;this.coupang=coupang;this.documents=documents;this.adapters=List.copyOf(adapters);this.submissions=submissions;this.json=json;this.transactions=new TransactionTemplate(manager);this.importAccount=documents.accountKey();
     }
     public Document create(Long actor,Document input){
         access.productActor(actor,true);var d=bounded(input);protectNew(d);requireBrand(actor,null,d);
         return transactions.execute(tx->{access.productActor(actor,true);var created=store.insert(actor,BusinessIds.next(),d,null,null);assets.replaceReferences(actor,created.id(),MarketplaceDocuments.assetIds(created));return created;});
     }
     public Document save(Long actor,String value,Long expectedRevision,Document input){
+        return save(actor,value,expectedRevision,input,false);
+    }
+    Document saveEditor(Long actor,String value,Long expectedRevision,Document input){
+        return save(actor,value,expectedRevision,input,true);
+    }
+    private Document save(Long actor,String value,Long expectedRevision,Document input,boolean unified){
         access.productActor(actor,true);long id=id(value);var d=bounded(input);
         if(d.id()!=null&&!d.id().equals(value))throw new InputValidationFailure("초안 식별자를 확인해 주세요.");
         return transactions.execute(tx->{
             access.productActor(actor,true);var before=store.find(id,true);
-            if("COUPANG_REGISTRATION".equals(store.registration(id).kind()))throw new InputValidationFailure("쿠팡 전용 등록 화면에서 초안을 저장해 주세요.");
-            if("NAVER_REGISTRATION".equals(store.registration(id).kind()))throw new InputValidationFailure("스마트스토어 전용 등록 화면에서 초안을 저장해 주세요.");
+            var registration=store.registration(id);
+            if(registration.kind().endsWith("_REGISTRATION")){
+                if(!unified)throw new InputValidationFailure("통합 상품 편집 화면에서 초안을 저장해 주세요.");
+                String market=registration.kind().replace("_REGISTRATION","");
+                var adapter=adapters.stream().filter(a->a.market().equals(market)).findFirst().orElseThrow();
+                if(!Objects.equals(actor,registration.actor())||!Objects.equals(adapter.accountKey(),registration.account()))throw new MarketplaceDraftFailure(CONFLICT);
+                if(!d.selectedMarkets().equals(List.of(Market.valueOf(market))))throw new InputValidationFailure("전용 등록의 마켓을 변경할 수 없습니다.");
+            }
+            if("MARKET_ONLY".equals(registration.kind())&&!d.selectedMarkets().equals(List.of(Market.valueOf(submissions.importMarket(id)))))throw new InputValidationFailure("단독 상품의 편집 마켓을 변경할 수 없습니다.");
             if(expectedRevision==null)throw new InputValidationFailure("수정 버전을 확인해 주세요.");
             if(before.revision().longValue()!=expectedRevision.longValue())throw new MarketplaceDraftFailure(CONFLICT);
-            protectImport(before,d);requireBrand(actor,before,d);var saved=store.update(actor,id,expectedRevision,d);assets.replaceReferences(actor,saved.id(),MarketplaceDocuments.assetIds(saved));return saved;
+            protectImport(before,d);requireBrand(actor,before,d);var saved=store.update(actor,id,expectedRevision,d);var referenced=new HashSet<>(MarketplaceDocuments.assetIds(saved));referenced.addAll(pending.assetIds(id,adapters));referenced.addAll(pending.savedAssetIds(id));referenced.addAll(submissions.recreationAssetIds(id));assets.replaceReferences(actor,saved.id(),referenced);return saved;
         });
     }
     public Document get(Long actor,String value){access.productActor(actor,true);return store.find(id(value),false);}

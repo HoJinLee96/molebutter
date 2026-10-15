@@ -24,6 +24,17 @@ final class NaverDraftAdapter {
         if(config!=null&&config.naver()!=null&&config.naver().editorInput()!=null)return NaverEditPatch.normalize(config.naver().editorInput());
         throw NaverEditPatch.invalid("스마트스토어 전용 초안 입력이 없습니다. 상품을 다시 조회해 주세요.");
     }
+    /** Replace only the provider input; a common reference is never reconstructed from option deltas. */
+    static Document withInput(Document reference,NaverEditor.Input input,EditorState state){
+        var existing=reference.markets().get(Market.NAVER);
+        if(existing==null)existing=new MarketConfig("",null,null,null,null);
+        var n=existing.naver();
+        if(n==null)n=new Naver(null,null,null,null,null,null,List.of(),List.of());
+        var typed=new Naver(n.channelId(),n.status(),n.saleType(),n.originCode(),n.deliveryTemplateId(),n.afterServiceTelephone(),n.attributes(),n.notices(),n.channelProductName(),n.naverShoppingRegistration(),n.channelProductDisplayStatusType(),NaverEditPatch.normalize(input),n.brandId(),state);
+        var markets=new EnumMap<Market,MarketConfig>(Market.class);markets.putAll(reference.markets());
+        markets.put(Market.NAVER,new MarketConfig(existing.categoryCode(),existing.overrides(),existing.coupang(),typed,existing.esm(),existing.lotteon(),existing.addressBook()));
+        return new Document(reference.id(),reference.revision(),reference.common(),reference.options(),reference.stockMode(),reference.productQuantity(),reference.services(),reference.media(),reference.delivery(),reference.selectedMarkets(),Map.copyOf(markets));
+    }
     static Document observed(Document reference,NaverEditor.EditorDocument source,MarketplaceWriteGateway.Mapping mapping){
         var input=source.input();var options=new ArrayList<NaverEditor.Option>();
         var remoteByLocal=new HashMap<String,String>();for(var identity:source.optionIdentities())remoteByLocal.put(identity.id(),identity.remoteId());
@@ -39,7 +50,7 @@ final class NaverDraftAdapter {
             String local=image.id();if(before!=null)for(var old:before.images())if(Objects.equals(old.url(),image.url())&&!consumed.contains(old.id())){local=old.id();consumed.add(local);break;}
             images.add(new NaverEditor.Image(local,image.assetId(),image.url(),image.representative(),image.order()));
         }
-        return document(reference.id(),reference.revision(),new NaverEditor.Input(input.fields(),input.optionMode(),input.optionNames(),List.copyOf(options),List.copyOf(images),input.description()));
+        return withInput(reference,new NaverEditor.Input(input.fields(),input.optionMode(),input.optionNames(),List.copyOf(options),List.copyOf(images),input.description()),reference.markets().get(Market.NAVER)==null||reference.markets().get(Market.NAVER).naver()==null?null:reference.markets().get(Market.NAVER).naver().editorState());
     }
     private static String text(Map<String,Object> fields,String key){return Objects.toString(fields.get(key),"");}
     private static String number(Long value){return value==null?"":Long.toString(value);}

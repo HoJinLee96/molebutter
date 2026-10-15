@@ -43,7 +43,7 @@
             </div>
             <p id="form-error" class="form-error" hidden></p>
             <p id="form-success" class="form-success" hidden>비밀번호가 변경되었습니다. 다른 기기의 로그인은 곧 만료됩니다.</p>
-            <button type="submit" id="change-btn" class="btn primary">비밀번호 변경</button>
+            <button type="button" id="change-btn" class="btn primary">비밀번호 변경</button>
         </form>
     </section>
 </main>
@@ -51,7 +51,7 @@
 <script th:src="@{/js/api.js}"></script>
 <script th:inline="none">
 
-    document.getElementById('pw-form').addEventListener('submit', async (event) => {
+    FormActions.bindExplicitSubmit(document.getElementById('pw-form'), document.getElementById('change-btn'), async (event) => {
         event.preventDefault();
         setError('form-error', null);
         document.getElementById('form-success').hidden = true;

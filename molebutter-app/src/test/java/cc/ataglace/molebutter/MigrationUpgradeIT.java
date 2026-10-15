@@ -533,6 +533,33 @@ class MigrationUpgradeIT {
         try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement();var r=st.executeQuery("SELECT editor_kind,registration_account,revision,document_json FROM marketplace_draft WHERE id=31001")){
             assertThat(r.next()).isTrue();assertThat(r.getString(1)).isEqualTo("COMMON");assertThat(r.getString(2)).isNull();assertThat(r.getLong(3)).isEqualTo(7);assertThat(r.getString(4)).isEqualTo(oldDocument);
         }
+        var revisions=Flyway.configure().dataSource(url,user,password).target("38").load();
+        assertThat(revisions.migrate().migrationsExecuted).isEqualTo(1);revisions.validate();assertThat(revisions.migrate().migrationsExecuted).isZero();
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement();var r=st.executeQuery("SELECT e.status,e.revised_at,e.revised_by,s.status,s.result_json,s.result_code,s.attempts FROM marketplace_execution e JOIN marketplace_execution_step s ON s.execution_id=e.id WHERE e.id=32002")){
+            assertThat(r.next()).isTrue();assertThat(r.getString(1)).isEqualTo("UNKNOWN");assertThat(r.getObject(2)).isNull();assertThat(r.getObject(3)).isNull();
+            assertThat(r.getString(4)).isEqualTo("UNKNOWN");assertThat(r.getString(5)).isEqualTo(oldResult);assertThat(r.getString(6)).isEqualTo("INTERRUPTED");assertThat(r.getInt(7)).isEqualTo(1);
+        }
+        var targetEdits=Flyway.configure().dataSource(url,user,password).target("39").load();assertThat(targetEdits.migrate().migrationsExecuted).isEqualTo(1);targetEdits.validate();assertThat(targetEdits.migrate().migrationsExecuted).isZero();
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()){
+            try(var r=st.executeQuery("SELECT account_key,mapping_json,target_bindings_json FROM marketplace_edit_session WHERE id=33001")){assertThat(r.next()).isTrue();assertThat(r.getString(1)).isEqualTo(account);assertThat(r.getString(2)).isEqualTo(oldMapping);assertThat(r.getString(3)).isNull();}
+            st.executeUpdate("INSERT INTO marketplace_edit_session(id,draft_id,draft_revision,created_by,account_key,mapping_json,session_json,target_bindings_json,created_at,expires_at) VALUES(39001,31001,7,1,NULL,NULL,'{}','{\"targets\":{}}',CURRENT_TIMESTAMP(6),CURRENT_TIMESTAMP(6)+INTERVAL 10 MINUTE)");
+            try(var r=st.executeQuery("SELECT account_key,target_bindings_json FROM marketplace_edit_session WHERE id=39001")){assertThat(r.next()).isTrue();assertThat(r.getString(1)).isNull();assertThat(r.getString(2)).isEqualTo("{\"targets\":{}}");}
+            try(var r=st.executeQuery("SELECT COUNT(*) FROM marketplace_draft_target_edit")){assertThat(r.next()).isTrue();assertThat(r.getLong(1)).isZero();}
+            try(var r=st.executeQuery("SELECT delete_rule FROM information_schema.referential_constraints WHERE constraint_schema=DATABASE() AND constraint_name='fk_marketplace_target_edit_draft'")){assertThat(r.next()).isTrue();assertThat(r.getString(1)).isEqualTo("CASCADE");}
+        }
+        var lifecycle=Flyway.configure().dataSource(url,user,password).target("42").load();assertThat(lifecycle.migrate().migrationsExecuted).isEqualTo(3);lifecycle.validate();assertThat(lifecycle.migrate().migrationsExecuted).isZero();
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement()){
+            try(var r=st.executeQuery("SELECT document_json,revision,editor_kind FROM marketplace_draft WHERE id=31001")){assertThat(r.next()).isTrue();assertThat(r.getString(1)).isEqualTo(oldDocument);assertThat(r.getLong(2)).isEqualTo(7);assertThat(r.getString(3)).isEqualTo("COMMON");}
+            try(var r=st.executeQuery("SELECT mapping_json,applied_revision FROM marketplace_listing_mapping WHERE draft_id=31001")){assertThat(r.next()).isTrue();assertThat(r.getString(1)).isEqualTo(oldMapping);assertThat(r.getLong(2)).isEqualTo(6);}
+            insert(c,"INSERT INTO marketplace_listing_state(draft_id,market,account_key,state) VALUES(31001,'COUPANG',?,'ACTIVE')",account);
+            try(var r=st.executeQuery("SELECT listing_version,observed_json FROM marketplace_listing_state WHERE draft_id=31001")){assertThat(r.next()).isTrue();assertThat(r.getLong(1)).isEqualTo(1);assertThat(r.getString(2)).isNull();}
+            try(var r=st.executeQuery("SELECT COUNT(*) FROM marketplace_listing_history")){assertThat(r.next()).isTrue();assertThat(r.getLong(1)).isZero();}
+        }
+        var comparison=Flyway.configure().dataSource(url,user,password).target("43").load();assertThat(comparison.migrate().migrationsExecuted).isEqualTo(1);comparison.validate();assertThat(comparison.migrate().migrationsExecuted).isZero();
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement();var r=st.executeQuery("SELECT COUNT(*) FROM marketplace_target_saved")){assertThat(r.next()).isTrue();assertThat(r.getLong(1)).isZero();}
+        var mediaComparison=Flyway.configure().dataSource(url,user,password).target("44").load();assertThat(mediaComparison.migrate().migrationsExecuted).isEqualTo(1);mediaComparison.validate();assertThat(mediaComparison.migrate().migrationsExecuted).isZero();
+        try(var c=DriverManager.getConnection(url,user,password);var st=c.createStatement();var r=st.executeQuery("SELECT COUNT(*) FROM marketplace_media_comparison")){assertThat(r.next()).isTrue();assertThat(r.getLong(1)).isZero();}
+
     }
     @Test
     void salesOrderMigrationIsAdditiveAndContainsNoShippingPersonalColumns() throws Exception {

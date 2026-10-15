@@ -16,12 +16,16 @@ public class MarketplaceSubmissionTestGateway implements cc.ataglace.molebutter.
     private final Map<String,Deque<State>> responses=new HashMap<>();
     private final List<String> dispatches=new ArrayList<>(),readbacks=new ArrayList<>();
     private Mapping lastMapping;
+    private String createdProductId="9001";
+    public void createdProduct(String value){createdProductId=value;}
     private Prepared lastPrepared;
     private boolean rebaseActual;
     private State readbackState=State.CONFIRMED;
+    private String readbackCode;
+    private boolean approveAfterSave;
     private StepSnapshot lastReconciled;
     public record StepSnapshot(String id,String bodyJson,String expectedJson,String baselineJson) {}
-    public void reset(){currentAccount=null;types=List.of("CREATE");responses.clear();dispatches.clear();readbacks.clear();lastMapping=null;lastPrepared=null;rebaseActual=false;readbackState=State.CONFIRMED;lastReconciled=null;}
+    public void reset(){createdProductId="9001";currentAccount=null;types=List.of("CREATE");responses.clear();dispatches.clear();readbacks.clear();lastMapping=null;lastPrepared=null;rebaseActual=false;readbackState=State.CONFIRMED;readbackCode=null;lastReconciled=null;approveAfterSave=false;}
     public void types(String... values){types=List.of(values);}
     public void outcomes(String type,String... values){responses.put(type,new ArrayDeque<>(Arrays.stream(values).map(State::valueOf).toList()));}
     public List<String> dispatches(){return List.copyOf(dispatches);}
@@ -30,12 +34,19 @@ public class MarketplaceSubmissionTestGateway implements cc.ataglace.molebutter.
     public List<String> selectedPaths(){return lastPrepared==null||lastPrepared.editIntent()==null?List.of():lastPrepared.editIntent().changes().stream().map(MarketplaceEditing.Change::path).toList();}
     public void rebaseActualRequest(){rebaseActual=true;}
     public void readbackOutcome(String state){readbackState=State.valueOf(state);}
+    public void readbackOutcome(String state,String code){readbackState=State.valueOf(state);readbackCode=code;}
+    public void saveThenApprove(){approveAfterSave=true;}
+    @Override public Prepared saveWorkflow(Prepared p){
+        if(!approveAfterSave)return p;var steps=new ArrayList<>(p.steps());var save=steps.getLast();
+        steps.add(new Step("approval",Type.APPROVAL,null,"PUT","/fake/{sellerProductId}/approvals","",null,"{}",new tools.jackson.databind.ObjectMapper().writeValueAsString(save)));
+        return new Prepared(p.accountKey(),p.mapping(),steps,p.changes(),p.preparedAt(),p.expectedSkus(),p.editIntent());
+    }
     public StepSnapshot lastReconciledStep(){return lastReconciled;}
     @Override public Document projectChanges(Document d,List<MarketplaceEditing.Change> changes){return cc.ataglace.molebutter.marketplacecoupang.internal.ProviderCoupangDocumentsFixture.apply(d,changes);}
     @Override public boolean validateCommonDraft(){return true;}
     @Override public Prepared prepare(Long actor,Document document,Mapping mapping,boolean requested){
         lastMapping=mapping;String account=DefaultMarketplaceSubmissions.account("test-vendor");
-        if(mapping==null&&!types.contains("CREATE"))mapping=new Mapping(account,"9001",document.options().stream().map(o->new OptionMapping(o.id(),"7001","8001")).toList());
+        // The fake transport acquires external identities only from execute/reconcile results.
         var steps=new ArrayList<Step>();for(String type:types){
             // A persisted mapping changes the following preparation into UPDATE, not a second CREATE.
             Type actual=type.equals("CREATE")&&mapping!=null?Type.PRODUCT:Type.valueOf(type);
@@ -65,17 +76,17 @@ public class MarketplaceSubmissionTestGateway implements cc.ataglace.molebutter.
     @Override public Result execute(Long actor,Prepared prepared,Step step,Mapping current){
         dispatches.add(step.type().name());var states=responses.get(step.type().name());State state=states==null||states.isEmpty()?State.CONFIRMED:states.removeFirst();
         Mapping mapping=current;
-        if(mapping==null&&(state==State.CONFIRMED||state==State.ACCEPTED))mapping=new Mapping(prepared.accountKey(),"9001",List.of(new OptionMapping("10000000-1000-4000-8000-000000000001","7001","8001")));
+        if(mapping==null&&(state==State.CONFIRMED||state==State.ACCEPTED))mapping=new Mapping(prepared.accountKey(),createdProductId,prepared.editIntent().observed().options().stream().map(o->new OptionMapping(o.id(),"7001","8001")).toList());
         return new Result(state,mapping,state==State.FAILED?"REJECTED":"SUCCESS",null,Instant.now());
     }
     @Override public Result execute(Long actor,Prepared prepared,Step step,Mapping current,java.util.function.Consumer<Step> beforeDispatch){
-        var actual=rebaseActual?new Step("rebased-"+step.id(),step.type(),step.optionId(),step.method(),step.path(),step.query(),"{\"serverOnly\":\"actual-request\"}","{\"baseline\":\"latest\",\"knownSellerProductIds\":[\"555\"]}","{\"expected\":\"actual-request\"}"):step;
+        var actual=rebaseActual&&step.type()!=Type.APPROVAL?new Step("rebased-"+step.id(),step.type(),step.optionId(),step.method(),step.path(),step.query(),"{\"serverOnly\":\"actual-request\"}","{\"baseline\":\"latest\",\"knownSellerProductIds\":[\"555\"]}","{\"expected\":\"actual-request\"}"):step;
         beforeDispatch.accept(actual);return execute(actor,prepared,actual,current);
     }
     @Override public Result reconcile(Long actor,Prepared prepared,Step step,Result previous){
         lastReconciled=new StepSnapshot(step.id(),step.bodyJson(),step.expectedJson(),step.baselineJson());
-        readbacks.add(step.type().name());Mapping mapping=previous.mapping();if(mapping==null&&readbackState!=State.UNKNOWN)mapping=new Mapping(prepared.accountKey(),"9001",List.of(new OptionMapping("10000000-1000-4000-8000-000000000001","7001","8001")));
-        return new Result(readbackState,mapping,readbackState==State.UNKNOWN?"UNRESOLVED":"SUCCESS",null,previous.attemptedAt());
+        readbacks.add(step.type().name());Mapping mapping=previous.mapping();if(mapping==null&&readbackState!=State.UNKNOWN)mapping=new Mapping(prepared.accountKey(),createdProductId,prepared.editIntent().observed().options().stream().map(o->new OptionMapping(o.id(),"7001","8001")).toList());
+        return new Result(readbackState,mapping,readbackCode!=null?readbackCode:readbackState==State.UNKNOWN?"UNRESOLVED":"SUCCESS",null,previous.attemptedAt());
     }
     @TestConfiguration(proxyBeanMethods=false)
     public static class Configuration {

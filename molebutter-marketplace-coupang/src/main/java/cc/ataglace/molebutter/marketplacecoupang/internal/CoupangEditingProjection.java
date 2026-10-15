@@ -21,7 +21,7 @@ final class CoupangEditingProjection {
             if(!used.add(old.optionId())||old.vendorItemId()!=null&&!Objects.equals(old.vendorItemId(),generated.vendorItemId()))throw invalid();
             remap.put(generated.optionId(),old.optionId());
             var value=projected.options().stream().filter(o->o.id().equals(generated.optionId())).findFirst().orElseThrow();
-            options.add(new Option(old.optionId(),value.name(),value.sku(),value.price(),value.quantity(),value.attributes()));
+            options.add(new Option(old.optionId(),value.name(),value.sku(),value.price(),value.quantity(),value.attributes(),value.originalPrice()));
             linked.add(new CoupangOption(old.optionId(),generated.sellerProductItemId(),generated.vendorItemId(),generated.registration(),generated.attributes(),generated.notices(),generated.certifications()));
         }
         // Remote array order can change; internal option identities and common presentation order stay stable.

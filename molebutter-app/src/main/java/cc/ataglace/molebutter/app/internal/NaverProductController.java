@@ -20,7 +20,7 @@ public final class NaverProductController {
     private final ObjectMapper json;
     public NaverProductController(NaverCatalog catalog,NaverProductSaving saving,NaverProductRegistrations registrations,ObjectMapper json){this.catalog=catalog;this.saving=saving;this.registrations=registrations;this.json=json;}
     @GetMapping("/products")
-    public ApiResponse<NaverCatalog.ProductPage> products(@AuthenticationPrincipal UserPrincipal actor,@RequestParam(defaultValue="1") Integer page,@RequestParam(defaultValue="20") Integer size,@RequestParam(required=false) String keyword,@RequestParam(required=false) String sellerManagementCode){return ApiResponse.success(catalog.products(actor.userId(),new NaverCatalog.Search(page,size,keyword,sellerManagementCode)));}
+    public ApiResponse<NaverCatalog.ProductPage> products(@AuthenticationPrincipal UserPrincipal actor,@RequestParam(defaultValue="1") Integer page,@RequestParam(defaultValue="20") Integer size,@RequestParam(required=false) String keyword,@RequestParam(required=false) String sellerManagementCode,@RequestParam(required=false) String statusType){return ApiResponse.success(catalog.products(actor.userId(),new NaverCatalog.Search(page,size,keyword,sellerManagementCode,statusType)));}
     @GetMapping("/metadata/{kind}")
     public ApiResponse<Object> metadata(@AuthenticationPrincipal UserPrincipal actor,@PathVariable String kind,@RequestParam Map<String,String> query){return ApiResponse.success(catalog.metadata(actor.userId(),kind,query));}
     @GetMapping("/products/{id}/observation")

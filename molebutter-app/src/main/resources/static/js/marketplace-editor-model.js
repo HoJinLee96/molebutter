@@ -14,11 +14,11 @@
     const dictionary=rows=>Object.fromEntries((rows||[]).map(f=>[f.name,f.value]));
     const uuid=typeof module!=='undefined'?require('./app-ui.js').uuid:AppUI.uuid;
     const productIdentity=name=>['Manufacturer Part Number','Global Trade Item Number'].includes(name);
-    const registrationOptionName=o=>{const attrs=(o.attributes||[]).filter(a=>a.exposed==='EXPOSED'&&!productIdentity(a.name));if(!attrs.length)return '단일 상품';return [...attrs.filter(a=>a.name==='색상'),...attrs.filter(a=>a.name!=='색상')].map(a=>String(a.value||'').trim()).filter(Boolean).join(' ');};
+    const registrationOptionName=o=>{const attrs=(o.attributes||[]).filter(a=>a.exposed==='EXPOSED'&&!productIdentity(a.name));if(!attrs.length)return '단일 상품';return [...attrs].sort((a,b)=>(a.name==='색상'?0:a.name==='사이즈'?1:2)-(b.name==='색상'?0:b.name==='사이즈'?1:2)).map(a=>String(a.value||'').trim()).filter(Boolean).join(' ');};
     const blankOption=()=>({id:uuid(),sellerProductItemId:null,vendorItemId:null,itemName:'',current:null,currentError:null,separateCurrentChanges:false,attributes:[],images:[],contents:[],notices:[],registration:{},certifications:[],currentChanges:{},noticeCategory:''});
     const fresh=()=>({basic:{sellerProductName:'',displayProductName:'',generalProductName:'',brand:'',productGroup:'',displayCategoryCode:''},limits:{categoryReadOnly:false,optionStructureReadOnly:false,purchaseAttributesReadOnly:false},options:[blankOption()],delivery:{},settings:{},documents:[]});
     function fromDocument(d){
-        const draft={basic:{...d.basic},limits:{...d.limits},delivery:dictionary(d.delivery),settings:dictionary(d.settings),documents:structuredClone(d.documents||[]),options:d.options.map(i=>({...structuredClone(i),registration:dictionary(i.registration),currentChanges:{},noticeCategory:i.notices?.[0]?.category||''}))};
+        const draft={basic:{...d.basic},limits:{...d.limits},delivery:dictionary(d.delivery),settings:dictionary(d.settings),documents:structuredClone(d.documents||[]),options:d.options.map(i=>({...structuredClone(i),originalAttributes:structuredClone(i.attributes||[]),registration:dictionary(i.registration),currentChanges:{},noticeCategory:i.notices?.[0]?.category||''}))};
         // View fields are preserved but never treated as editable registration values.
         return draft;
     }
@@ -28,13 +28,32 @@
     const validDate=v=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(v))return false;const d=new Date(v+'T00:00:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===v;};
     function applyRules(draft,rules){
         for(const o of draft.options){
-            for(const a of rules.attributes)if(!o.attributes.some(v=>v.name===a.name))o.attributes.push({name:a.name,value:'',exposed:a.exposed});
+            for(const a of rules.attributes)if(!(grouped(a)&&rules.attributes.some(r=>r.groupNumber===a.groupNumber&&o.attributes.some(v=>v.name===r.name)))&&!o.attributes.some(v=>v.name===a.name))o.attributes.push({name:a.name,value:'',exposed:a.exposed});
             if(!rules.notices.some(n=>n.name===o.noticeCategory))o.noticeCategory=rules.notices[0]?.name||'';
             addNotices(o,rules);
             for(const c of rules.certifications.filter(c=>required(c.required)))if(!o.certifications.some(v=>v.type===c.type))o.certifications.push({type:c.type,code:'',attachments:[]});
         }
         for(const d of rules.documents.filter(d=>requiredDocument(d,draft)))if(!draft.documents.some(v=>v.templateName===d.name))draft.documents.push({templateName:d.name,path:''});
     }
+    const isPurchase=a=>a.exposed==='EXPOSED'&&!productIdentity(a.name);
+    const grouped=a=>a.groupNumber&&a.groupNumber!=='NONE';
+    function purchaseColumns(rules,options=[]){
+        const result=[],groups=new Set(),metadata=(rules?.attributes||[]).filter(isPurchase);
+        for(const r of metadata){
+            const used=options.some(o=>o.attributes?.some(a=>a.name===r.name&&(a.value!==''&&a.value!=null||o.originalAttributes?.some(v=>v.name===a.name)||o.attributePermissions?.some(v=>v.name===a.name))));
+            if(r.required!=='MANDATORY'&&!used)continue;
+            if(grouped(r)){
+                if(groups.has(r.groupNumber))continue;groups.add(r.groupNumber);
+                const choices=metadata.filter(a=>a.groupNumber===r.groupNumber);result.push({name:choices.map(a=>a.name).join(' / ')+' (택1)',group:r.groupNumber,choices,required:r.required==='MANDATORY'});
+            }else result.push({...r,choices:[r]});
+        }
+        // Preserve visible legacy purchase fields even after category renewal.
+        for(const o of options)for(const a of o.attributes||[])if(isPurchase(a)&&!metadata.some(r=>r.name===a.name)&&!result.some(r=>r.name===a.name))result.push({...a,choices:[a]});
+        const order=r=>r.choices.some(a=>a.name==='색상')?0:r.choices.some(a=>a.name==='사이즈')?1:2;
+        return result.sort((a,b)=>(a.required==='MANDATORY'||a.required===true?0:1)-(b.required==='MANDATORY'||b.required===true?0:1)||order(a)-order(b));
+    }
+    function purchaseAttribute(option,column){return column.choices.find(r=>option.attributes?.some(a=>a.name===r.name&&(a.value!==''&&a.value!=null||option.attributePermissions?.some(p=>p.name===a.name))))||column.choices.find(r=>option.attributes?.some(a=>a.name===r.name))||column.choices[0];}
+    function canEditPurchase(option,name,existing){return !!(!existing||!option.attributePermissions?.some(p=>p.name===name)&&!(option.originalAttributes||option.attributes).some(a=>a.name===name)||option.attributePermissions?.find(p=>p.name===name)?.editable===true);}
     function categoryRemovals(draft,rules){
         const labels=new Set();for(const o of draft.options){
             for(const a of o.attributes)if(a.value&&!rules.attributes.some(r=>r.name===a.name&&r.exposed===a.exposed))labels.add(a.name);
@@ -46,7 +65,8 @@
     }
     function replaceRules(draft,rules){
         for(const o of draft.options){
-            o.attributes=rules.attributes.map(r=>({name:r.name,exposed:r.exposed,value:o.attributes.find(a=>a.name===r.name&&a.exposed===r.exposed)?.value||''}));
+            const columns=purchaseColumns(rules,[o]),selectedGroups=new Map(columns.filter(c=>c.group).map(c=>[c.group,purchaseAttribute(o,c).name]));
+            o.attributes=rules.attributes.filter(r=>!grouped(r)||selectedGroups.get(r.groupNumber)===r.name).map(r=>({name:r.name,exposed:r.exposed,value:o.attributes.find(a=>a.name===r.name&&a.exposed===r.exposed)?.value??''}));
             const category=rules.notices.find(n=>n.name===o.noticeCategory)||rules.notices[0];o.noticeCategory=category?.name||'';
             o.notices=(category?.fields||[]).map(f=>({category:category.name,name:f.name,content:o.notices.find(n=>n.category===category.name&&n.name===f.name)?.content||''}));
             o.certifications=o.certifications.filter(c=>rules.certifications.some(r=>r.type===c.type));o.itemName=registrationOptionName(o);
@@ -72,7 +92,7 @@
         }
         if(mode==='new'&&(!draft.basic.brand||!draft.settings.brandId))fail('basic.brand','브랜드를 검색해서 선택해 주세요.');
         for(const k of ['sellerProductName','displayProductName','generalProductName','brand','productGroup','displayCategoryCode'])field('basic.'+k,k,draft.basic[k]);
-        if(!rules||rules.categoryCode!==draft.basic.displayCategoryCode)fail('basic.displayCategoryCode','현재 카테고리의 입력 규격을 조회해 주세요.');
+        if(mode==='new'&&(!rules||rules.categoryCode!==draft.basic.displayCategoryCode))fail('basic.displayCategoryCode','현재 카테고리의 입력 규격을 조회해 주세요.');
         for(const k of deliveryKeys)field('delivery.'+k,k,draft.delivery[k]);
         for(const k of settingsKeys)field('settings.'+k,k,draft.settings[k]);
         if(draft.settings.saleStartedAt&&draft.settings.saleEndedAt&&draft.settings.saleEndedAt<draft.settings.saleStartedAt)fail('settings.saleEndedAt','판매 종료일시는 시작일시 이후로 입력해 주세요.');
@@ -93,15 +113,16 @@
             const groups=new Map();
             for(const a of rules?.attributes||[]){
                 const index=o.attributes.findIndex(v=>v.name===a.name),value=String(o.attributes[index]?.value??'').trim(),path=prefix+'.attributes.'+index+'.value';
+                if(mode==='edit'&&isPurchase(a)){const old=o.originalAttributes?.find(v=>v.name===a.name);if((old&&String(old.value??'').trim()===value)||!old&&!value)continue;}
                 if(required(a.required)){
                     if(a.groupNumber&&a.groupNumber!=='NONE'){const group=groups.get(a.groupNumber)||[];group.push({index,value});groups.set(a.groupNumber,group);}
-                    else if(!value)fail(path,a.name+'을 입력해 주세요.');
+                    else if(!value&&mode==='new')fail(path,a.name+'을 입력해 주세요.');
                 }
                 if(value&&Array.from(value).length>30)fail(path,a.name+'은 30자 이하로 입력해 주세요.');
                 if(value&&a.dataType==='NUMBER'&&!/^-?\d+(?:\.\d+)?(?:\s*[^\d\s]+)?$/.test(value))fail(path,a.name+'의 숫자 형식을 확인해 주세요.');
                 if(value&&a.dataType==='DATE'&&!validDate(value))fail(path,a.name+'의 날짜 형식을 확인해 주세요.');
             }
-            for(const entries of groups.values())if(entries.filter(a=>a.value).length!==1)fail(prefix+'.attributes.'+entries[0].index+'.value','그룹 필수 속성 중 한 개만 입력해 주세요.');
+            for(const entries of groups.values())if(mode==='new'&&entries.filter(a=>a.value).length!==1)fail(prefix+'.attributes.'+entries[0].index+'.value','그룹 필수 속성 중 한 개만 입력해 주세요.');
             const notice=rules?.notices.find(c=>c.name===o.noticeCategory);
             if(rules?.notices.length&&!notice)fail(prefix+'.noticeCategory','상품고시 유형을 선택해 주세요.');
             for(const f of notice?.fields||[]){const index=o.notices.findIndex(v=>v.category===notice.name&&v.name===f.name);if(required(f.required)&&!o.notices[index]?.content?.trim())fail(prefix+'.notices.'+index+'.content',f.name+'을 입력해 주세요.');}
@@ -123,7 +144,7 @@
     function descriptionUrl(v){let s=String(v??'').trim();if(/^(?:\/?image\/)?vendor_inventory\//.test(s))s='https://img1a.coupangcdn.com/image/'+s.replace(/^\/?image\//,'');if(s.startsWith('//'))s='https:'+s;try{const u=new URL(s);if(u.protocol==='http:'&&u.hostname.endsWith('.coupangcdn.com'))u.protocol='https:';return url(u.href);}catch{return null;}}
     function preview(html){
         const text=String(html??'').replace(/http:\/\/[a-z0-9.-]+\.coupangcdn\.com(?=[:/])/gi,s=>s.replace(/^http:/i,'https:'));
-        return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https:; style-src 'unsafe-inline'; script-src 'none'; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'"><meta name="referrer" content="no-referrer"><style>body{max-width:800px;margin:16px auto;padding:0;box-sizing:border-box;overflow-wrap:anywhere}img{display:block;max-width:100%;height:auto;margin-inline:auto}</style></head><body>${text}</body></html>`;
+        return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: ${typeof location!=='undefined'?location.origin:''}; style-src 'unsafe-inline'; script-src 'none'; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'"><meta name="referrer" content="no-referrer"><style>body{max-width:800px;margin:16px auto;padding:0;box-sizing:border-box;overflow-wrap:anywhere}img{display:block;max-width:100%;height:auto;margin-inline:auto}</style></head><body>${text}</body></html>`;
     }
     // Shared controls match attributes, notices and certifications by identity, not array position.
     function sharedTargets(draft,path,create=false){
@@ -205,6 +226,12 @@
         if(edited&&typeof edited==='object'&&fresh&&typeof fresh==='object')return Object.fromEntries([...new Set([...Object.keys(edited),...Object.keys(fresh)])].map(k=>[k,rebase(before?.[k],edited[k],fresh[k])]));
         return structuredClone(edited);
     }
-    const model={productIdentity,registrationOptionName,categoryRemovals,replaceRules,rebase,changes,spec,deliveryKeys,settingsKeys,optionKeys,blankOption,fresh,fromDocument,url,applyRules,addNotices,validate,preview,descriptionUrl,requiredDocument,sharedValues,setSharedValue,inheritShared,imageLimits,nextImageType,moveImage};
+    const courierNames={HYUNDAI:'롯데택배',KGB:'로젠택배',EPOST:'우체국',HANJIN:'한진택배',CJGLS:'CJ대한통운',KOREX:'대한통운[합병]',KDEXP:'경동택배',DIRECT:'업체직송',ILYANG:'일양택배',CHUNIL:'천일특송',AJOU:'아주택배'};
+    function longSalePeriod(now=new Date()){
+        const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(now).map(p=>[p.type,p.value]));
+        return {saleStartedAt:`${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`,saleEndedAt:'2099-12-31T23:59:00'};
+    }
+    const choiceNames={SINGLE:'단일 상품 구성',AB:'혼합 구성',SEQUENCIAL:'일반배송',COLD_FRESH:'신선·냉동',MAKE_ORDER:'주문제작',AGENT_BUY:'구매대행',VENDOR_DIRECT:'직접 전달·설치',FREE:'무료',NOT_FREE:'유료',CHARGE_RECEIVED:'착불',CONDITIONAL_FREE:'조건부 무료',Y:'가능',N:'불가',UNION_DELIVERY:'묶음 배송',NOT_UNION_DELIVERY:'개별 배송',EVERYONE:'전체 이용',ADULT_ONLY:'성인 전용',TAX:'과세',PARALLEL_IMPORTED:'병행 수입',NOT_PARALLEL_IMPORTED:'해당 없음',OVERSEAS_PURCHASED:'해외 구매',NOT_OVERSEAS_PURCHASED:'해당 없음',true:'예',false:'아니요',NEW:'새 상품',REFURBISHED:'리퍼',USED_BEST:'중고 최상',USED_GOOD:'중고 상',USED_NORMAL:'중고 중'};
+    const model={choiceNames,longSalePeriod,courierNames,purchaseColumns,purchaseAttribute,canEditPurchase,isPurchase,productIdentity,registrationOptionName,categoryRemovals,replaceRules,rebase,changes,spec,deliveryKeys,settingsKeys,optionKeys,blankOption,fresh,fromDocument,url,applyRules,addNotices,validate,preview,descriptionUrl,requiredDocument,sharedValues,setSharedValue,inheritShared,imageLimits,nextImageType,moveImage};
     if(typeof module!=='undefined')module.exports=model;else window.CoupangEditorModel=model;
 })();

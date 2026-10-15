@@ -1,0 +1,1044 @@
+{
+  "categoryId" : "50003982",
+  "category" : {
+    "wholeCategoryName" : "패션잡화>지갑>여성지갑>반지갑",
+    "id" : "50003982",
+    "name" : "반지갑",
+    "last" : true,
+    "exceptionalCategories" : [ "MANUFACTURE_DEFINE_NO", "GROUP_PRODUCT_MAX", "FREE_RETURN_INSURANCE" ],
+    "certificationInfos" : [ {
+      "id" : 2160,
+      "name" : "[친환경]저탄소제품_국가인증",
+      "kindTypes" : [ "ETC", "GREEN_PRODUCTS" ],
+      "green" : false,
+      "certificationMarkType" : "LOW_CARBON",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 58,
+      "name" : "[생활용품]안전확인_국가인증",
+      "kindTypes" : [ "ETC", "PARALLEL_IMPORT", "OVERSEAS", "KC_CERTIFICATION" ],
+      "green" : false,
+      "certificationMarkType" : "KC",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : true,
+      "nonEssential" : false
+    }, {
+      "id" : 329,
+      "name" : "도축검사증명서_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 2000,
+      "name" : "6차산업_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "SIX_INDUSTRY",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 272,
+      "name" : "[농축산물]유기가공식품인증_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "ORGANIC_PROCESSED_FOOD",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 2020,
+      "name" : "식품명인_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "FOOD_MASTER",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 2168,
+      "name" : "[친환경]해외인증-유기농-ECOCERT",
+      "kindTypes" : [ "ETC", "GREEN_PRODUCTS" ],
+      "green" : false,
+      "certificationMarkType" : "ECO_OVERSEAS_ECOCERT",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : true
+    }, {
+      "id" : 2021,
+      "name" : "동물복지_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "ANIMAL_WELFARE",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 1042,
+      "name" : "[어린이제품]공급자적합성확인_국가인증",
+      "kindTypes" : [ "ETC", "CHILD_CERTIFICATION", "KC_CERTIFICATION" ],
+      "green" : false,
+      "certificationMarkType" : "KC",
+      "companyName" : true,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : true
+    }, {
+      "id" : 1021,
+      "name" : "[전기용품]공급자적합성확인_국가인증",
+      "kindTypes" : [ "ETC", "PARALLEL_IMPORT", "OVERSEAS", "KC_CERTIFICATION" ],
+      "green" : false,
+      "certificationMarkType" : "KC",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : true,
+      "nonEssential" : true
+    }, {
+      "id" : 1023,
+      "name" : "[방송통신기자재]잠정인증_국가인증",
+      "kindTypes" : [ "ETC", "KC_CERTIFICATION" ],
+      "green" : false,
+      "certificationMarkType" : "KC",
+      "companyName" : true,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 1060,
+      "name" : "마을기업_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "VILLAGE_ENTERPRISE",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 1020,
+      "name" : "[생활용품]공급자적합성확인_국가인증",
+      "kindTypes" : [ "ETC", "PARALLEL_IMPORT", "OVERSEAS", "KC_CERTIFICATION" ],
+      "green" : false,
+      "certificationMarkType" : "KC",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : true,
+      "nonEssential" : true
+    }, {
+      "id" : 1024,
+      "name" : "[방송통신기자재]적합인증_국가인증",
+      "kindTypes" : [ "ETC", "KC_CERTIFICATION" ],
+      "green" : false,
+      "certificationMarkType" : "KC",
+      "companyName" : true,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 50,
+      "name" : "원산지 증명_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 65,
+      "name" : "[생활용품]어린이보호포장_국가인증",
+      "kindTypes" : [ "ETC", "KC_CERTIFICATION" ],
+      "green" : false,
+      "certificationMarkType" : "KC",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 98,
+      "name" : "[친환경]무농약농산물_국가인증",
+      "kindTypes" : [ "ETC", "GREEN_PRODUCTS" ],
+      "green" : true,
+      "certificationMarkType" : "NON_PESTICIDE",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 99,
+      "name" : "[친환경]유기축산물_국가인증",
+      "kindTypes" : [ "ETC", "GREEN_PRODUCTS" ],
+      "green" : true,
+      "certificationMarkType" : "ORGANIC_ANIMAL_PROD",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 100,
+      "name" : "수입신고필증_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 121,
+      "name" : "[전기용품]안전인증_국가인증",
+      "kindTypes" : [ "ETC", "PARALLEL_IMPORT", "OVERSEAS", "KC_CERTIFICATION" ],
+      "green" : false,
+      "certificationMarkType" : "KC",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : true,
+      "nonEssential" : false
+    }, {
+      "id" : 320,
+      "name" : "가공식품산업표준KS인증_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "PROCESSED_FOOD_KS",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 323,
+      "name" : "[수산물]수산특산물품질인증_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "QUALITY_SEAFOOD",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 268,
+      "name" : "[친환경]무항생제축산물_국가인증",
+      "kindTypes" : [ "ETC", "GREEN_PRODUCTS" ],
+      "green" : true,
+      "certificationMarkType" : "NON_ANTIBIOTIC",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 269,
+      "name" : "[농축산물]우수농산물(GAP)_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "GAP",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 270,
+      "name" : "[농축산물]이력추적관리_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "AGRICULTURAL_TRACEABILITY",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 273,
+      "name" : "[수산물]수산물품질인증_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "QUALITY_SEAFOOD",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 274,
+      "name" : "[수산물]수산전통식품품질인증_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "TRADITIONAL_FOOD",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 278,
+      "name" : "[농축산물] HACCP_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "HACCP",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 279,
+      "name" : "축산물등급판정확인서_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 280,
+      "name" : "[GMP]우수건강기능식품제조기준_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "GMP",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 281,
+      "name" : "건강기능식품 광고사전심의_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 1022,
+      "name" : "[방송통신기자재]적합등록_국가인증",
+      "kindTypes" : [ "ETC", "KC_CERTIFICATION" ],
+      "green" : false,
+      "certificationMarkType" : "KC",
+      "companyName" : true,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 1041,
+      "name" : "[어린이제품]안전확인_국가인증",
+      "kindTypes" : [ "ETC", "CHILD_CERTIFICATION", "KC_CERTIFICATION" ],
+      "green" : false,
+      "certificationMarkType" : "KC",
+      "companyName" : true,
+      "certificationDate" : true,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 1061,
+      "name" : "사회적기업_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "SOCIAL_ENTERPRISE",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 2040,
+      "name" : "[수산물]유기가공식품인증_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "SEA_ORGANIC_PROCESSED_FOOD",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 2182,
+      "name" : "해외인증-공정무역",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "ECO_OVERSEAS_FAIR_TRADE",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : true
+    }, {
+      "id" : 2100,
+      "name" : "[계량기]형식승인_국가인증",
+      "kindTypes" : [ "ETC", "KC_CERTIFICATION" ],
+      "green" : false,
+      "certificationMarkType" : "KC",
+      "companyName" : true,
+      "certificationDate" : true,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 51,
+      "name" : "[생활용품]안전인증_국가인증",
+      "kindTypes" : [ "ETC", "PARALLEL_IMPORT", "OVERSEAS", "KC_CERTIFICATION" ],
+      "green" : false,
+      "certificationMarkType" : "KC",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : true,
+      "nonEssential" : false
+    }, {
+      "id" : 271,
+      "name" : "[농축산물]전통식품품질인증_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "TRADITIONAL_FOOD",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 2042,
+      "name" : "[수산물]무항생제수산물_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "SEA_NON_ANTIBIOTIC",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 2082,
+      "name" : "살생물제 승인",
+      "kindTypes" : [ "ETC", "CHEMICAL_CERTIFICATION" ],
+      "green" : false,
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 1040,
+      "name" : "[어린이제품]안전인증_국가인증",
+      "kindTypes" : [ "ETC", "CHILD_CERTIFICATION", "KC_CERTIFICATION" ],
+      "green" : false,
+      "certificationMarkType" : "KC",
+      "companyName" : true,
+      "certificationDate" : true,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 2120,
+      "name" : "[친환경]환경표지_국가인증",
+      "kindTypes" : [ "ETC", "GREEN_PRODUCTS" ],
+      "green" : false,
+      "certificationMarkType" : "ECO_FRIENDLY",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 265,
+      "name" : "[친환경]유기농산물_국가인증",
+      "kindTypes" : [ "ETC", "GREEN_PRODUCTS" ],
+      "green" : true,
+      "certificationMarkType" : "ORGANIC_AGRICULTURAL_PROD",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 2167,
+      "name" : "[친환경]해외인증-USDA",
+      "kindTypes" : [ "ETC", "GREEN_PRODUCTS" ],
+      "green" : false,
+      "certificationMarkType" : "ECO_OVERSEAS_USDA",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : true
+    }, {
+      "id" : 2169,
+      "name" : "[친환경]해외인증-지속가능산림",
+      "kindTypes" : [ "ETC", "GREEN_PRODUCTS" ],
+      "green" : false,
+      "certificationMarkType" : "ECO_OVERSEAS_FSC",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : true
+    }, {
+      "id" : 2041,
+      "name" : "[수산물]유기수산물인증_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "SEA_ORGANIC_PROD",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 2184,
+      "name" : "[수산물]해외인증-MSC",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "ECO_OVERSEAS_MSC",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : true
+    }, {
+      "id" : 2221,
+      "name" : "[방송통신기자재]자기적합확인_국가인증",
+      "kindTypes" : [ "ETC", "KC_CERTIFICATION" ],
+      "green" : false,
+      "certificationMarkType" : "KC",
+      "companyName" : true,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 2183,
+      "name" : "[친환경]해외인증-카본트러스트",
+      "kindTypes" : [ "ETC", "GREEN_PRODUCTS" ],
+      "green" : false,
+      "certificationMarkType" : "ECO_OVERSEAS_CARBON_TRUST",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : true
+    }, {
+      "id" : 2043,
+      "name" : "[수산물]활성처리제비사용수산물_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "SEA_NON_ACTIVE_TREATMENT",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 2080,
+      "name" : "생활화학 신고/승인",
+      "kindTypes" : [ "ETC", "CHEMICAL_CERTIFICATION" ],
+      "green" : false,
+      "certificationMarkType" : "LIVING_CHEMISTRY_SAFETY",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 2081,
+      "name" : "[위해우려제품]자가검사번호_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 2060,
+      "name" : "술품질인증_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "certificationMarkType" : "ALCOHOL",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 93,
+      "name" : "의료기기 광고사전심의_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 86,
+      "name" : "해외안전인증_국가인증",
+      "kindTypes" : [ "ETC" ],
+      "green" : false,
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : false,
+      "nonEssential" : false
+    }, {
+      "id" : 72,
+      "name" : "[전기용품]안전확인_국가인증",
+      "kindTypes" : [ "ETC", "PARALLEL_IMPORT", "OVERSEAS", "KC_CERTIFICATION" ],
+      "green" : false,
+      "certificationMarkType" : "KC",
+      "companyName" : false,
+      "certificationDate" : false,
+      "kcParallelImportExemptionObject" : true,
+      "nonEssential" : false
+    } ]
+  },
+  "attributes" : [ {
+    "attributeSeq" : 10013406,
+    "attributeName" : "주요소재",
+    "attributeClassificationType" : "MULTI_SELECT",
+    "attributeClassificationCodeName" : "복수선택형",
+    "attributeType" : "PRIMARY",
+    "attributeTypeCodeName" : "주요",
+    "unitUsable" : false,
+    "attributeValueMaxMatchingCount" : 3
+  }, {
+    "attributeSeq" : 10013438,
+    "attributeName" : "제품특징",
+    "attributeClassificationType" : "MULTI_SELECT",
+    "attributeClassificationCodeName" : "복수선택형",
+    "attributeType" : "PRIMARY",
+    "attributeTypeCodeName" : "주요",
+    "unitUsable" : false,
+    "attributeValueMaxMatchingCount" : 0
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeName" : "패턴",
+    "attributeClassificationType" : "MULTI_SELECT",
+    "attributeClassificationCodeName" : "복수선택형",
+    "attributeType" : "PRIMARY",
+    "attributeTypeCodeName" : "주요",
+    "unitUsable" : false,
+    "attributeValueMaxMatchingCount" : 2
+  }, {
+    "attributeSeq" : 10011143,
+    "attributeName" : "장식",
+    "attributeClassificationType" : "MULTI_SELECT",
+    "attributeClassificationCodeName" : "복수선택형",
+    "attributeType" : "PRIMARY",
+    "attributeTypeCodeName" : "주요",
+    "unitUsable" : false,
+    "attributeValueMaxMatchingCount" : 2
+  }, {
+    "attributeSeq" : 10019574,
+    "attributeName" : "잠금방식",
+    "attributeClassificationType" : "SINGLE_SELECT",
+    "attributeClassificationCodeName" : "선택형",
+    "attributeType" : "PRIMARY",
+    "attributeTypeCodeName" : "주요",
+    "unitUsable" : false,
+    "attributeValueMaxMatchingCount" : 0
+  }, {
+    "attributeSeq" : 10005212,
+    "attributeName" : "사용대상",
+    "attributeClassificationType" : "SINGLE_SELECT",
+    "attributeClassificationCodeName" : "선택형",
+    "attributeType" : "PRIMARY",
+    "attributeTypeCodeName" : "주요",
+    "unitUsable" : false,
+    "attributeValueMaxMatchingCount" : 0
+  } ],
+  "attribute-values" : [ {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10197460,
+    "minAttributeValue" : "가죽",
+    "exposureOrder" : 1
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10726692,
+    "minAttributeValue" : "인조가죽(합성피혁)",
+    "exposureOrder" : 2
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10040900,
+    "minAttributeValue" : "스웨이드",
+    "exposureOrder" : 3
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10040846,
+    "minAttributeValue" : "퍼",
+    "exposureOrder" : 4
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10663789,
+    "minAttributeValue" : "인조퍼",
+    "exposureOrder" : 5
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10040848,
+    "minAttributeValue" : "PVC",
+    "exposureOrder" : 6
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10040849,
+    "minAttributeValue" : "왕골",
+    "exposureOrder" : 7
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10040901,
+    "minAttributeValue" : "에나멜",
+    "exposureOrder" : 8
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10030853,
+    "minAttributeValue" : "나일론",
+    "exposureOrder" : 9
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 11503791,
+    "minAttributeValue" : "포코노나일론",
+    "exposureOrder" : 10
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10732044,
+    "minAttributeValue" : "캔버스/패브릭",
+    "exposureOrder" : 11
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10614292,
+    "minAttributeValue" : "데님",
+    "exposureOrder" : 12
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10030859,
+    "minAttributeValue" : "니트",
+    "exposureOrder" : 13
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10574775,
+    "minAttributeValue" : "폴리에스테르",
+    "exposureOrder" : 14
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10388519,
+    "minAttributeValue" : "폴리아미드",
+    "exposureOrder" : 15
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10574779,
+    "minAttributeValue" : "폴리우레탄",
+    "exposureOrder" : 16
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10583366,
+    "minAttributeValue" : "실크",
+    "exposureOrder" : 17
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10380643,
+    "minAttributeValue" : "라탄",
+    "exposureOrder" : 18
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 11393071,
+    "minAttributeValue" : "라피아",
+    "exposureOrder" : 19
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10364202,
+    "minAttributeValue" : "알루미늄",
+    "exposureOrder" : 20
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10388535,
+    "minAttributeValue" : "EVA",
+    "exposureOrder" : 21
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10501724,
+    "minAttributeValue" : "코듀라",
+    "exposureOrder" : 22
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10040902,
+    "minAttributeValue" : "캔버스",
+    "exposureOrder" : 23
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10040847,
+    "minAttributeValue" : "패브릭",
+    "exposureOrder" : 24
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10574774,
+    "minAttributeValue" : "면",
+    "exposureOrder" : 25
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10495965,
+    "minAttributeValue" : "옥스포드",
+    "exposureOrder" : 26
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10583619,
+    "minAttributeValue" : "텐셀",
+    "exposureOrder" : 27
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 11431161,
+    "minAttributeValue" : "망사,메시",
+    "exposureOrder" : 28
+  }, {
+    "attributeSeq" : 10013406,
+    "attributeValueSeq" : 10030656,
+    "minAttributeValue" : "기타",
+    "exposureOrder" : 29
+  }, {
+    "attributeSeq" : 10005212,
+    "attributeValueSeq" : 10029065,
+    "minAttributeValue" : "남성용",
+    "exposureOrder" : 1
+  }, {
+    "attributeSeq" : 10005212,
+    "attributeValueSeq" : 10537277,
+    "minAttributeValue" : "여성용",
+    "exposureOrder" : 2
+  }, {
+    "attributeSeq" : 10005212,
+    "attributeValueSeq" : 10030583,
+    "minAttributeValue" : "남녀공용",
+    "exposureOrder" : 3
+  }, {
+    "attributeSeq" : 10013438,
+    "attributeValueSeq" : 10819574,
+    "minAttributeValue" : "동전포켓포함",
+    "exposureOrder" : 1
+  }, {
+    "attributeSeq" : 10013438,
+    "attributeValueSeq" : 10819575,
+    "minAttributeValue" : "스마트폰수납",
+    "exposureOrder" : 2
+  }, {
+    "attributeSeq" : 10013438,
+    "attributeValueSeq" : 10821547,
+    "minAttributeValue" : "지퍼포켓",
+    "exposureOrder" : 3
+  }, {
+    "attributeSeq" : 10013438,
+    "attributeValueSeq" : 10030704,
+    "minAttributeValue" : "목걸이형",
+    "exposureOrder" : 4
+  }, {
+    "attributeSeq" : 10013438,
+    "attributeValueSeq" : 10030656,
+    "minAttributeValue" : "기타",
+    "exposureOrder" : 5
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10574836,
+    "minAttributeValue" : "체크",
+    "exposureOrder" : 1
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10040089,
+    "minAttributeValue" : "프린트",
+    "exposureOrder" : 2
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10040086,
+    "minAttributeValue" : "도트",
+    "exposureOrder" : 3
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10040050,
+    "minAttributeValue" : "스트라이프",
+    "exposureOrder" : 4
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10040928,
+    "minAttributeValue" : "플라워",
+    "exposureOrder" : 5
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10264433,
+    "minAttributeValue" : "레오파드",
+    "exposureOrder" : 6
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10553086,
+    "minAttributeValue" : "지브라",
+    "exposureOrder" : 7
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10731153,
+    "minAttributeValue" : "카모플라쥬",
+    "exposureOrder" : 8
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10722415,
+    "minAttributeValue" : "기하학",
+    "exposureOrder" : 9
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10040057,
+    "minAttributeValue" : "로고",
+    "exposureOrder" : 10
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10040055,
+    "minAttributeValue" : "캐릭터",
+    "exposureOrder" : 11
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10731157,
+    "minAttributeValue" : "레터링",
+    "exposureOrder" : 12
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10769411,
+    "minAttributeValue" : "파이톤",
+    "exposureOrder" : 13
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10040049,
+    "minAttributeValue" : "무지",
+    "exposureOrder" : 14
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10773537,
+    "minAttributeValue" : "아가일",
+    "exposureOrder" : 15
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10846063,
+    "minAttributeValue" : "헤링본",
+    "exposureOrder" : 16
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10759955,
+    "minAttributeValue" : "페이즐리",
+    "exposureOrder" : 17
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10040861,
+    "minAttributeValue" : "퀼팅",
+    "exposureOrder" : 18
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 11051985,
+    "minAttributeValue" : "크로커다일",
+    "exposureOrder" : 19
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 11051995,
+    "minAttributeValue" : "하운드",
+    "exposureOrder" : 20
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 11051996,
+    "minAttributeValue" : "쉐브론",
+    "exposureOrder" : 21
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10774065,
+    "minAttributeValue" : "에스닉",
+    "exposureOrder" : 22
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10232290,
+    "minAttributeValue" : "트로피칼",
+    "exposureOrder" : 23
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10383862,
+    "minAttributeValue" : "하트",
+    "exposureOrder" : 24
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10760048,
+    "minAttributeValue" : "사선",
+    "exposureOrder" : 25
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 11526221,
+    "minAttributeValue" : "젠탱글",
+    "exposureOrder" : 26
+  }, {
+    "attributeSeq" : 10013386,
+    "attributeValueSeq" : 10030656,
+    "minAttributeValue" : "기타",
+    "exposureOrder" : 27
+  }, {
+    "attributeSeq" : 10011143,
+    "attributeValueSeq" : 10040860,
+    "minAttributeValue" : "스터드",
+    "exposureOrder" : 1
+  }, {
+    "attributeSeq" : 10011143,
+    "attributeValueSeq" : 10040861,
+    "minAttributeValue" : "퀼팅",
+    "exposureOrder" : 2
+  }, {
+    "attributeSeq" : 10011143,
+    "attributeValueSeq" : 10040862,
+    "minAttributeValue" : "체인",
+    "exposureOrder" : 3
+  }, {
+    "attributeSeq" : 10011143,
+    "attributeValueSeq" : 10040863,
+    "minAttributeValue" : "버클/벨티드",
+    "exposureOrder" : 4
+  }, {
+    "attributeSeq" : 10011143,
+    "attributeValueSeq" : 10040927,
+    "minAttributeValue" : "비즈/스팽글",
+    "exposureOrder" : 5
+  }, {
+    "attributeSeq" : 10011143,
+    "attributeValueSeq" : 10040865,
+    "minAttributeValue" : "팬던트/참",
+    "exposureOrder" : 6
+  }, {
+    "attributeSeq" : 10011143,
+    "attributeValueSeq" : 10040925,
+    "minAttributeValue" : "리본",
+    "exposureOrder" : 7
+  }, {
+    "attributeSeq" : 10011143,
+    "attributeValueSeq" : 10040924,
+    "minAttributeValue" : "태슬",
+    "exposureOrder" : 8
+  }, {
+    "attributeSeq" : 10011143,
+    "attributeValueSeq" : 11001695,
+    "minAttributeValue" : "몰리",
+    "exposureOrder" : 9
+  }, {
+    "attributeSeq" : 10011143,
+    "attributeValueSeq" : 10040931,
+    "minAttributeValue" : "스카치",
+    "exposureOrder" : 10
+  }, {
+    "attributeSeq" : 10011143,
+    "attributeValueSeq" : 10574840,
+    "minAttributeValue" : "와펜/패치",
+    "exposureOrder" : 11
+  }, {
+    "attributeSeq" : 10011143,
+    "attributeValueSeq" : 10779836,
+    "minAttributeValue" : "카라비너",
+    "exposureOrder" : 12
+  }, {
+    "attributeSeq" : 10011143,
+    "attributeValueSeq" : 10769409,
+    "minAttributeValue" : "장식없음",
+    "exposureOrder" : 13
+  }, {
+    "attributeSeq" : 10011143,
+    "attributeValueSeq" : 10030656,
+    "minAttributeValue" : "기타",
+    "exposureOrder" : 14
+  }, {
+    "attributeSeq" : 10019574,
+    "attributeValueSeq" : 10030266,
+    "minAttributeValue" : "오픈형",
+    "exposureOrder" : 1
+  }, {
+    "attributeSeq" : 10019574,
+    "attributeValueSeq" : 10746035,
+    "minAttributeValue" : "지퍼형",
+    "exposureOrder" : 2
+  }, {
+    "attributeSeq" : 10019574,
+    "attributeValueSeq" : 10820467,
+    "minAttributeValue" : "똑딱이형",
+    "exposureOrder" : 3
+  }, {
+    "attributeSeq" : 10019574,
+    "attributeValueSeq" : 10771117,
+    "minAttributeValue" : "자석형",
+    "exposureOrder" : 4
+  }, {
+    "attributeSeq" : 10019574,
+    "attributeValueSeq" : 10030656,
+    "minAttributeValue" : "기타",
+    "exposureOrder" : 5
+  } ],
+  "notices" : [ ]
+}

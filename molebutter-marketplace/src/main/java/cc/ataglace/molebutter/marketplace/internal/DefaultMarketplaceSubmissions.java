@@ -1,11 +1,7 @@
 package cc.ataglace.molebutter.marketplace.internal;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.*;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -30,24 +26,20 @@ public class DefaultMarketplaceSubmissions implements MarketplaceSubmissions {
     private final boolean legacySingleWriter;
     private final TransactionTemplate transactions;
     private final String account;
-    private final boolean workerEnabled;
-    private final String owner=UUID.randomUUID().toString();
-    private final AtomicBoolean running=new AtomicBoolean();
-    private final ExecutorService executor=Executors.newSingleThreadExecutor(r->{var t=new Thread(r,"marketplace-submission");t.setDaemon(true);return t;});
-    private volatile SubmissionStore.Job current;
+    private final SubmissionWorker worker;
 
     public DefaultMarketplaceSubmissions(BusinessAccess access,MarketplaceDrafts drafts,DraftStore draftStore,
             SubmissionStore store,DefaultMarketplaceEditing editing,MarketplaceWriteGateway writer,PlatformTransactionManager manager,
             String vendor,boolean enabled){
         this.access=access;this.drafts=drafts;this.draftStore=draftStore;this.store=store;this.editing=editing;writers=Map.of("COUPANG",writer);legacySingleWriter=true;
-        transactions=new TransactionTemplate(manager);account=account(vendor.trim());workerEnabled=enabled;
+        transactions=new TransactionTemplate(manager);account=account(vendor.trim());worker=new SubmissionWorker(access,store,writers,transactions,this::accountFor,enabled);
     }
     public DefaultMarketplaceSubmissions(BusinessAccess access,MarketplaceDrafts drafts,DraftStore draftStore,
             SubmissionStore store,DefaultMarketplaceEditing editing,List<MarketplaceWriteGateway> gateways,PlatformTransactionManager manager,
             String vendor,boolean enabled){
         this.access=access;this.drafts=drafts;this.draftStore=draftStore;this.store=store;this.editing=editing;
         var configured=new HashMap<String,MarketplaceWriteGateway>();for(var gateway:gateways){String market=Objects.toString(gateway.market(),"COUPANG");if(configured.putIfAbsent(market,gateway)!=null)throw new IllegalStateException("Duplicate marketplace writer");}writers=Map.copyOf(configured);legacySingleWriter=false;
-        transactions=new TransactionTemplate(manager);account=account(vendor.trim());workerEnabled=enabled;
+        transactions=new TransactionTemplate(manager);account=account(vendor.trim());worker=new SubmissionWorker(access,store,writers,transactions,this::accountFor,enabled);
     }
     @org.springframework.beans.factory.annotation.Autowired
     public DefaultMarketplaceSubmissions(BusinessAccess access,MarketplaceDrafts drafts,DraftStore draftStore,
@@ -81,7 +73,13 @@ public class DefaultMarketplaceSubmissions implements MarketplaceSubmissions {
         var session=transactions.execute(tx->{
             var observed=editing.require(actor,input.sessionId(),true);
             if(!observed.session().draftId().equals(input.draftId())||observed.session().revision()!=input.revision())throw new MarketplaceSubmissionFailure(CONFLICT);
-            if(store.active(draft,observed.account(),-1))throw new MarketplaceSubmissionFailure(CONFLICT);
+            if(input.targets().size()==1&&input.targets().getFirst()!=null){
+                var requested=input.targets().getFirst();var target=observed.session().targets().stream().filter(t->Objects.equals(t.market(),requested.market())).findFirst().orElse(null);
+                if(target!=null&&"READY".equals(target.status())&&writers.containsKey(target.market())){
+                    var binding=editing.requireTarget(observed,target.market(),true);
+                    if(store.active(draft,binding.account(),-1))throw new MarketplaceSubmissionFailure(CONFLICT);
+                }
+            }
             return observed;
         });
         var reference=draftStore.find(draft,false);
@@ -98,6 +96,7 @@ public class DefaultMarketplaceSubmissions implements MarketplaceSubmissions {
             if(input.targets().size()>1)targetIssues.add(new MarketplaceDrafts.Issue(target.market(),"selectedMarkets","한 번에 한 마켓씩 저장해 주세요."));
             if(writer==null)targetIssues.add(new MarketplaceDrafts.Issue(target.market(),"selectedMarkets","이 마켓의 전송은 아직 지원하지 않습니다."));
             else if(!"READY".equals(target.status())||target.document()==null)targetIssues.add(new MarketplaceDrafts.Issue(target.market(),"editSession","최신 상품을 다시 조회해 주세요."));
+            else if(!target.conflicts().isEmpty())targetIssues.add(new MarketplaceDrafts.Issue(target.market(),"changes","외부에서 변경된 항목을 확인하고 임시 저장한 뒤 다시 준비해 주세요."));
             else try{
                 if(writer.validateCommonDraft()&&"CREATE".equals(target.mode())){
                     var candidate=writer.projectChanges(target.document(),requested.changes());
@@ -107,9 +106,12 @@ public class DefaultMarketplaceSubmissions implements MarketplaceSubmissions {
                     targetIssues.addAll(validation.unverified().stream().filter(i->!urlImageWarning(i)).toList());
                 }
                 if(targetIssues.isEmpty()){
-                    result=writer.prepareSelected(actor,reference,session.mapping(),input.requested(),target.document(),requested.changes());
+                    var binding=session.binding(target.market());if(binding==null)throw new MarketplaceSubmissionFailure(CONFLICT);
+                    result=writer.prepareSelected(actor,reference,binding.mapping(),"COUPANG".equals(target.market())?false:input.requested(),target.document(),requested.changes());
+                    if("COUPANG".equals(target.market()))result=writer.saveWorkflow(result);
+                    result=result.withListingVersion(binding.listingVersion());
                     checkPrepared(result);
-                    if(!Objects.equals(targetAccount,result.accountKey())||!target.market().equals(result.market())||!session.account().equals(result.accountKey())||result.editIntent()==null)throw new MarketplaceSubmissionFailure(CONFLICT);
+                    if(!Objects.equals(targetAccount,result.accountKey())||!target.market().equals(result.market())||!binding.account().equals(result.accountKey())||result.editIntent()==null||!compatiblePreparedMapping(binding.mapping(),result))throw new MarketplaceSubmissionFailure(CONFLICT);
                     prepared=result;
                 }
             }catch(MarketplaceEditConflict conflict){
@@ -122,12 +124,14 @@ public class DefaultMarketplaceSubmissions implements MarketplaceSubmissions {
                 result==null?List.copyOf(conflictDifferences):result.changes().stream().map(c->new Change(c.path(),c.before(),c.after())).toList(),List.copyOf(targetIssues),
                 target.document()==null?Map.of():target.document().options().stream().collect(java.util.stream.Collectors.toMap(MarketplaceDrafts.Option::id,o->Objects.toString(o.name(),"이름 없는 옵션"),(a,b)->a))));
         }
-        var preview=new Preview(Long.toString(previewId),input.draftId(),input.revision(),session.session().expiresAt(),prepared!=null&&!prepared.steps().isEmpty()&&issues.isEmpty(),input.requested(),List.copyOf(targets));
+        boolean approvalRequested=targets.stream().anyMatch(t->t.market().equals("COUPANG"))||input.requested();
+        var preview=new Preview(Long.toString(previewId),input.draftId(),input.revision(),session.session().expiresAt(),prepared!=null&&!prepared.steps().isEmpty()&&issues.isEmpty(),approvalRequested,List.copyOf(targets));
         final var immutablePrepared=prepared;
         transactions.executeWithoutResult(tx->{
             access.productActor(actor,true);var current=editing.require(actor,input.sessionId(),true);
             if(!current.equals(session))throw new MarketplaceSubmissionFailure(CONFLICT);
-            store.insertPreview(previewId,actor,reference,input.requested(),Instant.parse(preview.expiresAt()));
+            if(immutablePrepared!=null)editing.requireTarget(current,immutablePrepared.market(),true);
+            store.insertPreview(previewId,actor,reference,approvalRequested,Instant.parse(preview.expiresAt()));
             store.attachSession(previewId,input.sessionId());
             var assets=new HashSet<>(MarketplaceDocuments.assetIds(reference));
             if(immutablePrepared!=null)assets.addAll(MarketplaceDocuments.assetIds(changed(immutablePrepared.market(),immutablePrepared.editIntent().observed(),immutablePrepared.editIntent().changes())));
@@ -153,13 +157,17 @@ public class DefaultMarketplaceSubmissions implements MarketplaceSubmissions {
             if(preview.sessionId()==null||preview.prepared().editIntent()==null)throw new MarketplaceSubmissionFailure(INVALID);
             var session=editing.require(actor,preview.sessionId(),true);
             if(!session.session().draftId().equals(Long.toString(preview.draftId()))||session.session().revision()!=preview.revision())throw new MarketplaceSubmissionFailure(CONFLICT);
-            if(!session.account().equals(preview.prepared().accountKey()))throw new MarketplaceSubmissionFailure(CONFLICT);
+            var binding=editing.requireTarget(session,preview.prepared().market(),true);
+            if(!binding.account().equals(preview.prepared().accountKey())||!compatiblePreparedMapping(binding.mapping(),preview.prepared()))throw new MarketplaceSubmissionFailure(CONFLICT);
             if(store.active(preview.draftId(),preview.prepared().accountKey(),-1))throw new MarketplaceSubmissionFailure(CONFLICT);
             long execution=store.createExecution(actor,preview,key);return store.execution(execution,false);
         });}catch(DuplicateKeyException duplicate){
             Long existing=store.byPreview(previewId);Long keyed=store.byKey(key);if(existing!=null&&(keyed==null||existing.equals(keyed)))return store.execution(existing,false);
             throw new MarketplaceSubmissionFailure(CONFLICT);
         }
+    }
+    static boolean compatiblePreparedMapping(MarketplaceWriteGateway.Mapping bound,MarketplaceWriteGateway.Prepared prepared){
+        return SubmissionMappingPolicy.compatiblePreparedMapping(bound,prepared);
     }
     @Override public Execution get(Long actor,String value){access.productActor(actor,true);return store.execution(id(value),false);}
     @Override public PageResponse<Execution> list(Long actor,String draftId,int page,int size){
@@ -170,6 +178,7 @@ public class DefaultMarketplaceSubmissions implements MarketplaceSubmissions {
         access.productActor(actor,true);long executionId=id(value);
         return transactions.execute(tx->{
             access.productActor(actor,true);var original=store.execution(executionId,false);var d=draftStore.find(id(original.draftId()),true);var e=store.execution(executionId,true);if(store.unsupportedSnapshotVersion(executionId))throw new MarketplaceSubmissionFailure(CONFLICT);
+            if(store.archived(id(original.draftId())))throw new MarketplaceSubmissionFailure(CONFLICT);
             if(e.revised())throw new MarketplaceSubmissionFailure(CONFLICT);
             if(e.status()!=Status.FAILED&&e.status()!=Status.PARTIAL)throw new MarketplaceSubmissionFailure(CONFLICT);
             if(d.revision()!=e.revision())throw new MarketplaceSubmissionFailure(CONFLICT);
@@ -208,45 +217,16 @@ public class DefaultMarketplaceSubmissions implements MarketplaceSubmissions {
     }
     @Scheduled(fixedDelay=1000,initialDelay=15000)
     public void poll(){
-        if(workerEnabled&&running.compareAndSet(false,true))executor.execute(()->{try{runPending();}finally{running.set(false);}});
+        worker.poll();
     }
     @Scheduled(fixedDelay=30000,initialDelay=30000)
-    public void heartbeat(){var job=current;if(job!=null)store.heartbeat(job);}
+    public void heartbeat(){worker.heartbeat();}
     @Scheduled(fixedDelay=3600000,initialDelay=3600000)
     public void cleanupExpiredPreviews(){for(long preview:store.expiredUnexecutedPreviews())transactions.executeWithoutResult(tx->store.releaseExpiredPreviewPins(preview));}
-    /** One persisted step; integration tests can call this with a fake gateway and disabled polling. */
-    public void runPending(){
-        transactions.executeWithoutResult(tx->store.recoverExpired());
-        var job=transactions.execute(tx->store.claim(owner));if(job==null)return;current=job;
-        MarketplaceWriteGateway.Result result;
-        try{
-            access.productActor(job.actor(),true);
-            var writer=writers.get(job.prepared().market());
-            if(job.prepared().schemaVersion()!=1)result=new MarketplaceWriteGateway.Result(MarketplaceWriteGateway.State.FAILED,job.mapping(),"UNSUPPORTED_SNAPSHOT_VERSION",null,Instant.now());
-            else if(writer==null||!Objects.equals(accountFor(job.prepared().market()),job.prepared().accountKey()))result=new MarketplaceWriteGateway.Result(MarketplaceWriteGateway.State.FAILED,job.mapping(),"ACCOUNT_CHANGED",null,Instant.now());
-            else if(!store.owns(job))return;
-            else if(job.action().equals("RECONCILE")){
-                var previous=job.previous()==null?new MarketplaceWriteGateway.Result(MarketplaceWriteGateway.State.UNKNOWN,job.mapping(),"INTERRUPTED",null,Instant.now()):job.previous();
-                result=writer.reconcile(job.actor(),job.prepared(),job.step(),previous);
-            }else if(job.prepared().editIntent()==null)result=new MarketplaceWriteGateway.Result(MarketplaceWriteGateway.State.FAILED,job.mapping(),"LEGACY_INTENT",null,Instant.now());
-            else result=writer.execute(job.actor(),job.prepared(),job.step(),job.mapping(),actual->transactions.executeWithoutResult(tx->{access.productActor(job.actor(),true);store.recordRequest(job,actual);}));
-            if(result==null)result=unknown(job,"RESPONSE");
-            if(result.mapping()!=null&&(!job.prepared().accountKey().equals(result.mapping().accountKey())
-                    ||job.mapping()!=null&&job.mapping().sellerProductId()!=null&&!Objects.equals(job.mapping().sellerProductId(),result.mapping().sellerProductId())
-                    ||job.mapping()!=null&&job.mapping().channelProductId()!=null&&!Objects.equals(job.mapping().channelProductId(),result.mapping().channelProductId())))result=unknown(job,"MAPPING_CHANGED");
-        }catch(BusinessException forbidden){result=new MarketplaceWriteGateway.Result(MarketplaceWriteGateway.State.FAILED,job.mapping(),"ACCESS_DENIED",null,Instant.now());}
-        catch(RuntimeException unexpected){result=unknown(job,"INTERRUPTED");}
-        finally{current=null;}
-        final var outcome=result;
-        try{transactions.executeWithoutResult(tx->store.finish(job,outcome));}
-        catch(RuntimeException persistenceFailure){
-            // The remote call has already happened. A failed result/mapping commit must never make it retryable.
-            transactions.executeWithoutResult(tx->store.finish(job,unknown(job,"PERSISTENCE")));
-        }
-    }
-    private static MarketplaceWriteGateway.Result unknown(SubmissionStore.Job job,String code){return new MarketplaceWriteGateway.Result(MarketplaceWriteGateway.State.UNKNOWN,job.mapping(),code,null,Instant.now());}
-    @PreDestroy public void close(){executor.shutdownNow();}
+    /** 호환 진입점: 모의 게이트웨이 검증과 수동 실행에서 사용한다. */
+    public void runPending(){worker.runPending();}
+    @PreDestroy public void close(){worker.close();}
     static long id(String value){try{long id=Long.parseLong(value);if(id<=0||!value.equals(Long.toString(id)))throw new NumberFormatException();return id;}catch(RuntimeException e){throw new InputValidationFailure("실행 식별자를 확인해 주세요.");}}
     static void checkKey(String value){if(value==null||!value.matches("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"))throw new InputValidationFailure("실행 요청 키를 확인해 주세요.");}
-    static String account(String value){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));}catch(java.security.NoSuchAlgorithmException e){throw new IllegalStateException("SHA-256 unavailable");}}
+    static String account(String value){return MarketplaceHashes.sha256(value);}
 }

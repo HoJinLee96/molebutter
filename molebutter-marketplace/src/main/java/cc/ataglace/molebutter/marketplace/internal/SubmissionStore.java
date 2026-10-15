@@ -21,6 +21,27 @@ class SubmissionStore {
     SubmissionStore(JdbcTemplate db,ObjectMapper json){this(db,json,null);}
     @org.springframework.beans.factory.annotation.Autowired
     SubmissionStore(JdbcTemplate db,ObjectMapper json,ImageAssets assets){this.db=db;this.json=json;this.assets=assets;}
+    record Listing(long version,String state,String reason,Instant checkedAt,MarketplaceDrafts.Document observed) {}
+    Listing listing(long draft,String market,String account,boolean lock){
+        var rows=db.query("SELECT listing_version,state,reason,checked_at,observed_json FROM marketplace_listing_state WHERE draft_id=? AND market=? AND account_key=?"+(lock?" FOR UPDATE":""),(r,n)->new Listing(r.getLong(1),r.getString(2),r.getString(3),r.getTimestamp(4)==null?null:r.getTimestamp(4).toInstant(),r.getString(5)==null?null:json.readValue(r.getString(5),MarketplaceDrafts.Document.class)),draft,market,account);
+        return rows.isEmpty()?new Listing(1,"ACTIVE",null,null,null):rows.getFirst();
+    }
+    long listingVersion(long draft,String market,String account){return listing(draft,market,account,false).version();}
+    boolean recreating(long draft,String market,String account){return "RECREATE_READY".equals(listing(draft,market,account,false).state());}
+    void observedListing(long draft,String market,String account,long version,String state,String reason,MarketplaceDrafts.Document observed){
+        db.update("INSERT IGNORE INTO marketplace_listing_state(draft_id,market,account_key,listing_version,state) VALUES(?,?,?,1,'ACTIVE')",draft,market,account);
+        db.update("UPDATE marketplace_listing_state SET state=?,reason=?,checked_at=CURRENT_TIMESTAMP(6),observed_json=COALESCE(?,observed_json) WHERE draft_id=? AND market=? AND account_key=? AND listing_version=?",state,reason,observed==null?null:json.writeValueAsString(observed),draft,market,account,version);
+    }
+    Set<String> recreationAssetIds(long draft){var ids=new HashSet<String>();for(String value:db.queryForList("SELECT observed_json FROM marketplace_listing_state WHERE draft_id=? AND state='RECREATE_READY' AND observed_json IS NOT NULL",String.class,draft))ids.addAll(MarketplaceDocuments.assetIds(json.readValue(value,MarketplaceDrafts.Document.class)));return ids;}
+    record RecreateHistory(long draft,String market,String hash) {}
+    RecreateHistory recreateRequest(Long actor,String request){var ids=db.query("SELECT draft_id,market,request_hash FROM marketplace_listing_history WHERE created_by=? AND request_id=?",(r,n)->new RecreateHistory(r.getLong(1),r.getString(2),r.getString(3)),actor,request);return ids.isEmpty()?null:ids.getFirst();}
+    void archiveListing(Long actor,long draft,String market,EditingStore.Binding binding,String request,String hash,MarketplaceDrafts.Document document,MarketplaceWriteGateway.EditIntent intent){
+        long history=BusinessIds.next();
+        db.update("INSERT INTO marketplace_listing_history(id,draft_id,market,account_key,listing_version,mapping_json,document_json,intent_json,request_id,request_hash,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP(6))",history,draft,market,binding.account(),binding.listingVersion(),json.writeValueAsString(binding.mapping()),json.writeValueAsString(document),intent==null?null:json.writeValueAsString(intent),request,hash,actor);
+        if(assets!=null)assets.pinListingHistory(actor,history,Long.toString(draft),MarketplaceDocuments.assetIds(document));
+        db.update("DELETE FROM marketplace_listing_mapping WHERE draft_id=? AND market=? AND account_key=?",draft,market,binding.account());
+        db.update("UPDATE marketplace_listing_state SET listing_version=listing_version+1,state='RECREATE_READY',reason=NULL,checked_at=CURRENT_TIMESTAMP(6),observed_json=? WHERE draft_id=? AND market=? AND account_key=? AND listing_version=?",json.writeValueAsString(document),draft,market,binding.account(),binding.listingVersion());
+    }
     boolean unsupportedSnapshotVersion(long executionId){
         String snapshot=db.queryForObject("SELECT p.prepared_json FROM marketplace_execution e JOIN marketplace_submission_preview p ON p.id=e.preview_id WHERE e.id=?",String.class,executionId);
         var prepared=read(snapshot,MarketplaceWriteGateway.Prepared.class);return prepared==null||prepared.schemaVersion()!=1;
@@ -49,6 +70,8 @@ class SubmissionStore {
     }
     void pinAssets(Long actor,long previewId,String draftId,Set<String> ids){assets.pinReferences(actor,previewId,draftId,ids);}
     String importAccount(long draftId){return db.queryForObject("SELECT import_account FROM marketplace_draft WHERE id=?",String.class,draftId);}
+    String importMarket(long draftId){return db.queryForObject("SELECT import_market FROM marketplace_draft WHERE id=?",String.class,draftId);}
+    Set<String> linkedMarkets(long draftId){return new LinkedHashSet<>(db.queryForList("SELECT DISTINCT market FROM marketplace_listing_mapping WHERE draft_id=? ORDER BY market",String.class,draftId));}
     Long mappedDraft(String account,String product){return mappedDraft("COUPANG",account,product);}
     Long mappedDraft(String market,String account,String product){var rows=db.queryForList("SELECT draft_id FROM marketplace_listing_mapping WHERE market=? AND account_key=? AND external_product_id=?",Long.class,market,account,product);return rows.isEmpty()?null:rows.getFirst();}
     MarketplaceWriteGateway.Mapping mapping(long draftId,String account){
@@ -60,6 +83,38 @@ class SubmissionStore {
     MarketplaceWriteGateway.Mapping mapping(long draftId,String market,String account,boolean lock){
         var rows=db.queryForList("SELECT mapping_json FROM marketplace_listing_mapping WHERE draft_id=? AND market=? AND account_key=?"+(lock?" FOR UPDATE":""),String.class,draftId,market,account);
         return rows.isEmpty()?null:json.readValue(rows.getFirst(),MarketplaceWriteGateway.Mapping.class);
+    }
+    record TransmittedIntent(long execution,MarketplaceWriteGateway.EditIntent intent) {}
+    MarketplaceWriteGateway.EditIntent lastIntent(long draft,String market,EditingStore.Binding binding){var value=transmittedIntent(draft,market,binding);return value==null?null:value.intent();}
+    TransmittedIntent transmittedIntent(long draft,String market,EditingStore.Binding binding){
+        for(var row:db.queryForList("SELECT e.id,p.prepared_json FROM marketplace_execution e JOIN marketplace_submission_preview p ON p.id=e.preview_id JOIN marketplace_execution_target t ON t.execution_id=e.id WHERE e.draft_id=? AND t.market=? AND t.account_key=? AND EXISTS(SELECT 1 FROM marketplace_execution_step s WHERE s.execution_id=e.id AND s.status IN ('ACCEPTED','SUCCEEDED')) AND p.prepared_json IS NOT NULL ORDER BY e.created_at DESC LIMIT 30",draft,market,binding.account())){
+            var p=read((String)row.get("prepared_json"),MarketplaceWriteGateway.Prepared.class);if(p==null||p.editIntent()==null||p.schemaVersion()!=1||!Objects.equals(p.listingVersion(),binding.listingVersion())||!market.equals(p.market()))continue;
+            if(p.mapping()!=null&&DefaultMarketplaceEditing.sameMapping(p.mapping(),binding.mapping())||registrationBasis(p,binding)&&registeredIntent(draft,market,binding,p.editIntent()))return new TransmittedIntent(((Number)row.get("id")).longValue(),p.editIntent());
+        }return null;
+    }
+    boolean applied(long draft,String market,String account,long revision){
+        return !db.queryForList("SELECT draft_id FROM marketplace_listing_mapping WHERE draft_id=? AND market=? AND account_key=? AND applied_revision>=?",Long.class,draft,market,account,revision).isEmpty();
+    }
+    /** A common-only save may advance the pending revision after CREATE acquired its external ID. */
+    boolean registeredIntent(long draft,String market,EditingStore.Binding binding,MarketplaceWriteGateway.EditIntent intent){
+        if(binding.mapping()==null)return false;
+        var snapshots=db.queryForList("SELECT p.prepared_json FROM marketplace_execution e JOIN marketplace_execution_target t ON t.execution_id=e.id JOIN marketplace_submission_preview p ON p.id=e.preview_id WHERE e.draft_id=? AND t.market=? AND t.account_key=? AND t.mode='CREATE' AND t.external_product_id=? AND EXISTS(SELECT 1 FROM marketplace_execution_step s WHERE s.execution_id=e.id AND s.step_type='CREATE' AND s.status IN ('ACCEPTED','SUCCEEDED'))",String.class,draft,market,binding.account(),binding.mapping().sellerProductId());
+        for(var snapshot:snapshots){var prepared=read(snapshot,MarketplaceWriteGateway.Prepared.class);if(registrationBasis(prepared,binding)&&sameRegisteredIntent(prepared.editIntent(),intent,market))return true;}
+        return false;
+    }
+    /** CREATE may carry stable option UUIDs before the remote product/option IDs exist. */
+    boolean registrationBasis(MarketplaceWriteGateway.Prepared prepared,EditingStore.Binding binding){
+        if(prepared==null||prepared.schemaVersion()!=1||binding.mapping()==null||!Objects.equals(prepared.accountKey(),binding.account())||!Objects.equals(prepared.listingVersion(),binding.listingVersion()))return false;
+        var placeholder=prepared.mapping();if(placeholder==null)return true;
+        if(placeholder.sellerProductId()!=null||placeholder.channelProductId()!=null||!Objects.equals(placeholder.accountKey(),binding.account())||placeholder.options()==null)return false;
+        var ids=new HashSet<String>();for(var option:placeholder.options())if(option.optionId()==null||!ids.add(option.optionId())||option.sellerProductItemId()!=null||option.vendorItemId()!=null)return false;
+        return binding.mapping().options()!=null&&ids.equals(binding.mapping().options().stream().map(MarketplaceWriteGateway.OptionMapping::optionId).collect(java.util.stream.Collectors.toSet()));
+    }
+    boolean sameRegisteredIntent(MarketplaceWriteGateway.EditIntent sent,MarketplaceWriteGateway.EditIntent saved,String market){
+        if(sent==null||saved==null||!sent.changes().equals(saved.changes()))return false;
+        var a=json.valueToTree(sent.observed()).asObject();var b=json.valueToTree(saved.observed()).asObject();var selected=a.path("markets").path(market).equals(b.path("markets").path(market));
+        // Selection and unrelated provider settings are not part of this provider's CREATE body.
+        for(var field:List.of("revision","selectedMarkets","markets")){a.remove(field);b.remove(field);}return selected&&a.equals(b);
     }
     Long byKey(String key){var rows=db.queryForList("SELECT id FROM marketplace_execution WHERE idempotency_key=?",Long.class,key);return rows.isEmpty()?null:rows.getFirst();}
     Long byPreview(long previewId){var rows=db.queryForList("SELECT id FROM marketplace_execution WHERE preview_id=?",Long.class,previewId);return rows.isEmpty()?null:rows.getFirst();}
@@ -90,8 +145,9 @@ class SubmissionStore {
         (r,n)->new Step(r.getString(1),StepType.valueOf(r.getString(2)),r.getString(3),label(r.getString(2))+(names.get(r.getString(3))==null?"":" · "+names.get(r.getString(3))),Status.valueOf(r.getString(4)),r.getInt(5),r.getString(6),"HTTP_411_REJECTED".equals(r.getString(6))?knownLegacyReason(r.getString(6)):r.getString(7),r.getTimestamp(8).toInstant().toString()),id);
     }
     PageResponse<Execution> list(long draftId,int page,int size){
-        long count=db.queryForObject("SELECT COUNT(*) FROM marketplace_execution WHERE draft_id=?",Long.class,draftId);
-        var ids=db.queryForList("SELECT id FROM marketplace_execution WHERE draft_id=? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",Long.class,draftId,size,(long)page*size);
+        String scope="(draft_id=? OR draft_id IN (SELECT previous_draft_id FROM marketplace_editor_history_link WHERE draft_id=?))";
+        long count=db.queryForObject("SELECT COUNT(*) FROM marketplace_execution WHERE "+scope,Long.class,draftId,draftId);
+        var ids=db.queryForList("SELECT id FROM marketplace_execution WHERE "+scope+" ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",Long.class,draftId,draftId,size,(long)page*size);
         return new PageResponse<>(ids.stream().map(i->execution(i,false)).toList(),page,(int)Math.ceil((double)count/size),count);
     }
     void queueRetry(long id){
@@ -127,7 +183,22 @@ class SubmissionStore {
             if(rows.isEmpty())continue;
             var row=rows.getFirst();String stepId=row.get("step_id").toString(),action=row.get("action").toString();
             if(action.equals("WRITE")&&(unresolved||!ambiguousOthers.isEmpty()||latest.targets().stream().flatMap(t->t.steps().stream()).anyMatch(s->s.status()==Status.FAILED)))continue;
-            var p=preview(((Number)header.get("preview_id")).longValue(),false).prepared();var step=p.steps().stream().filter(s->s.id().equals(stepId)).findFirst().orElseThrow();
+            var p=preview(((Number)header.get("preview_id")).longValue(),false).prepared();
+            if(p.listingVersion()!=listingVersion(((Number)header.get("draft_id")).longValue(),p.market(),p.accountKey())){
+                db.update("UPDATE marketplace_execution_step SET status='FAILED',result_code='MAPPING_CHANGED',result_message='이전 연결 세대의 요청은 실행할 수 없습니다.',updated_at=CURRENT_TIMESTAMP(6) WHERE execution_id=? AND status='QUEUED'",executionId);aggregate(executionId);continue;
+            }
+            var step=p.steps().stream().filter(s->s.id().equals(stepId)).findFirst().orElseThrow();
+            if(step.type()==MarketplaceWriteGateway.Type.APPROVAL&&action.equals("WRITE")){
+                // Bind verification to the actual saved request, including any rebased payload.
+                var parent=json.readValue(step.expectedJson(),MarketplaceWriteGateway.Step.class);
+                if(!p.steps().stream().anyMatch(s->s.id().equals(parent.id())&&(s.type()==MarketplaceWriteGateway.Type.CREATE||s.type()==MarketplaceWriteGateway.Type.PRODUCT)))throw new MarketplaceSubmissionFailure(CONFLICT);
+                var requests=db.queryForList("SELECT request_json FROM marketplace_execution_attempt WHERE execution_id=? AND step_id=? AND action='WRITE' AND request_json IS NOT NULL ORDER BY started_at DESC,id DESC LIMIT 1",String.class,executionId,parent.id());
+                if(!requests.isEmpty()){
+                    var actual=json.readValue(requests.getFirst(),MarketplaceWriteGateway.Step.class);
+                    if(actual.type()!=parent.type()||!Objects.equals(actual.optionId(),parent.optionId()))throw new MarketplaceSubmissionFailure(CONFLICT);
+                    step=new MarketplaceWriteGateway.Step(step.id(),step.type(),step.optionId(),step.method(),step.path(),step.query(),step.bodyJson(),step.baselineJson(),json.writeValueAsString(actual));
+                }
+            }
             if(action.equals("RECONCILE")){
                 var requests=db.queryForList("SELECT request_json FROM marketplace_execution_attempt WHERE execution_id=? AND step_id=? AND action='WRITE' AND request_json IS NOT NULL ORDER BY started_at DESC,id DESC LIMIT 1",String.class,executionId,stepId);
                 if(!requests.isEmpty()){
@@ -157,6 +228,11 @@ class SubmissionStore {
         db.queryForList("SELECT account_key FROM marketplace_submission_account WHERE account_key=? FOR UPDATE",String.class,job.prepared().accountKey());
         if(!owns(job))return;
         db.queryForList("SELECT id FROM marketplace_draft WHERE id=? FOR UPDATE",Long.class,job.draftId());execution(job.executionId(),true);
+        if(job.prepared().listingVersion()!=listingVersion(job.draftId(),job.prepared().market(),job.prepared().accountKey())){
+            db.update("UPDATE marketplace_execution_step SET status='FAILED',result_code='MAPPING_CHANGED',result_message='이전 연결 세대의 결과입니다. 현재 연결은 변경하지 않습니다.',updated_at=CURRENT_TIMESTAMP(6) WHERE execution_id=? AND step_id=? AND status='RUNNING'",job.executionId(),job.step().id());
+            db.update("UPDATE marketplace_execution_attempt SET status='FAILED',result_code='MAPPING_CHANGED',completed_at=CURRENT_TIMESTAMP(6) WHERE id=?",job.attemptId());aggregate(job.executionId());
+            db.update("UPDATE marketplace_submission_account SET lease_owner=NULL,lease_until=NULL WHERE account_key=? AND lease_owner=?",job.prepared().accountKey(),job.leaseOwner());return;
+        }
         if(job.action().equals("RECONCILE") && result.state()==MarketplaceWriteGateway.State.FAILED
                 && Set.of("ACCESS_DENIED","ACCOUNT_CHANGED","UNSUPPORTED_SNAPSHOT_VERSION").contains(publicCode(result.code()))){
             // A failed check is not evidence that the previously dispatched write failed.
@@ -195,7 +271,13 @@ class SubmissionStore {
         if(!owners.isEmpty()&&owners.getFirst()!=draftId)throw new MarketplaceSubmissionFailure(CONFLICT);
         var previous=mapping(draftId,market,mapping.accountKey(),true);if(previous!=null&&(!previous.sellerProductId().equals(mapping.sellerProductId())||previous.channelProductId()!=null&&!Objects.equals(previous.channelProductId(),mapping.channelProductId())))throw new MarketplaceSubmissionFailure(CONFLICT);
         db.update("INSERT INTO marketplace_listing_mapping(draft_id,market,account_key,external_product_id,mapping_json,applied_revision,updated_at) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP(6)) ON DUPLICATE KEY UPDATE mapping_json=VALUES(mapping_json),applied_revision=IF(VALUES(applied_revision) IS NULL,applied_revision,GREATEST(COALESCE(applied_revision,-1),VALUES(applied_revision))),updated_at=CURRENT_TIMESTAMP(6)",draftId,market,mapping.accountKey(),mapping.sellerProductId(),json.writeValueAsString(mapping),applied?revision:null);
+        db.update("UPDATE marketplace_listing_state SET state='ACTIVE',reason=NULL WHERE draft_id=? AND market=? AND account_key=?",draftId,market,mapping.accountKey());
     }
+    void moveMapping(long oldDraft,long newDraft,String market,String account){
+        db.update("DELETE FROM marketplace_listing_mapping WHERE draft_id=? AND market=? AND account_key=?",oldDraft,market,account);
+        db.update("INSERT INTO marketplace_editor_history_link(draft_id,previous_draft_id) VALUES(?,?)",newDraft,oldDraft);
+    }
+    boolean archived(long draft){return !db.queryForList("SELECT draft_id FROM marketplace_editor_history_link WHERE previous_draft_id=?",Long.class,draft).isEmpty();}
     void aggregate(long id){
         var statuses=db.queryForList("SELECT status FROM marketplace_execution_step WHERE execution_id=?",String.class,id).stream().map(Status::valueOf).toList();Status state=aggregateStatus(statuses);
         db.update("UPDATE marketplace_execution SET status=?,updated_at=CURRENT_TIMESTAMP(6) WHERE id=?",state.name(),id);
@@ -228,7 +310,7 @@ class SubmissionStore {
         if(preview.expiresAt().plusSeconds(86400).isAfter(Instant.now())||byPreview(previewId)!=null)return;
         assets.releaseReferences(previewId);
     }
-    static String label(String type){return switch(type){case "CREATE"->"상품 등록";case "PRODUCT"->"상품 정보 변경";case "DELIVERY"->"배송·반품 변경";case "ORIGINAL_PRICE"->"정상가 변경";case "PRICE"->"현재 가격 변경";case "STOCK"->"현재 재고 변경";default->"반영 확인";};}
+    static String label(String type){return switch(type){case "CREATE"->"상품 등록";case "PRODUCT"->"상품 정보 변경";case "DELIVERY"->"배송·반품 변경";case "ORIGINAL_PRICE"->"정상가 변경";case "PRICE"->"현재 가격 변경";case "STOCK"->"현재 재고 변경";case "APPROVAL"->"판매 승인 요청";default->"반영 확인";};}
     static String publicCode(String code){return code!=null&&code.matches("[A-Z0-9_]{1,80}")?code:"RESPONSE";}
     private static String knownLegacyReason(String code){return switch(code){
         case "HTTP_411_REJECTED"->"쿠팡이 요청 본문 길이 헤더를 요구했습니다(HTTP 411). 빈 PUT 요청의 Content-Length: 0 전송 방식이 수정되었습니다. 실패·미실행 단계만 재시도해 주세요.";
@@ -252,8 +334,25 @@ class SubmissionStore {
         return switch(code){case "ACCESS_DENIED"->"실행 권한이 변경되었습니다.";case "BASELINE_CHANGED"->"쿠팡 상품이 변경되었습니다. 다시 확인해 주세요.";case "LEGACY_INTENT"->"최신 조회와 변경 항목을 다시 확인해 주세요.";case "ACCOUNT_CHANGED"->"쿠팡 연결 계정이 변경되었습니다.";case "RATE_LIMIT"->"쿠팡 호출 제한입니다. 잠시 후 다시 시도해 주세요.";case "AUTHENTICATION","PERMISSION","CONFIGURATION"->"쿠팡 연결 설정·권한을 확인해 주세요.";default->"요청이 반영되지 않았습니다. 입력과 실행 결과를 확인해 주세요.";};
     }
     static String publicMessage(String status,String code,String market){
+        if(status.equals("SUCCEEDED")&&code.equals("SAVED_FOR_APPROVAL"))return "쿠팡 저장 완료 · 다음 단계에서 판매 승인을 요청합니다.";
+        if(code.equals("APPROVAL_NOT_READY"))return "쿠팡 저장 완료 · 상품 처리 중이므로 10분 후 승인 요청 단계만 재시도해 주세요.";
+        if(status.equals("SUCCEEDED")&&code.equals("CREATED_VALUES_DIFFER"))return "등록·옵션 연결 확인 완료 · 현재 상품값이 등록 요청과 다릅니다. 상품 수정에서 최신값을 확인해 주세요.";
+        if(status.equals("SUCCEEDED")&&code.equals("CREATED_CONFIRMED"))return "등록·옵션 연결 확인 완료 · 상품 수정에서 최신값을 확인해 주세요.";
+        if(status.equals("ACCEPTED")&&Set.of("CREATE_OPTIONS_UNCONFIRMED","OPTIONS_UNCONFIRMED").contains(code))return "등록 상품은 조회되지만 옵션 연결 확인이 필요합니다. 같은 상품을 다시 등록하지 마세요.";
+        if(status.equals("ACCEPTED")&&Set.of("CREATE_STATUS_UNCONFIRMED","STATUS_UNCONFIRMED").contains(code))return "등록 상품은 조회되지만 현재 판매·승인 상태를 확인하지 못했습니다.";
+        if(status.equals("ACCEPTED")&&code.equals("APPROVAL_PENDING"))return "등록 상품 확인 완료 · 판매 승인 대기 중입니다.";
+        if(status.equals("ACCEPTED")&&code.equals("APPROVAL_REJECTED"))return "등록 상품 확인 완료 · 승인 반려 사유를 판매자센터에서 확인해 주세요.";
+        if(status.equals("ACCEPTED")&&code.equals("EDIT_UNSUPPORTED"))return "등록 상품은 조회되지만 현재 상품 유형의 수정 반영을 자동 확인할 수 없습니다. 판매자센터에서 확인해 주세요.";
+        if(status.equals("ACCEPTED")&&code.equals("VERIFY_UNAVAILABLE"))return "결과 조회에 실패했습니다. 같은 요청을 다시 보내지 말고 잠시 후 결과를 확인해 주세요.";
+        if(status.equals("FAILED")&&code.startsWith("PREFLIGHT_"))return "전송 전 조회에 실패하여 상품 요청을 보내지 않았습니다. 잠시 후 다시 확인해 주세요.";
+        if("ELEVENST".equals(market)&&status.equals("ACCEPTED")&&code.equals("IMAGE_REVIEW_REQUIRED"))return "11번가 조회 이미지 주소가 달라 자동 비교할 수 없습니다. WebP 변환 여부와 이미지 반영을 판매자센터에서 확인해 주세요. 재전송하지 마세요.";
         if("COUPANG".equals(market)&&status.equals("UNKNOWN")&&code.equals("UNRESOLVED"))return "이번 요청의 등록상품 ID를 확인할 수 없습니다. 새로 등록하지 말고 쿠팡 Wing에서 등록 여부를 확인해 주세요.";
+        if("LOTTEON".equals(market))return status.equals("SUCCEEDED")?"롯데ON 상품·단품 연결과 변경 반영 확인 완료":status.equals("ACCEPTED")?(code.equals("APPROVAL_PENDING")?"롯데ON 승인 대기 중":code.equals("APPROVAL_REJECTED")?"롯데ON 반려 · 판매자센터에서 사유를 확인해 주세요.":code.equals("OPTIONS_UNCONFIRMED")?"상품 확인 완료 · 단품 연결 확인 필요":"롯데ON 접수 완료 · 반영 확인 필요"):status.equals("UNKNOWN")?"롯데ON 결과 미확인 · 재전송하지 말고 결과를 확인해 주세요.":"롯데ON 요청을 진행하지 못했습니다. 최신 상품과 입력값을 확인해 주세요.";
+        if("ELEVENST".equals(market))return status.equals("SUCCEEDED")?(code.equals("CREATED_CONFIRMED")?"등록·옵션 연결 확인 완료 · 상품 수정에서 최신값을 확인해 주세요.":"변경값 반영 확인 완료"):status.equals("ACCEPTED")?(code.equals("APPROVAL_PENDING")?"11번가 승인 결과 확인 필요":code.equals("OPTIONS_UNCONFIRMED")?"등록 상품은 확인했으나 옵션 연결 확인이 필요합니다.":"11번가 접수 완료 · 반영 확인 필요"):status.equals("UNKNOWN")?"11번가 결과 미확인 · 같은 요청을 다시 보내지 말고 결과를 확인해 주세요.":"11번가 요청을 진행하지 못했습니다. 최신 상품과 입력값을 확인해 주세요.";
         if(!"NAVER".equals(market))return publicMessage(status,code);
+        if(status.equals("SUCCEEDED")&&code.equals("CREATED_VALUES_DIFFER"))return "등록·연결 확인 완료 · 현재 상품값이 등록 요청과 다릅니다. 상품 수정에서 최신값을 확인해 주세요.";
+        if(status.equals("ACCEPTED")&&code.equals("CREATE_OPTIONS_UNCONFIRMED"))return "등록 상품은 조회되지만 옵션 연결을 확인하지 못했습니다. 상품의 옵션 구성을 확인해 주세요.";
+        if(status.equals("ACCEPTED")&&code.equals("CREATE_STATUS_UNCONFIRMED"))return "등록 상품은 조회되지만 현재 상태를 확인하지 못했습니다. 상품 상태를 확인해 주세요.";
         if(status.equals("SUCCEEDED"))return "반영 확인 완료";
         if(status.equals("ACCEPTED"))return "스마트스토어 접수 완료 · 반영 확인 필요";
         if(status.equals("UNKNOWN"))return "결과를 확인할 수 없습니다. 같은 요청을 다시 보내지 말고 결과를 확인해 주세요.";

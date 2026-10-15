@@ -168,3 +168,24 @@ test('notification deletion never triggers a recursive operation refresh', async
         fetch:async url=>url==='/api/auth/csrf'?reply(200,'SUCCESS',{headerName:'X-XSRF-TOKEN',token:'test'}):reply(200,'SUCCESS')});
     loadApi(context);await vm.runInContext("apiRequest('/api/notifications/1', {method:'DELETE'})",context);assert.equal(events.length,0);
 });
+
+test('late parallel CSRF failures reuse the replacement token without invalidating it', async () => {
+    let csrfFetches = 0, releaseLate;
+    const late = new Promise(resolve => { releaseLate = resolve; });
+    const context = vm.createContext({ crypto: require('node:crypto').webcrypto, Headers, location: {}, fetch: async (url, options) => {
+        if (url === '/api/auth/csrf') return reply(200, 'SUCCESS', {
+            headerName: 'X-XSRF-TOKEN', token: 'csrf-' + ++csrfFetches,
+        });
+        if (options.headers.get('X-XSRF-TOKEN') === 'csrf-1') {
+            if (url === '/late') await late;
+            return reply(403, 'INVALID_CSRF_TOKEN');
+        }
+        assert.equal(options.headers.get('X-XSRF-TOKEN'), 'csrf-2');
+        if (url === '/first') releaseLate();
+        return reply(200, 'SUCCESS', 'done');
+    }});
+    loadApi(context);
+    const result = await vm.runInContext("Promise.all([apiPost('/first', {}), apiPost('/late', {})])", context);
+    assert.equal(result.join(','), 'done,done');
+    assert.equal(csrfFetches, 2);
+});

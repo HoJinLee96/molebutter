@@ -19,6 +19,12 @@ final class DefaultNaverCatalog implements NaverCatalog {
         int page=search.page()==null?1:search.page(),size=search.size()==null?50:search.size();
         if(page<1||page>1_000_000||size<1||size>500)throw new InputValidationFailure("페이지 번호와 크기를 확인해 주세요.");
         var body=json.createObjectNode().put("page",page).put("size",size).put("orderType","NO");
+        if(search.statusType()!=null&&!search.statusType().isBlank()){
+            String status=search.statusType().trim();
+            if(!Set.of("WAIT","SALE","OUTOFSTOCK","UNADMISSION","REJECTION","SUSPENSION","CLOSE","PROHIBITION","DELETE").contains(status))
+                throw new InputValidationFailure("판매 상태를 확인해 주세요.");
+            body.putArray("productStatusTypes").add(status);
+        }
         if(search.keyword()!=null&&!search.keyword().isBlank()){
             DefaultNaverGateway.checkId(search.keyword().trim());body.put("searchKeywordType","PRODUCT_NO");body.putArray("originProductNos").add(Long.parseLong(search.keyword().trim()));
         }
@@ -45,7 +51,27 @@ final class DefaultNaverCatalog implements NaverCatalog {
         return new ProductPage(List.copyOf(products),page,pages,next);
     }
     public NaverEditor.EditorDocument editor(Long actor,String id){access.productActor(actor,true);return gateway.session(()->NaverEditPatch.editor(gateway.product(id)));}
-    public Object metadata(Long actor,String kind,Map<String,String> query){access.productActor(actor,true);return gateway.session(()->gateway.metadata(kind,query));}
+    public Object metadata(Long actor,String kind,Map<String,String> query){
+        access.productActor(actor,true);
+        if("brands".equals(kind)){
+            String name=query==null?null:query.get("name");
+            if(name==null||name.isBlank()||name.length()>200||name.codePoints().anyMatch(Character::isISOControl))
+                throw new InputValidationFailure("검색할 스마트스토어 브랜드명을 200자 이내로 입력해 주세요.");
+            return gateway.session(()->brands(gateway.metadata(kind,Map.of("name",name.trim()))));
+        }
+        return gateway.session(()->{var value=gateway.metadata(kind,query);if(Set.of("bundle-groups","bundle-group").contains(kind)){var root=value.deepCopy();if(root.path("contents").isArray())for(var row:root.path("contents"))if(row.isObject()&&row.path("id").isIntegralNumber())row.asObject().put("id",row.path("id").asString());var group=root.has("deliveryBundleGroup")?root.path("deliveryBundleGroup"):root;if(group.isObject()&&group.path("id").isIntegralNumber())group.asObject().put("id",group.path("id").asString());return root;}return value;});
+    }
+    private static List<Brand> brands(JsonNode root){
+        if(root==null||!root.isArray())throw response();
+        var brands=new ArrayList<Brand>();
+        for(var item:root){
+            var id=item.path("id");var name=item.path("name");
+            if(!id.isIntegralNumber()||!id.canConvertToLong()||id.asLong()<1||!name.isString()||name.asString().isBlank()
+                    ||name.asString().length()>4000||name.asString().codePoints().anyMatch(Character::isISOControl))throw response();
+            brands.add(new Brand(id.asString(),name.asString()));
+        }
+        return List.copyOf(brands);
+    }
     private static Long number(JsonNode value){return value.isIntegralNumber()?value.asLong():null;}
     private static MarketplaceFailure response(){return new MarketplaceFailure(MarketplaceFailure.Kind.RESPONSE,"NAVER");}
 }

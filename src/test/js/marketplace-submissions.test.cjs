@@ -15,6 +15,7 @@ test('failed independent operations can retry after completion without repeating
     assert.equal(S.retryable(execution('RUNNING','FAILED','QUEUED')),false);
     assert.equal(S.retryable(execution('SUCCEEDED','SUCCEEDED')),false);
     assert.equal(S.retryable({status:'FAILED',targets:[{steps:[{status:'FAILED',code:'BASELINE_CHANGED'}]}]}),false);
+    assert.equal(S.retryable({...execution('PARTIAL','SUCCEEDED','FAILED'),revised:true}),false);
 });
 test('approval acceptance stays distinct from success and only offers result verification',()=>{
     const e=execution('ACCEPTED','ACCEPTED');assert.equal(S.active(e),false);assert.equal(S.reconcilable(e),true);assert.equal(S.retryable(e),false);

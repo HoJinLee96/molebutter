@@ -12,10 +12,13 @@ public final class MarketplaceEditingController {
     private final MarketplaceEditing editing;
     public MarketplaceEditingController(MarketplaceEditing editing){this.editing=editing;}
     record RefreshRequest(String market) {}
+    record StartRequest(boolean lazy,String initialMarket) {}
     @PostMapping("/drafts/{id}/edit-sessions")
-    public ApiResponse<MarketplaceEditing.Session> start(@AuthenticationPrincipal UserPrincipal actor,@PathVariable String id){return ApiResponse.success(editing.start(actor.userId(),id));}
+    public ApiResponse<MarketplaceEditing.Session> start(@AuthenticationPrincipal UserPrincipal actor,@PathVariable String id,@RequestBody(required=false) StartRequest input){return ApiResponse.success(input!=null&&input.lazy()?editing.startLazy(actor.userId(),id,input.initialMarket()):editing.start(actor.userId(),id));}
     @PutMapping("/edit-sessions/{id}/reference")
     public ApiResponse<MarketplaceEditing.Session> save(@AuthenticationPrincipal UserPrincipal actor,@PathVariable String id,@RequestBody MarketplaceDrafts.Document input){return ApiResponse.success(editing.saveReference(actor.userId(),id,input));}
+    @PutMapping("/edit-sessions/{id}/draft")
+    public ApiResponse<MarketplaceEditing.DraftSaveResult> saveDraft(@AuthenticationPrincipal UserPrincipal actor,@PathVariable String id,@RequestBody MarketplaceEditing.DraftSaveRequest input){return ApiResponse.success(editing.saveDraft(actor.userId(),id,input));}
     @PostMapping("/edit-sessions/{id}/refresh")
     public ApiResponse<MarketplaceEditing.Session> refresh(@AuthenticationPrincipal UserPrincipal actor,@PathVariable String id,@RequestBody RefreshRequest input){return ApiResponse.success(editing.refresh(actor.userId(),id,input.market()));}
     @ExceptionHandler(MarketplaceEditingFailure.class)

@@ -46,8 +46,11 @@ class DraftStore {
         return doc;
     }
     PageResponse<Summary> list(String search,int page,int size) {
+        return list(search,page,size,false);
+    }
+    PageResponse<Summary> list(String search,int page,int size,boolean commonOnly) {
         String escaped=search.replace("!","!!").replace("%","!%").replace("_","!_");
-        String where=search.isEmpty()?"":" WHERE product_code LIKE ? ESCAPE '!' OR product_name LIKE ? ESCAPE '!'";
+        String where=" WHERE editor_kind "+(commonOnly?"= 'COMMON'":"<> 'MARKET_ONLY'")+(search.isEmpty()?"":" AND (product_code LIKE ? ESCAPE '!' OR product_name LIKE ? ESCAPE '!')");
         Object[] params=search.isEmpty()?new Object[0]:new Object[]{"%"+escaped+"%","%"+escaped+"%"};
         long count=jdbc.queryForObject("SELECT COUNT(*) FROM marketplace_draft"+where,Long.class,params);
         var args=new java.util.ArrayList<Object>(List.of(params));args.add(size);args.add((long)page*size);
@@ -62,6 +65,7 @@ class DraftStore {
     }
     void markRegistration(long id,String account){markRegistration(id,account,"COUPANG_REGISTRATION");}
     void markRegistration(long id,String account,String kind){jdbc.update("UPDATE marketplace_draft SET editor_kind=?,registration_account=? WHERE id=?",kind,account,id);}
+    void detachImport(long id){jdbc.update("UPDATE marketplace_draft SET import_market=NULL,import_account=NULL,import_product_id=NULL WHERE id=?",id);}
     static Document version(Document d,String id,Long revision) {
         return new Document(id,revision,d.common(),d.options(),d.stockMode(),d.productQuantity(),d.services(),d.media(),d.delivery(),d.selectedMarkets(),d.markets());
     }

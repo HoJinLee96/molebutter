@@ -25,7 +25,7 @@ class NaverSubmissionRoutingTest {
         protected void doCommit(DefaultTransactionStatus s){}protected void doRollback(DefaultTransactionStatus s){}
     };
     DefaultMarketplaceSubmissions service;
-    @BeforeEach void setup(){when(coupang.market()).thenReturn("COUPANG");when(naver.market()).thenReturn("NAVER");when(naver.accountKey()).thenReturn(account);when(naver.projectChanges(any(),any())).thenAnswer(i->i.getArgument(0));when(store.byKey(anyString())).thenReturn(null);when(store.byPreview(anyLong())).thenReturn(null);service=new DefaultMarketplaceSubmissions(access,drafts,draftStore,store,editing,List.of(coupang,naver),manager,"vendor",false);clearInvocations(coupang,naver);}
+    @BeforeEach void setup(){when(coupang.market()).thenReturn("COUPANG");when(coupang.saveWorkflow(any())).thenAnswer(i->i.getArgument(0));when(naver.market()).thenReturn("NAVER");when(naver.accountKey()).thenReturn(account);when(naver.projectChanges(any(),any())).thenAnswer(i->i.getArgument(0));when(store.byKey(anyString())).thenReturn(null);when(store.byPreview(anyLong())).thenReturn(null);when(editing.requireTarget(any(),anyString(),anyBoolean())).thenAnswer(i->((EditingStore.Stored)i.getArgument(0)).binding(i.getArgument(1)));service=new DefaultMarketplaceSubmissions(access,drafts,draftStore,store,editing,List.of(coupang,naver),manager,"vendor",false);clearInvocations(coupang,naver);}
     @AfterEach void close(){service.close();}
     MarketplaceDrafts.Document document(){
         var input=new NaverEditor.Input(Map.of("originProduct.name","원상품"),"NONE",List.of(),List.of(),List.of(),"");
@@ -57,6 +57,8 @@ class NaverSubmissionRoutingTest {
         var restored=new ObjectMapper().readValue(legacy,MarketplaceWriteGateway.Prepared.class);assertThat(restored.market()).isEqualTo("COUPANG");assertThat(restored.mapping().channelProductId()).isNull();
         assertThat(SubmissionStore.publicMessage("FAILED","BASELINE_CHANGED","NAVER")).contains("스마트스토어").doesNotContain("쿠팡");assertThat(SubmissionStore.publicMessage("FAILED","BASELINE_CHANGED")).contains("쿠팡");
         assertThat(SubmissionStore.publicMessage("FAILED","HTTP_429","NAVER")).contains("호출 제한");
+        assertThat(SubmissionStore.publicMessage("SUCCEEDED","CREATED_VALUES_DIFFER","NAVER")).contains("등록·옵션 연결 확인 완료","현재 상품값","최신값");
+        assertThat(SubmissionStore.publicMessage("ACCEPTED","CREATE_OPTIONS_UNCONFIRMED","NAVER")).contains("옵션 연결");
         assertThat(SubmissionStore.publicMessage("FAILED","HTTP_401","NAVER")).contains("설정·권한");
         assertThat(SubmissionStore.publicMessage("FAILED","ALREADY_REGISTERED","NAVER")).contains("이미 등록된 상품");
     }

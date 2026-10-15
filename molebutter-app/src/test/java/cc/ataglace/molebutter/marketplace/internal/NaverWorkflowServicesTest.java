@@ -44,7 +44,7 @@ class NaverWorkflowServicesTest {
         var reference=document(3);var mapping=new MarketplaceWriteGateway.Mapping(account,"123",List.of(),"456");
         when(drafts.find(10,true)).thenReturn(reference);when(drafts.registration(10)).thenReturn(new DraftStore.Registration(1L,account,"COMMON"));
         when(store.mapping(10,"NAVER",account,true)).thenReturn(mapping);
-        var sessions=mock(EditingStore.class);var actual=new DefaultMarketplaceEditing(access,mock(MarketplaceDrafts.class),drafts,store,sessions,List.of(gateway),transactions);
+        var sessions=mock(EditingStore.class);var actual=new DefaultMarketplaceEditing(access,mock(MarketplaceDrafts.class),drafts,store,sessions,mock(TargetEditStore.class),List.of(gateway),transactions,mock(cc.ataglace.molebutter.media.api.ImageAssets.class));
         var observed=new NaverEditor.EditorDocument(input(),source().limits(),List.of(),"123",channel);
         String expires=Instant.now().plusSeconds(600).toString();
         if("999".equals(channel)){
@@ -52,7 +52,7 @@ class NaverWorkflowServicesTest {
             verifyNoInteractions(sessions);
         }else{
             var session=actual.startObservedNaver(1L,"10",observed,expires);assertThat(session.targets().getFirst().mode()).isEqualTo("UPDATE");
-            verify(sessions).insert(1L,account,mapping,session);verify(store,never()).saveMapping(anyLong(),anyLong(),anyString(),any(),anyBoolean());
+            verify(sessions).insert(1L,Map.of("NAVER",new EditingStore.Binding(account,mapping)),session);verify(store,never()).saveMapping(anyLong(),anyLong(),anyString(),any(),anyBoolean());
         }
         var wrongProduct=new NaverEditor.EditorDocument(input(),source().limits(),List.of(),"124",channel);
         assertThatThrownBy(()->actual.startObservedNaver(1L,"10",wrongProduct,expires)).isInstanceOf(MarketplaceEditingFailure.class);

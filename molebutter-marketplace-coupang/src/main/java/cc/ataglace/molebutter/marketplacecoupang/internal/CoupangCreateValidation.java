@@ -11,6 +11,9 @@ final class CoupangCreateValidation {
     private CoupangCreateValidation() {}
     static List<Issue> issues(Document document,MarketConfig market){
         var issues=new ArrayList<Issue>();
+        String carrier=delivery(document,market).get("deliveryCompanyCode");
+        if(carrier!=null&&!carrier.isBlank()&&!carrier.matches("[A-Z][A-Z0-9_]*"))
+            issues.add(new Issue("COUPANG","delivery.carrier","택배사 이름 대신 쿠팡 택배사 코드를 입력해 주세요. CJ대한통운은 CJGLS입니다."));
         var combinations=new HashSet<Map<String,String>>();
         for(int index=0;index<document.options().size();index++){
             var option=document.options().get(index);var config=optionConfig(market,option);

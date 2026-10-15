@@ -322,6 +322,7 @@
     }
     $('value-change-history')?.addEventListener('toggle',()=>{if($('value-change-history').open)loadChangeHistory(0);});
     $('value-change-filter')?.addEventListener('submit',ev=>{ev.preventDefault();loadChangeHistory(0);});
+    FormActions.bindEnterSubmit($('value-change-filter'),$('value-change-query'));
     function updateRefreshButton() {
         if(!detail)return;
         const p=detail.product;
@@ -394,7 +395,7 @@
     }
     function fields(prefix) {return {brandId:selectedBrand(prefix+'-brand'),productCode:$(prefix+'-code').value,searchQuery:$(prefix+'-query').value};}
     $('edit-form').addEventListener('input',()=>dirty=true);
-    $('edit-form').addEventListener('submit',ev=>{ev.preventDefault();action(ev.submitter,async()=>{await apiPost('/api/products/'+detail.product.id,{...fields('edit'),revision:editRevision});await loadDetail(detail.product.id);await loadProducts();setError('detail-success','기본 정보를 저장했습니다.');},'detail-error');});
+    FormActions.bindExplicitSubmit($('edit-form'),$('edit-save'),ev=>{ev.preventDefault();return action(ev.submitter,async()=>{await apiPost('/api/products/'+detail.product.id,{...fields('edit'),revision:editRevision});await loadDetail(detail.product.id);await loadProducts();setError('detail-success','기본 정보를 저장했습니다.');},'detail-error');});
     $('product-dialog').addEventListener('click',ev=>{
         const b=ev.target.closest('button');if(!b||busy)return;
         const id=b.dataset.pick||b.dataset.assign||b.dataset.unassign,clear=b.hasAttribute('data-clear-selection');
@@ -411,9 +412,9 @@
     $('detail-reload').addEventListener('click',ev=>action(ev.currentTarget,()=>loadDetail(detail.product.id),'detail-error'));
     $('merge-selected').addEventListener('click',ev=>action(ev.currentTarget,async()=>{const p=detail.product;const checked=[...document.querySelectorAll('[data-duplicate]:checked')].map(c=>duplicates.find(d=>d.id===c.dataset.duplicate));if(!checked.length)throw Error('통합할 중복 상품을 선택하세요.');await apiPost(`/api/products/${p.id}/merge`,{products:[p,...checked].map(v=>({id:v.id,revision:v.revision})),brandId:p.brandId||'',productCode:p.productCode,searchQuery:p.searchQuery,managed:p.managed,selectedSupplierId:$('merge-selection').value||null});await loadDetail(p.id);await loadProducts();},'detail-error'));
     function openDelete(rows){deleteTargets=rows.map(p=>({id:p.id,revision:p.revision}));$('product-delete-count').textContent=`${rows.length}개 상품을 삭제하시겠습니까?`;setError('product-delete-error',null);$('product-delete-dialog').showModal();}
-    $('product-delete-form').addEventListener('submit',ev=>{ev.preventDefault();if(!$('product-delete-dialog').open||!deleteTargets.length)return;action(ev.submitter,async()=>{await apiPost('/api/products/delete',{products:deleteTargets});selected.clear();deleteTargets=[];$('product-delete-dialog').close();await loadProducts();},'product-delete-error');});
-    $('create-form').addEventListener('submit',ev=>{ev.preventDefault();action(ev.submitter,async()=>{const p=await apiPost('/api/products',fields('create'));$('create-dialog').close();await loadProducts();await loadDetail(p.id);},'create-error');});
-    $('brand-form').addEventListener('submit',ev=>{ev.preventDefault();action(ev.submitter,async()=>{await apiPost('/api/products/bulk',{products:[...selected.values()].map(p=>({id:p.id,revision:p.revision})),brandId:selectedBrand('bulk-brand-name')});selected.clear();$('brand-dialog').close();await loadProducts();},'brand-error');});
+    FormActions.bindExplicitSubmit($('product-delete-form'),$('product-delete-confirm'),ev=>{ev.preventDefault();if(!$('product-delete-dialog').open||!deleteTargets.length)return;return action(ev.submitter,async()=>{await apiPost('/api/products/delete',{products:deleteTargets});selected.clear();deleteTargets=[];$('product-delete-dialog').close();await loadProducts();},'product-delete-error');});
+    FormActions.bindExplicitSubmit($('create-form'),$('create-submit'),ev=>{ev.preventDefault();return action(ev.submitter,async()=>{const p=await apiPost('/api/products',fields('create'));$('create-dialog').close();await loadProducts();await loadDetail(p.id);},'create-error');});
+    FormActions.bindExplicitSubmit($('brand-form'),$('brand-submit'),ev=>{ev.preventDefault();return action(ev.submitter,async()=>{await apiPost('/api/products/bulk',{products:[...selected.values()].map(p=>({id:p.id,revision:p.revision})),brandId:selectedBrand('bulk-brand-name')});selected.clear();$('brand-dialog').close();await loadProducts();},'brand-error');});
     document.querySelectorAll('[data-close]:not([data-inventory-dialogs] [data-close])').forEach(b=>b.addEventListener('click',()=>{if(!busy){if(b.dataset.close==='product-dialog'){detailSequence++;watcher.stop();progress('');}$(b.dataset.close).close();}}));
     document.querySelectorAll('dialog:not([data-inventory-dialogs] dialog)').forEach(d=>d.addEventListener('cancel',ev=>{if(busy)ev.preventDefault();else if(d.id==='product-dialog'){detailSequence++;watcher.stop();progress('');}}));
     $('product-dialog').addEventListener('close',()=>{detailSequence++;watcher.stop();progress('');});
@@ -431,6 +432,7 @@
     document.addEventListener('click',ev=>{const button=ev.target.closest('[data-image]');if(button)openImage(button);});
     if(catalog) {
         $('product-filter').addEventListener('submit',ev=>{ev.preventDefault();selected.clear();currentPage=0;loadProducts().catch(error);});
+        FormActions.bindEnterSubmit($('product-filter'),$('product-query'));
         $('product-page-size').addEventListener('change',()=>{selected.clear();currentPage=0;loadProducts().catch(error);});
         $('management-tabs').addEventListener('click',ev=>{const b=ev.target.closest('[data-mode]');if(!b)return;mode=b.dataset.mode;selected.clear();currentPage=0;document.querySelectorAll('[data-mode]').forEach(t=>t.classList.toggle('active',t===b));loadProducts().catch(error);});
         $('product-rows').addEventListener('change',ev=>{const id=ev.target.dataset.select;if(!id)return;ev.target.checked?selected.set(id,visible.find(p=>p.id===id)):selected.delete(id);selection();});
@@ -452,7 +454,7 @@
         $('product-import').addEventListener('click',openImport);
         for(const id of ['create-dialog','import-panel'])$(id).addEventListener('close',()=>{$('product-register').focus();});
         $('import-file').addEventListener('change',()=>{setError('import-error',null);$('import-result').textContent='';$('import-warnings').innerHTML='';});
-        $('import-form').addEventListener('submit',ev=>{ev.preventDefault();action(ev.submitter,async()=>{
+        FormActions.bindExplicitSubmit($('import-form'),$('import-submit'),ev=>{ev.preventDefault();return action(ev.submitter,async()=>{
             const f=$('import-file').files[0];if(!f)throw Error('엑셀 파일을 선택해 주세요.');
             setError('import-error',null);$('import-result').textContent='등록 중…';$('import-warnings').innerHTML='';
             $('import-file').disabled=true;$('import-submit').textContent='등록 중…';$('import-form').setAttribute('aria-busy','true');
@@ -544,7 +546,9 @@
         $('search-gate')?.addEventListener('click',ev=>{const b=ev.target.closest('[data-search-resume]');if(b)action(b,async()=>{await apiPost('/api/product-refresh/search-gate/resume',{version:gateState.version});await loadRuns();});});
         $('search-attempts')?.addEventListener('toggle',()=>{if($('search-attempts').open){attemptPage=0;loadAttempts().catch(error);}});
         $('search-attempt-filter')?.addEventListener('submit',ev=>{ev.preventDefault();attemptPage=0;loadAttempts().catch(error);});
+        FormActions.bindEnterSubmit($('search-attempt-filter'),$('search-attempt-query'));
         $('refresh-all').addEventListener('click',ev=>action(ev.currentTarget,()=>start([])));$('runs-reload').addEventListener('click',ev=>action(ev.currentTarget,loadRuns));
+        FormActions.bindEnterSubmit($('run-filter'),$('run-query'));
         $('run-filter').addEventListener('submit',ev=>{
             ev.preventDefault();const f=runFilterValues();
             if(f.from&&f.to&&f.from>f.to){setError('page-error','조회 시작일이 종료일보다 늦습니다.');return;}

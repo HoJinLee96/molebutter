@@ -19,15 +19,16 @@ class CoupangBrandsTest {
         assertThatThrownBy(()->parser.parseBrands(bytes("{\"code\":\"ERROR\"}"))).isInstanceOf(MarketplaceFailure.class);
         assertThatThrownBy(()->parser.parseBrands(bytes("{\"code\":\"SUCCESS\",\"data\":{}}"))).isInstanceOf(MarketplaceFailure.class);
     }
-    @Test void onlySearchedIdentityForSameActorCanBeSaved(){
+    @Test void savedIdentityIsRevalidatedAfterRestartOrCacheExpiry(){
         var client=mock(CoupangProductClient.class);var access=mock(BusinessAccess.class);var now=Instant.parse("2026-10-07T00:00:00Z");when(client.now()).thenReturn(now);
         var page=new CoupangBrands.Page(List.of(new CoupangBrands.Brand("KR-5","합성 브랜드",false,List.of())),1,1,false);
         when(client.operation(eq(1L),isNull(),any())).thenReturn(page);var service=new DefaultCoupangBrands(access,client);
-        assertThatThrownBy(()->service.requireSelection(1L,"KR-5","합성 브랜드")).isInstanceOf(InputValidationFailure.class);
-        service.search(1L,"합성",1,null);service.requireSelection(1L,"KR-5","합성 브랜드");
-        assertThatThrownBy(()->service.requireSelection(2L,"KR-5","합성 브랜드")).isInstanceOf(InputValidationFailure.class);
+        service.requireSelection(1L,"KR-5","합성 브랜드");service.requireSelection(1L,"KR-5","합성 브랜드");verify(client,times(1)).operation(eq(1L),isNull(),any());
+        when(client.now()).thenReturn(now.plusSeconds(3601));service.requireSelection(1L,"KR-5","합성 브랜드");verify(client,times(2)).operation(eq(1L),isNull(),any());
+        new DefaultCoupangBrands(access,client).requireSelection(1L,"KR-5","합성 브랜드");verify(client,times(3)).operation(eq(1L),isNull(),any());
         assertThatThrownBy(()->service.requireSelection(1L,"KR-5","다른 이름")).isInstanceOf(InputValidationFailure.class);
-        when(client.now()).thenReturn(now.plusSeconds(3601));assertThatThrownBy(()->service.requireSelection(1L,"KR-5","합성 브랜드")).isInstanceOf(InputValidationFailure.class);
+        assertThatThrownBy(()->service.requireSelection(1L,"KR-FAKE","합성 브랜드")).isInstanceOf(InputValidationFailure.class);
+        doThrow(new InputValidationFailure("권한 없음")).when(access).productActor(2L,true);assertThatThrownBy(()->service.requireSelection(2L,"KR-5","합성 브랜드")).isInstanceOf(InputValidationFailure.class);
     }
     @Test void brandSearchUsesPostBodyAndDeniedActorsCannotCallUpstream(){
         var transport=mock(CoupangHttpTransport.class);var mapper=new ObjectMapper();

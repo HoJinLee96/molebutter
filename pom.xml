@@ -26,9 +26,13 @@
         <module>molebutter-inventory</module>
         <module>molebutter-attendance</module>
         <module>molebutter-media</module>
+        <module>molebutter-marketplace-contracts</module>
         <module>molebutter-marketplace</module>
         <module>molebutter-marketplace-coupang</module>
         <module>molebutter-marketplace-naver</module>
+        <module>molebutter-marketplace-elevenst</module>
+        <module>molebutter-marketplace-lotteon</module>
+        <module>molebutter-marketplace-esm</module>
         <module>molebutter-imaging</module>
         <module>molebutter-app</module>
     </modules>
@@ -108,6 +112,11 @@
             </dependency>
             <dependency>
                 <groupId>cc.ataglace</groupId>
+                <artifactId>molebutter-marketplace-contracts</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>cc.ataglace</groupId>
                 <artifactId>molebutter-marketplace</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -124,6 +133,9 @@
             <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-media</artifactId><version>${project.version}</version></dependency>
             <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-marketplace-coupang</artifactId><version>${project.version}</version></dependency>
             <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-marketplace-naver</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-marketplace-elevenst</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-marketplace-lotteon</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-marketplace-esm</artifactId><version>${project.version}</version></dependency>
         </dependencies>
     </dependencyManagement>
     <build>

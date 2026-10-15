@@ -55,7 +55,7 @@ final class DefaultNaverGateway implements NaverGateway {
         catch(InterruptedException e){Thread.currentThread().interrupt();throw failure(CANCELLED);}
         finally{if(acquired)lock.unlock();}
     }
-    public JsonNode product(String id){checkId(id);var value=parse(request("GET","/v2/products/origin-products/"+id,"",null,null));
+    public JsonNode product(String id){checkId(id);var value=readProduct("/v2/products/origin-products/"+id,"NAVER_ORIGIN_NOT_FOUND");
         if(!value.path("originProduct").isObject())throw failure(RESPONSE);
         for(var identity:List.of(value.path("originProductNo"),value.path("originProduct").path("originProductNo")))
             if(!identity.isMissingNode()&&!identity.isNull()&&!id.equals(scalar(identity)))throw failure(RESPONSE);
@@ -63,7 +63,15 @@ final class DefaultNaverGateway implements NaverGateway {
         // identity in the server projection, outside the origin/channel objects sent by PUT.
         var projection=value.deepCopy().asObject();projection.put("originProductNo",Long.parseLong(id));return projection;
     }
-    public JsonNode channel(String id){checkId(id);return parse(request("GET","/v2/products/channel-products/"+id,"",null,null));}
+    public JsonNode channel(String id){checkId(id);return readProduct("/v2/products/channel-products/"+id,"NAVER_CHANNEL_NOT_FOUND");}
+    private JsonNode readProduct(String path,String reason){
+        var response=request("GET",path,"",null,null);
+        if(response.status()==404&&"NOT_FOUND".equals(errorCode(response))){
+            response=request("GET",path,"",null,null);
+            if(response.status()==404&&"NOT_FOUND".equals(errorCode(response)))throw new MarketplaceListingMissing(reason);
+        }
+        return parse(response);
+    }
     public JsonNode search(JsonNode input){return parse(request("POST","/v1/products/search","","application/json",json.writeValueAsBytes(input)));}
     public NaverGateway.Response write(String method,String path,JsonNode input){
         if(!Set.of("POST","PUT").contains(method)||!(path.matches("/v2/products(?:/(?:origin-products|channel-products)/[0-9]{1,19})?")||method.equals("PUT")&&path.matches("/v1/products/origin-products/[1-9][0-9]{0,18}/option-stock")))
@@ -80,6 +88,8 @@ final class DefaultNaverGateway implements NaverGateway {
             case "models" -> {path="/v1/product-models";copy(query,allowed,"name",true);copyPage(query,allowed,"page",1_000_000);copyPage(query,allowed,"size",100);}
             case "notices" -> {path="/v1/products-for-provided-notice";copy(query,allowed,"categoryId",true);}
             case "notice" -> {String value=required(query,"productInfoProvidedNoticeType");if(!value.matches("[A-Z_]{1,60}"))invalid();path="/v1/products-for-provided-notice/"+value;}
+            case "bundle-groups" -> {path="/v1/product-delivery-info/bundle-groups";copy(query,allowed,"name",false);copy(query,allowed,"usable",false);copy(query,allowed,"baseGroup",false);for(String key:List.of("usable","baseGroup"))if(allowed.containsKey(key)&&!Set.of("true","false").contains(allowed.get(key)))invalid();copyPage(query,allowed,"page",1_000_000);copyPage(query,allowed,"size",100);}
+            case "bundle-group" -> {String id=required(query,"groupId");if(!id.matches("[1-9][0-9]{0,18}"))invalid();path="/v1/product-delivery-info/bundle-groups/"+id;}
             case "addresses" -> {path="/v1/seller/addressbooks-for-page";copyPage(query,allowed,"page",1_000_000);}
             case "attributes" -> {path="/v1/product-attributes/attributes";copy(query,allowed,"categoryId",true);}
             case "attribute-values" -> {path="/v1/product-attributes/attribute-values";copy(query,allowed,"categoryId",true);}
@@ -91,8 +101,10 @@ final class DefaultNaverGateway implements NaverGateway {
         }
         String encoded=allowed.entrySet().stream().map(e->encode(e.getKey())+"="+encode(e.getValue())).collect(java.util.stream.Collectors.joining("&"));
         String key=path+"?"+encoded;var cached=metadataCache.get(key);
-        if(cached!=null&&cached.expires().isAfter(clock.instant()))return cached.value().deepCopy();
-        var value=parse(request("GET",path,encoded,null,null));
+        if(!"bundle-group".equals(kind)&&cached!=null&&cached.expires().isAfter(clock.instant()))return cached.value().deepCopy();
+        var response=request("GET",path,encoded,null,null);
+        // Treat the brand endpoint's documented NOT_FOUND as no candidates; other errors stay errors.
+        var value="brands".equals(kind)&&response.status()==404?json.createArrayNode():parse(response);
         if(!value.isArray()&&!value.isObject())throw failure(RESPONSE);
         metadataCache.entrySet().removeIf(e->!e.getValue().expires().isAfter(clock.instant()));
         if(metadataCache.size()>=128)metadataCache.remove(metadataCache.keySet().iterator().next());
@@ -136,13 +148,13 @@ final class DefaultNaverGateway implements NaverGateway {
         String form="client_id="+encode(clientId)+"&timestamp="+timestamp+"&grant_type=client_credentials&client_secret_sign="+encode(signature)+"&type="+encode(type)
             +("SELLER".equals(type)?"&account_id="+encode(accountId):"");
         pace();var response=transport.send("POST","/v1/oauth2/token","",null,"application/x-www-form-urlencoded",form.getBytes(StandardCharsets.UTF_8));
-        if(response.status()!=200)throw failure(response.status()==403?PERMISSION:response.status()==429?RATE_LIMIT:AUTHENTICATION);
+        if(response.status()!=200)throw new MarketplaceFailure(response.status()==403?PERMISSION:response.status()==429?RATE_LIMIT:AUTHENTICATION,"NAVER",errorCode(response));
         var root=parse(response);String next=scalar(root.path("access_token"));var expires=root.path("expires_in");
         if(next==null||next.length()>8192||next.codePoints().anyMatch(Character::isISOControl)||!expires.isIntegralNumber()||expires.asLong()<1||expires.asLong()>86400)throw failure(RESPONSE);
         token=next;tokenExpires=clock.instant().plusSeconds(expires.asLong());return token;
     }
     public JsonNode parse(NaverGateway.Response response){
-        int status=response.status();if(status<200||status>=300)throw failure(status==401?AUTHENTICATION:status==403?PERMISSION:status==429?RATE_LIMIT:status>=500?UPSTREAM:REJECTED);
+        int status=response.status();if(status<200||status>=300)throw new MarketplaceFailure(status==401?AUTHENTICATION:status==403?PERMISSION:status==429?RATE_LIMIT:status>=500?UPSTREAM:REJECTED,"NAVER",errorCode(response));
         try{var root=json.readTree(response.body());if(root==null||(!root.isObject()&&!root.isArray()))throw failure(RESPONSE);return root;}
         catch(MarketplaceFailure e){throw e;}catch(RuntimeException e){throw failure(RESPONSE);}
     }

@@ -1,5 +1,40 @@
 # 테스트 실행과 유지 기준
 
+2026-10-14 외부 삭제·재등록과 WCWA705R2 재진입: 관련 Java 253개, JS 320개, 격리 MySQL·Redis 통합 112개와 Chrome 1440/390px 모의 검증을 통과했다. 삭제 확정/권한 오류/일반 404 구분, 쿠팡·네이버 재등록, 세대 보호, 이전 옵션 ID 제거와 UUID 유지, 이력 이미지 정리 방지, 임시 변경 복원을 검사한다. 로그인된 실제 앱에서는 WCWA705R2의 조회·시험값 원복·내부 저장·새로고침·목록 재진입을 확인했다. 새 공통 배송·판매기간·A/S 필드는 기존 초안에서 빈 값이었으며, 쿠팡의 등록 전 변경 호환 오류는 실제 DB 읽기 대조와 모의 회귀로 수정했다. 변경된 백엔드의 운영 반영은 최종 JAR로 재시작한 뒤 확인해야 한다. 상세 결과·제한·명령은 [검증 기록](verification/2026-10-14-listing-recreation.md)에 남긴다. 실제 마켓 쓰기는 수행하지 않았다.
+
+2026-10-14 네 마켓 신규 등록 결과 확인: 단위/어댑터 203개, 모듈 경계 4개, 격리 MySQL·Redis 통합 51개(총 258개), 모의 Chrome 1440/390px 검사와 실행 JAR 패키징을 통과했다. 쿠팡의 판매일시·이미지 주소 차이가 무기한 ACCEPTED를 만들던 결과 판정을 등록·옵션 연결·승인 확인과 값 차이 안내로 분리했다. 스마트스토어의 선택 옵션 UUID·상태 확인, 롯데ON의 승인/편집 지원 분리, 11번가의 확인된 재고번호 보존 및 네 마켓의 일대일 옵션 검사를 보강했다. 기존 UPDATE 반영 검사와 중복 등록 방지는 유지한다. 실제 쿠팡 상품 16414267189와 기존 실행을 수정된 어댑터로 읽기 대조해 CONFIRMED/CREATED_VALUES_DIFFER와 옵션 1개 보존을 확인했다. 운영 DB 변경·실제 마켓 쓰기·서버 재시작은 하지 않았다. [상세 증거와 명령](verification/2026-10-14-market-registration-confirmation.md).
+
+2026-10-13 등록 결과·실행 사용자 검증: 실제 DB에서 WCWA705R2의 네이버 원상품/채널/옵션 연결을 확인하고 인증 GET으로 판매가 128000원·할인 41000원·옵션 추가금 0원을 읽었다. 기존 전문과 가격·설명·모델명 차이가 등록 대기를 지속시키는 원인이었다. 수정 판정은 실제 응답과 기존 스냅샷을 메모리에서 대조해 확인했으며 운영 DB는 변경하지 않았다. 단위 178개, 격리 통합 77개, 모의 Chrome 1440/390px 검사가 통과했다. 성공 응답 ID가 있는 등록의 값 차이 안내, 응답 유실/승인 대기/옵션 미확인 차단, 공통·옵션 연결과 외부 최신값 재진입, 서버 Wing ID 주입/누락/브라우저 위조 무시를 검사한다. 운영 재시작과 실제 마켓 상품/이미지 쓰기는 하지 않았다. [상세 검증](verification/2026-10-13-registration-result-identity.md).
+
+
+2026-10-13 WCWA705R2 운영 이미지 검증·가격/브랜드 수정: 실제 Chrome에서 기존 669×669px 자르기 범위를 유지해 재편집·공통 기준 저장·새로고침·쿠팡 입력 검증 완료를 확인했다. 대표 669×669px/401,280바이트와 상세설명 750×962px/88,040바이트가 적합으로 표시됐다. 새 공개 편집본 GET 200과 서버 파일의 SHA-256 일치, 이미지 UUID 유지와 revision 5를 읽기 대조했다. 스마트스토어 최신 조회는 사용자가 수동 수정한 128,000원·할인 41,000원을 유지했다. 기존 등록 전문의 87,000원 기준 중복 할인은 Java 공통 투영 불일치로 확인해 수정했으며, 실제 초안의 메모리 계산과 모의 CREATE 전문에서 128,000원·41,000원·추가금 0원을 검사했다. 빈 브랜드 캐시의 새 프로세스에서 실제 쿠팡 KR-41013/닥스 확인도 성공했다. Java 162개·JS 77개·격리 통합 83개 및 모의 Chrome 1440·390px 검사가 통과했다. 실제 마켓 상품/이미지 쓰기와 R2 원본 변경·운영 재시작은 하지 않았다. [상세 증거와 범위](verification/2026-10-13-editor-live-image-price.md).
+
+2026-10-13 실제 이미지 검사·서버 자르기: 관련 Java 단위 테스트 208개, JavaScript 77개, 격리 MySQL·Redis 통합 테스트 85개가 통과했다. `ServerImageEditsTest`, `ServerImageInspectionTest`, `ImageAssetsTest`, `ImageAssetReferencesTest`, `DraftValidationTest`, `CoupangProductDocumentsTest`, `CoupangWriteGatewayTest`, `NaverWriteGatewayTest`, `NaverGatewayTest`, `MarketplaceProductEditorTest`, `MarketplaceTargetEditingTest`, `MarketplaceSnapshotCompatibilityTest`, `LayoutViewTest`, `ModuleArchitectureTest`를 실행했다. 750×962px 파일의 쿠팡 대표 실패·상세설명 통과·750×750px 편집본 판정, 동일 파일 역할별 검사와 중복 읽기 방지, 권장 크기/앱 한도 구분, 삭제된 파일·기존 CDN·기존 로컬 제한, 편집본의 원본 픽셀과 소유자 토큰·좌표 범위·지문, 원본/편집본 참조 보호 및 공개 경로를 확인했다. 쿠팡 IMAGE/HTML 전문의 공개 편집본 URL, 모의 네이버 multipart의 실제 편집본 바이트와 반환 URL, 순수 입력 검증 시 업로드 없음, 재시도 URL 재사용을 검사했다.
+
+V41 마이그레이션과 `/editor/validate`, `/image-edits`의 CSRF, 인증 원본 조회, 비인증 공개 이미지 응답을 격리 서버에서 확인했다. 공통·옵션별 이미지 자산 ID와 HTML 내부 참조가 임시 저장 후 재조회에서도 유지되며, 상속 이미지 편집은 해당 옵션만 대체하고 변경 취소하면 공통 원본으로 돌아간다. 설명 이미지 대체 위치도 보존한다. `scripts/test-image-crop-editor.cjs`, `scripts/test-unified-marketplace-editor.cjs`, `scripts/test-naver-product-form.cjs`가 Chrome 1440·390px에서 통과했다. 선택 좌표·비율·결과 크기·Enter 무동작·취소·원본 복원·실패 후 입력 보존·처리 중 확인/취소/Escape 잠금, 공통 이미지/설명 이미지와 네이버 이미지/HTML 편집 후 탭 이동·임시 저장·새로고침·재진입, 가로 넘침 없음도 검사했다. PC·모바일 자르기 화면을 직접 이미지로 검수했다.
+
+공개 원본 `https://assets.molebutter.link/products/WCWA705R2/official/01.jpg`를 앱 검사 User-Agent로 GET하여 HTTP 200, JPEG, 750×962px, 88,040바이트를 다시 확인했다. 기존 앱 공개 토큰 경로의 외부 라우팅은 GET 404로 인증 리디렉션 없이 도달하는 것을 확인했고, 편집본 바이트의 공개 응답은 격리 앱에서 검사했다. 새 편집본의 실제 운영 HTTPS 전달은 서버 재시작 후 확인 대상이다. 운영 서버 재시작, 실제 마켓 이미지 업로드·상품 등록·수정, R2 객체 쓰기·삭제는 수행하지 않았다. [현재 구현 안내](market-api/common-product-editor.md#실제-이미지-검사와-서버-자르기-2026-10-13)를 참고한다. 아래의 이전 ‘형식 확인’ 기록은 당시 검증 범위이며 현재 입력 검증은 서버 실제 이미지 검사로 대체되었다.
+
+2026-10-13 R2 이미지 규격 진단: 사용자가 지정한 공개 URL을 HTTP GET으로 읽어 `image/jpeg`, 750×962px, 88,040바이트를 확인했다. 쿠팡 공식 상품 생성 SOURCE와 현재 공식 페이지의 대표이미지 정사각형 조건을 대조했다. 대표 1장과 같은 URL의 상세설명 1장인 모의 문서에서도 대표이미지 오류 한 건이 발생하고, 대표를 정사각형 메타정보로 바꾸면 통과하는 회귀 사례를 추가했다. 실제 R2 객체는 변경하지 않았다. `DraftValidationTest` 20개, `CoupangWriteGatewayTest` 57개, `LayoutViewTest` 3개와 JavaScript 검사 76개가 통과했다. 입력 형식 확인과 서버 규격 검사를 문구로 구분하며 전송 준비 시 이전 완료 결과를 숨기는 동작을 통합 편집기 모의 브라우저에서 검사한다. 실제 마켓 전송은 하지 않았다.
+
+2026-10-13 통합 편집기 재검토: 단독 상품의 첫 임시 저장 후 추가 수정·공통 가져오기가 저장 전 관찰값 때문에 충돌하는 문제를 격리 DB에서 먼저 재현한 후 수정했다. 저장 응답의 조회값으로 연결 기준을 갱신하며, 저장 이후 실제 외부 변경은 계속 차단한다. 단독 내부 초안의 최초 조회 실패 후 재시도에는 진입 정보와 연결 토큰도 다시 조회한다.
+
+관련 Java 단위 검사 35개, 격리 MySQL·Redis의 `MarketplaceEditingFlowIT` 26개와 `NaverProductFlowIT` 17개(43개), JavaScript 검사 76개가 통과했다. `scripts/test-unified-marketplace-editor.cjs`는 1440·390px에서 실제처럼 옵션 UUID를 재매핑하는 모의 연결 응답으로 기존 상품 연결·공통 옵션 추가·새 공통 가져오기·다른 마켓 최초 조회·조회 실패 탭의 미저장 입력 보존과 저장 중단/재시도·임시 저장·새로고침·재진입을 검사한다. `scripts/test-naver-product-form.cjs`도 두 폭에서 통과했다. 공통 및 모든 마켓의 구역 이동 메뉴 제거, 입력·이미지 편집 영역 유지와 가로 넘침 없음을 확인했다. 실제 운영 DB·마켓 전송·R2 변경·사용자 브라우저 조작·서버 재시작은 수행하지 않았다.
+
+2026-10-13 등록·수정 HTML 통합 검증: 기존 여섯 진입 주소가 같은 HTML과 화면 제어 코드를 사용하는지 검사했다. `MarketplaceProductEditorTest`는 직접 옵션 연결·중복/누락/계정 변경·새 내부 코드·UUID 변경 보존을, `MarketplaceTargetEditingTest`는 미조회 UPDATE·마켓별 최초 조회·방문하지 않은 변경 보존을 검사한다. `scripts/test-unified-marketplace-editor.cjs`는 실제 Thymeleaf 공통 HTML을 1440·390px에서 사용해 탭별 요청 횟수, 탭 왕복, 임시 저장·새로고침, 미조회 네이버 변경 복원, 조회 실패·재시도, 직접 옵션 연결, 단독 신규 쿠팡·네이버 저장·재진입, 비활성 탭과 가로 넘침, 검색 Enter의 쓰기 미실행을 확인한다.
+
+격리 MySQL·Redis의 편집·초안·실행·네이버·마이그레이션 통합 검사 82개가 통과했다. 기술 초안의 공통 승격·기존 공통 연결, 이전 실행 ID 보존과 목록 합류, 이전 기록 재시도 차단, 쿠팡 옵션별 가격·재고·출고 소요일, 네이버 무옵션·조합형 옵션의 UUID 대응·전체 공통 가격·보관된 변경을 포함한다. JavaScript 모델·입력·전송 검사 76개도 통과했다. 실제 운영 DB, 사용자 브라우저 입력, 마켓 이미지 업로드·등록·수정, R2 객체 변경과 서버 재시작은 수행하지 않았다. 과거 단독 HTML 전용 브라우저 스크립트보다 통합 화면 검사는 새 스크립트를 기준으로 한다.
+
+재현: `node scripts/test-unified-marketplace-editor.cjs`, 관련 Java 단위 검사, `MOLEBUTTER_COUPANG_LIVE=false MOLEBUTTER_ORDER_LIVE=false CLOUDFLARE_R2_ENABLED=false bash scripts/test-integration.sh -pl molebutter-app -am -Dtest=MarketplaceEditingFlowIT,NaverProductFlowIT,MarketplaceDraftFlowIT,MarketplaceSubmissionFlowIT,MigrationUpgradeIT -Dsurefire.failIfNoSpecifiedTests=false`.
+
+2026-10-13 마켓 폼 공용화 검증: `LayoutViewTest` 3개, 관련 JavaScript 모델·입력 동작 검사 90개가 통과했다. 새 `scripts/test-coupang-layout-parity.cjs`는 같은 합성 상품값으로 단독·공통 쿠팡의 CREATE·UPDATE를 1440·390px에서 직접 대조한다. 주요정보의 전체 항목·라디오 선택지·잠금 상태·선택 상태·입력 폭, 기본정보·배송·반품의 항목명, 배송 선택값 목록, 구비서류 추가 제어와 구역 이동 메뉴가 일치하는지 검사하고 양쪽 화면을 캡처한다. 데이터값·권한으로 인한 차이를 레이아웃 누락으로 오인하지 않도록 같은 상태끼리 비교한다.
+
+`test-common-marketplace-editor.cjs` 1440·390px는 옵션별 인증 유형·번호, 구매 제한, 서류와 서로 다른 출고 소요일(2일·4일)의 저장·새로고침·재진입 보존, 공통 상속·개별값·변경 취소·Enter 저장 방지를 확인한다. 나머지 준비 마켓 탭도 같은 공통 준비 구역을 유지하고 외부 전송 버튼이 비활성인지 확인했다. `test-marketplace-editor.cjs`는 2560·1440·390px에서 단독 쿠팡 회귀를, 스마트스토어 단독·공통 브라우저 검사는 각각 1440·390px에서 입력·저장·가격·상속 보존을 확인했다. 모든 외부 응답은 모의 자료이며 실제 마켓 쓰기, 서버 재시작과 사용자의 열린 입력 화면 조작은 수행하지 않았다.
+
+2026-10-13 쿠팡 판매기간·배송비·R2 검증: `DraftValidationTest` 19개, `CoupangProductDocumentsTest` 8개, `CoupangWriteGatewayTest` 57개, `R2ImageLibraryTest` 5개, `LayoutViewTest` 3개와 관련 JavaScript 모델 검사 70개가 통과했다. 정상 R2 이미지의 검증 완료, URL 중복 읽기 방지, 비정사각형·용량 초과·삭제된 객체, 기존 쿠팡 CDN 보존, 무료배송 빈 기준 금액의 최종 JSON 숫자 0, 조건부 무료배송 필수 입력을 검사했다. 기존 초안의 구매옵션 값 저장 허용과 실행 직전 권한 검사 계약에 맞춰 오래된 저장 단계 테스트 기대값도 정리했다. 모의 브라우저에서 공통 쿠팡 탭 1440·390px와 단독 쿠팡 2560·1440·390px의 판매기간 체크를 확인했고, 공통 탭의 날짜·배송비 변경이 임시 저장·새로고침·재진입 후 유지되는지 검사했다. 실제 R2 객체·마켓 상품의 변경, 실제 이미지 업로드 및 서버 재시작은 수행하지 않았다.
+
+2026-10-12 단독 편집 기준 마켓 탭 배치 정리: `LayoutViewTest` 3개와 편집 모델·입력 동작 검사 100개를 실행했다. 모의 브라우저의 공통 쿠팡·스마트스토어 검사는 1440·390px, 단독 쿠팡은 2560·1440·390px, 단독 스마트스토어는 1440·390px에서 확인했다. 쿠팡의 항목 이동 순서·구비서류 분리·주소록 요약·택배사 선택·옵션별 이미지 탭·키보드 이동·라디오 선택의 저장 후 복원과 옵션 입력값의 실제 표시 크기 및 클리핑을 확인한다. 기존 공통 상속·개별값·구매옵션 UUID·임시 저장·새로고침·재진입·변경 취소·전송 미리보기 회귀 검사도 포함한다. 화면 캡처를 확인하며, 실계정 상품 등록·수정과 이미지 업로드는 실행하지 않는다.
+
 2026-10-10 PR #32 네이버 선택 옵션 재고 회귀 검증: 수정 전 이름만 바꾸는 조합형 상품의 일반 PUT 허용과 전체 옵션 재고 전송을 새 테스트로 재현했다. 조합형 옵션 재고는 `PUT /v1/products/origin-products/{originProductNo}/option-stock`으로 분리하여 명시적으로 수량을 바꾼 행만 전송한다. 준비 이후·최종 GET 이후 다른 옵션의 판매 차감, 선택 옵션 충돌과 ID 변경, 0수량·옵션 추가금·사용 여부, 승인 대기·미지원 옵션 유형, 과거 일반 PUT의 새 전송 차단과 기존 결과 읽기, 실제 전송 스냅샷 직렬화·응답 유실·읽기 확인·중복 접수·다음 변경 잠금 해제를 검증했다. 일반 PUT이 필요한 기존 옵션 상품의 상품명·설명·이미지·옵션 구조 등 수정은 미선택 재고 보존 계약 확인 전까지 제한한다. 신규 등록과 기존 무옵션 수정은 유지한다.
 
 `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home ./mvnw -o -pl molebutter-app -am test '-Dtest=NaverOptionStockWriteTest,NaverWriteGatewayTest,NaverGatewayTest,NaverEditPatchTest,NaverProductDocumentsTest,NaverWorkflowServicesTest,NaverProductControllerTest,NaverSubmissionRoutingTest,MarketplaceSnapshotCompatibilityTest' -Dsurefire.failIfNoSpecifiedTests=false -Dmolebutter.build-directory=target/pr32-option-stock-fix`로 단위 99개가 통과했다. 같은 JDK와 `MOLEBUTTER_COUPANG_LIVE=false MOLEBUTTER_ORDER_LIVE=false CLOUDFLARE_R2_ENABLED=false bash scripts/test-integration.sh -pl molebutter-app -am '-Dtest=NaverProductFlowIT,MarketplaceSubmissionFlowIT' -Dsurefire.failIfNoSpecifiedTests=false`로 임시 MySQL·Redis 통합 45개가 통과했다. HTTP는 localhost 가짜 서버, 상품 전송은 메모리 가짜 게이트웨이를 사용했다. 실제 계정 API·운영 DB·R2 쓰기·브라우저 검증·배포는 수행하지 않았다.
@@ -491,6 +526,102 @@ JS 편집·전송·공통 편집 42건 통과. 기존 편집 브라우저 2560·
 
 추가로 컴포넌트·DB·스케줄러를 실행하지 않는 임시 Spring ConfigData 진단으로 수정된 일반 설정의 import를 확인했다. 통합 파일 import 및 쿠팡·네이버 필수 설정의 존재 여부만 모두 true로 확인했고 값은 출력하지 않았다. 비밀 파일을 직접 열거나 수정하지 않았으며 마켓 인증 성공·실제 상품 조회는 이 확인에 포함하지 않는다. 실행 중인 개발 서버는 재빌드·재시작 후 새 import를 적용한다.
 
+
+## 쿠팡 품번·바코드 구분 및 실패 후 입력 수정 (2026-10-09)
+
+옵션 표의 MPN·GTIN은 원본 속성 인덱스를 유지하면서 이름으로 가로 배치한다. 확정 실패·일부 완료의 입력 수정은 기존 입력·관찰 토큰을 유지하고 미실행 단계만 종료한다. 이후 준비가 최신값과 대조하므로 성공한 변경은 제외하고 외부 변경 충돌은 유지한다. 실행 중·응답 유실·승인 대기는 결과 확인 전 수정 전환을 막는다.
+
+- 전체 JS 167개 통과. 역순 속성 매핑, 입력 보존, 부분 성공, 중복 클릭, 오래된 결과 응답, 복구 실패, 만료 토큰의 전송 차단을 검증했다.
+- `SubmissionExecutionTest` 25개, `MarketplaceSubmissionFlowIT` 전체 23개와 추가 동시성 1개, `MigrationUpgradeIT` 2개 통과. 임시 DB·Redis와 가짜 gateway에서 권한·CSRF·계정 변경·확정 실패 종료·미실행만 정리·원래 오류/시도 보존·새 준비/실행·재시도와 수정 전환 경쟁을 확인했다. V38 적용 후 기존 결과가 보존되는지도 확인했다.
+- `CoupangWriteGatewayTest` 46개와 `LayoutViewTest` 3개 통과. 최초 관찰값 대비 최신값/요청값 대조, 이미 반영된 변경 제외, 외부 충돌 차단과 화면 렌더링을 확인했다. gateway 테스트는 최초 샌드박스 실행에서 Mockito의 JVM 연결 권한이 막혀 재실행한 결과다.
+- 실제 Thymeleaf 화면과 로컬 모의 API로 1440px에서 거절→입력 수정→값 보존→수정 재저장, 390px에서 부분 성공→수정 전환→성공 요청 제외→재저장과 응답 유실 시 결과 확인만 제공하는 흐름을 검증했다. 페이지 가로 넘침 없이 표 내부에서 스크롤하고 MPN/GTIN 라벨과 매핑을 유지한다. 모의 화면 기록: `/tmp/molebutter-identity-recovery.png`.
+
+실제 쿠팡 쓰기와 운영 DB 변경은 수행하지 않았다. 브랜드별 식별자 필수 여부를 일반 HTTP 400만으로 확정하거나 모든 상품에 일괄 필수로 추가하지 않았다.
+
+## 공통 입력 상속·스마트스토어 브랜드·마켓 탭 (2026-10-09)
+
+- 선택 Java 112개 통과: MarketplaceSnapshotCompatibilityTest 3, CoupangProductDocumentsTest 4, CoupangWriteGatewayTest 46, NaverProductDocumentsTest 4, NaverCatalogTest 5, NaverGatewayTest 16, NaverWriteGatewayTest 14, NaverWorkflowServicesTest 9, NaverProductControllerTest 6, LayoutViewTest 3, ModuleArchitectureTest 2. 별도 `target/common-ui-verification` 디렉터리와 비활성 마켓·R2 설정을 사용했다.
+- JS 37개 통과: 공통 편집 모델 23, 네이버 브랜드 선택기 3, 네이버 편집 모델 11. 신규 기본값 상속, UUID별 개별값·빈 문자열·0 유지, 공통값과 같아진 뒤 다시 바뀌는 경우, 삭제 옵션 제외, 연결된 UPDATE 값 보존, 검색 취소·늦은 응답·빈 결과·오류와 큰 ID를 확인했다.
+- 실제 Thymeleaf 화면과 로컬 모의 API로 PC 1440px·모바일 390px에서 공통 입력→쿠팡 표시→개별 가격 0 유지→첫 저장·세션 생성→전송 준비의 UUID·값 매핑을 확인했다. 스마트스토어 브랜드 검색·선택·직접 수정 시 ID 해제·임시 저장 후 재진입, 11번가·롯데ON 준비 탭과 모바일 탭 줄바꿈도 확인했다. 페이지 가로 넘침과 브라우저 오류는 없었다. 화면 기록: `/tmp/molebutter-common-mapping-PC.png`.
+
+네이버 브랜드 SOURCE와 공식 current, ESM 공용 API의 사이트별 식별자·가격·재고 계약을 대조했다. 실제 마켓 요청·상품 등록·수정, 운영 DB·R2 변경 및 개발 서버 재시작은 수행하지 않았다. 공통 편집기에서 스마트스토어·G마켓·옥션·롯데ON·11번가 외부 전송은 계속 준비 상태다.
+
+
+## 공통 기준 통합 브랜드 검색 (2026-10-09)
+
+공통 브랜드 검색창 하나에서 쿠팡·스마트스토어·롯데ON 후보를 조회하고 마켓별로 직접 선택한다. 공통명과 각 마켓의 정확한 선택 이름·ID를 분리해 보관하며, 취소는 변경을 적용하지 않고 선택 해제는 해당 마켓만 공통명 상속으로 돌린다. 검색 실패·재시도·페이지 이동은 다른 마켓 결과와 선택을 보존한다. 연결된 쿠팡 브랜드 잠금과 기존 초안 JSON·생성자 호환성도 유지한다.
+
+- Java 110개 통과: MarketplaceSnapshotCompatibilityTest 5, CoupangWriteGatewayTest 46, CoupangProductDocumentsTest 4, NaverWriteGatewayTest 14, NaverProductDocumentsTest 4, NaverCatalogTest 5, NaverGatewayTest 16, LotteonBrandsTest 5, LotteonBrandTransportTest 3, LayoutViewTest 3, LotteonBrandControllerTest 3, ModuleArchitectureTest 2. `./mvnw -o -Dmolebutter.build-directory=target/common-brand-verification -pl molebutter-app -am -Dtest=<위 클래스 목록> -Dsurefire.failIfNoSpecifiedTests=false test`의 선택 실행이며 스케줄러·쿠팡·네이버·주문·R2 연결을 비활성화했다. Mockito·로컬 가짜 HTTP 서버를 허용한 환경에서 수행했다.
+- JS 38개 통과: `node --test src/test/js/common-brand-picker.test.cjs src/test/js/common-marketplace-editor.test.cjs src/test/js/naver-brand-picker.test.cjs`. 한 검색어의 세 API 분리 호출, 적용 전 미변경, 취소·늦은 응답·오류·재시도·쿠팡 페이지, 큰 네이버 ID의 문자열 보존, 특정 마켓 선택 해제, 새 공통명 입력 후 명시적 선택 유지, 잠긴 쿠팡 제외, 롯데ON ID 12자·이름 255자 경계를 검사했다.
+- 실제 Thymeleaf 화면과 로컬 모의 API를 CUA 브라우저에서 PC 1440px·모바일 390px로 확인했다. 세 마켓의 서로 다른 이름·ID 선택과 탭별 표시, 선택 해제 후 취소 시 원래 값 유지, 스마트스토어만 해제, 초안 저장·새로고침 후 선택 유지, 모바일 적용을 검증했다. 검색창의 가로 넘침과 브라우저 오류는 없었다. 화면 기록은 `/tmp/molebutter-unified-brand-pc.png`, `/tmp/molebutter-unified-brand-mobile.png`다. `scripts/test-common-marketplace-editor.cjs`의 모의 검색·선택 회귀 항목도 갱신했으며 이번 실행은 문법 확인까지만 수행했다.
+- `git diff --check`와 변경 스크립트 문법 검사가 통과했다. 작업 전 기록한 관련 없는 기존 변경 파일 27개의 해시가 유지됐다.
+
+롯데ON은 공식 SOURCE 204와 관련 인증·검색 변경 공지를 대조해 읽기 조회만 추가했다. 첫 최대 100개에 대한 상시 검색어 구체화 안내를 제공하며 다음 페이지 조회는 제공하지 않는다. ESM은 추가 JWT 인증 설정이 필요해 검색 준비 상태, 11번가는 브랜드 조회 계약 미확인 상태로 표시한다. 실제 마켓 조회·상품 등록·수정, 운영 DB·R2 변경, 비밀 파일 직접 열람 및 개발 서버 재시작은 수행하지 않았다.
+
+## 2026-10-09 입력창 Enter 공통 규칙
+
+[입력창과 Enter 키 규칙](ui-interaction-rules.md)을 `AGENTS.md`와 공통 head에 연결했다. 명시한 검색·조회·편집 중 추가만 입력 Enter로 실행하며, 저장·등록·삭제·마켓 전송·R2 업로드·입고는 버튼을 직접 눌러야 한다. 버튼에 초점을 둔 Enter·Space는 유지한다. 동적 옵션·재고 행·폼 밖 구매 저장 버튼의 재연결과 인증 발송·확인의 처리 중 잠금도 포함한다.
+
+- `node --test src/test/js/*.test.cjs`: 216개 통과. 공유 키 처리, 인증, 설정, 상품, 재고, 매입처, 업로드와 기존 마켓 편집 회귀를 포함한다. 입력 Enter·암묵 submit의 무저장, 명시 버튼 입력 검사, 중복 실행, 동적 폼 재연결, 실패 후 입력 유지, 조합 중 Enter·줄바꿈·자동완성 기본 동작을 모의 DOM에서 확인했다.
+- `./mvnw -o -Dmolebutter.build-directory=target/enter-policy-verification -pl molebutter-app -am -Dtest=LayoutViewTest,ModuleArchitectureTest -Dsurefire.failIfNoSpecifiedTests=false test`: 화면 렌더링 3개와 모듈 경계 2개 통과. 인증 화면에도 공통 모듈이 렌더링되는지 확인했다.
+- 실제 Thymeleaf 화면과 로컬 모의 API를 CUA 브라우저에서 검사했다. 실제 화면 폭 1440px·390px를 확인한 뒤 공통 브랜드 입력 Enter로 검색창 열기, 검색창 Enter 재검색, 가격·재고 Enter 무저장·초점 유지, 저장 버튼에 초점을 둔 Enter·Space를 확인했다. 모바일 가로 넘침도 없었다. 여러 줄 입력 줄바꿈, 설정 등록 입력 Enter 무저장과 직접 버튼 Space 등록, 인증 이메일·코드 연속 Enter당 모의 요청 1회, 가입 정보 입력 Enter 무저장도 확인했다. 화면 기록은 `/tmp/molebutter-enter-policy-pc.png`, `/tmp/molebutter-enter-policy-mobile.png`다. 실제 운영체제 한글 조합과 터치 키보드 검증은 수행하지 않았다.
+- 기존 브라우저 회귀 스크립트의 저장 버튼 선택자와 Enter 사례도 갱신하고 구문을 검사했다. 해당 스크립트 자체는 이번 실행에서 돌리지 않았으며, 브라우저 조작은 CUA로 수행했다. `git diff --check` 통과.
+
+실제 판매 마켓·R2·인증 메일·운영 DB 요청은 보내지 않았다. 작업 시작 당시 변경 중이던 파일 61개 중 이번 범위에 해당하는 13개를 이어서 수정했고, 나머지 48개의 내용은 SHA-256 비교로 보존을 확인했다. 서버 API와 전송 전문은 변경하지 않았다.
+
+## 2026-10-09 상품정보 이미지 높이 축소
+
+생성 PNG 왼쪽의 ‘상품정보’ 제목과 전용 공간을 없애고, 양쪽 바깥 여백 사이를 본문으로 사용한다. 종류 항목을 제조사 바로 뒤로 옮겨 두 항목을 같은 행의 좌우 카드로 배치한다. 나머지 항목과 입력값은 유지하며 긴 값은 카드 높이를 늘려 표시한다. 우측 편집 화면도 서버가 계산한 카드 순서를 따르고 기존 입력 노드·빈 입력·초점·커서·스크롤을 보존한다. 이미 추가한 PNG 스냅샷은 유지하며 새로 생성하는 이미지부터 적용된다.
+
+- `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home ./mvnw -o -pl molebutter-imaging -am -Dmolebutter.build-directory=target/notice-layout test`: 192개 통과. 본문 폭·여백, 제조사/종류의 같은 행 배치, 홀수 선행 항목·긴 제조사·빈값·분해형 한글, 원본 보존과 기존 생성·다운로드 회귀를 확인했다.
+- `node --test src/test/js/product-images-angle.test.cjs src/test/js/product-images-order.test.cjs src/test/js/product-images-upload-form.test.cjs src/test/js/product-images-notice-layout.test.cjs`: 23개 통과. 서버 순서 반영, 기존 노드·빈 입력·초점/커서/스크롤 보존, 늦은 응답 무시와 실패 시 입력 보존을 확인했다.
+- 예시의 같은 항목과 문장을 변경 전/후 렌더러에 넣어 실제 PNG를 생성하고 눈으로 확인했다. 폭 780px에서 높이가 798px → 610px로 약 24% 줄었다. 글자 크기는 유지했다.
+- 실제 상품 이미지 도구 템플릿과 격리된 모의 API를 CUA 브라우저로 확인했다. 제조사 편집 도중 응답이 와도 값·초점·커서가 유지됐으며, 제조사/종류가 같은 행으로 이동했다. 390px 화면에서도 같은 행 배치·가로 넘침 없음·입력 내용 잘림 없음을 확인했다. 외부 LF몰·판매 마켓·R2 요청은 수행하지 않았다.
+
+### 상품 정보 도구 이름·공통 저장코드·분류 경로 (2026-10-09)
+
+메뉴·페이지 이름을 ‘상품 정보 도구’로 바꾸고 기존 화면·API 주소는 유지했다. 다운로드·업로드 옆 공통 저장용 상품코드는 성공한 조회의 코드로 초기화하며 두 작업에 같은 정규화된 값을 보낸다. ZIP은 `{저장코드}.zip`이며 조회 사진은 `{저장코드}/official/{순번}.{실제 확장자}`, 생성 PNG는 `{저장코드}/processed/사이즈.png`·`상품정보.png`와 추가 번호로 저장한다. R2에는 같은 상대 경로 앞에 `products/`를 붙인다. 서버가 분류하고 원본 조회 코드와 소유권 기준은 유지한다. `original` 폴더 생성·기존 객체 이동·기존 상품의 추가/교체 업로드는 구현하지 않았다.
+
+- 이미지 모듈 196개 통과. 실제 ZIP을 열어 수정 코드·분류 폴더·혼합 순서·한글 이름·추가 번호·JPEG 확장자·사진 여백과 생성 PNG 바이트를 대조했다. 저장 코드 경로 우회·타 상품/사용자 생성 이미지·선택 목록 변경·접수 후 스냅샷 만료도 검사했다. 기존 6/7인자 다운로드 입력과 JSON의 저장 코드/선택 옵션 생략 호환을 유지했다.
+- 앱 HTTP·업로드·예약 50개, 템플릿 3개·모듈 경계 2개 통과. 모의 저장소에서 `official` 원본 PNG와 `processed` 생성 PNG의 정확한 키·공개 주소·한글 basename을 확인했다. 과거 평면/UUID/새 official·processed 폴더의 파일이 하나라도 있으면 전체 상품 prefix를 차단한다. 잘못된 코드·분류 누락·슬래시 포함 파일명·동시 실행·부분 실패·응답 유실 후 재조회 보호도 통과했다.
+- 이미지 JS 29개 통과. `node --test src/test/js/product-images-angle.test.cjs src/test/js/product-images-order.test.cjs src/test/js/product-images-notice-layout.test.cjs src/test/js/product-images-upload-form.test.cjs`로 공통 코드 초기화·정규화·버튼별 전달, 모달/작업 잠금, 코드/목록 고정, 입력과 확인 버튼의 Enter 차단, 중복/조회 실패의 입력 보존, 새로고침 후 동일 요청 조회와 명시 재시도를 확인했다.
+- 실제 Thymeleaf 화면과 격리된 모의 API를 CUA 브라우저의 PC 1440px·모바일 390px에서 확인했다. PC는 코드 입력과 두 버튼이 같은 행이며, 모바일은 줄바꿈하고 가로 넘침이 없다. 실제 클릭으로 코드 변경·혼합 이미지 추가·다운로드 파일명·업로드 경로 확인·처리 중 잠금·실패 후 코드와 선택 보존을 확인했다. 입력 및 업로드 확인 버튼의 Enter로 쓰기가 실행되지 않았고, UNKNOWN 결과에서 새로고침은 기존 작업 GET만 보냈다. UI 회귀 스크립트도 새 경로와 PC 같은 행 규칙으로 갱신했으며 구문 검사를 통과했다. 이번 검증에서 해당 Playwright 스크립트를 실행한 것은 아니다.
+
+최초 앱 테스트 실행은 Mockito의 JVM 자동 연결 제한으로 중단됐으며, 테스트 실행에 로컬 Mockito javaagent를 명시한 재실행에서 앱 50개가 통과했다. 실제 LF몰·판매 마켓·R2 업로드와 기존 객체 이전은 수행하지 않았다. [사용 흐름](product-image-workspace.md)과 [저장 경로](r2-storage.md#상품-이미지-경로)를 갱신했다.
+
+## 스마트스토어 공통 폼·임시 저장·전송 연결 (2026-10-09)
+
+공통 상품의 스마트스토어 탭과 전용 신규·수정 화면을 같은 `NaverProductForm`으로 연결했다. 공통 문서와 옵션 UUID를 유지하면서 네이버 입력과 상속 상태를 별도로 보관한다. 신규 CREATE와 연결 상품 UPDATE 모두 한 마켓씩 기존 실행 엔진으로 준비한다. V39는 마켓별 계정·상품 바인딩과 임시 변경 저장소를 추가하며 과거 초안·실행 JSON의 호환성을 유지한다.
+
+- Java 단위·HTTP·화면·모듈 경계 101개 통과. `MarketplaceTargetEditingTest` 16, `MarketplaceSnapshotCompatibilityTest` 6, `NaverSubmissionRoutingTest` 7, `SubmissionExecutionTest` 27, `MarketplaceEditingControllerTest` 2, `NaverCommonProjectionTest` 12, `NaverEditPatchTest` 7, `NaverProductDocumentsTest` 4, `NaverWriteGatewayTest` 15, `LayoutViewTest` 3, `ModuleArchitectureTest` 2다. 별도 `target/common-target-edits`, `target/naver-common-projection`, `target/common-naver-layout` 빌드 디렉터리에서 선택 실행했다. 공통 문서 보존, 숫자 0·빈값, UUID·가격 차액, 미디어 출처, 최신 전문 병합과 변경하지 않은 설명 보존, 서버 바인딩·계정 검증, 충돌 명시 확인, 응답 유실·반영 대기 잠금과 과거 JSON을 확인했다.
+- 격리 MySQL·Redis 통합 테스트 54개 통과. `MarketplaceEditingFlowIT` 16, `MarketplaceSubmissionFlowIT` 24, `MarketplaceDraftFlowIT` 7, `MigrationUpgradeIT` 2, `NaverProductFlowIT` 5다. `target/common-target-integration`에서 가짜 gateway로 공통 기준·네이버 임시 변경의 함께 저장, revision 충돌 시 전체 롤백, 재진입 후 세 방향 비교, 이미 반영된 변경 정리, 마켓별 바인딩·이전 스키마 업그레이드와 기존 쿠팡/초안/실행 흐름을 확인했다.
+- `node --test src/test/js/*.test.cjs`: 최종 236개 통과. 신규 공통 네이버 모델 9개를 포함해 최소 판매가·옵션 추가금·재고 0, 개별 가격 보존·명시 재적용, 공통/옵션 미디어의 독립 선택과 첫 옵션 자동 선택 방지, 삭제한 출처 안내, 미매핑 값, 임시 변경·충돌 복원을 확인했다.
+- 실제 Thymeleaf 화면과 로컬 모의 API에서 `scripts/test-common-naver-editor.cjs`, `scripts/test-common-marketplace-editor.cjs`, `scripts/test-naver-product-ui.cjs`, `scripts/test-naver-product-form.cjs`를 PC 1440px·모바일 390px로 실행했다. 공통 신규 입력부터 첫 초안 저장·CREATE 확인, 기존 상품 충돌 해결·UPDATE 확인, 임시 저장 후 재진입, revision 실패 시 입력 유지, 명시 미디어 출처·가격 재적용, 업로드 중 클릭/키보드 탭 잠금, Enter 무저장, 확인 취소 후 입력 유지와 기존 쿠팡·전용 스마트스토어 회귀를 검증했다. 가로 넘침과 브라우저 오류가 없었다. 공통 네이버 화면 기록은 `/tmp/common-naver-editor-1440.png`, `/tmp/common-naver-editor-390.png`다. 모바일 실제 터치 제스처와 운영체제 한글 조합은 검증하지 않았다.
+
+처음 서버 단위 테스트는 Mockito 자동 연결 제한으로 중단돼 로컬 javaagent를 명시해 재실행했다. 공통 쿠팡 브라우저 검증의 첫 새로고침 클릭이 모의 API 호출에 도달하지 않은 실행도 있었으며, 재실행과 별도 클릭 관찰에서 PC·모바일 모두 통과했다. 이번 결과는 실제 판매 마켓·R2·운영 DB 요청이나 실계정 승인 완료를 뜻하지 않는다. 비밀 파일·공식 SOURCE를 변경하거나 개발 서버를 재시작하지 않았다.
+
+
+## 2026-10-10 판매 마켓 모듈 분리 검증
+
+- `target/module-split` 별도 빌드에서 마켓·모듈 경계 회귀 테스트 278개 통과.
+  쿠팡/스마트스토어 가짜 HTTP 응답, 롯데ON/ESM 매핑·서명, 초안·편집·실행 스냅샷,
+  주문 수집 및 공개 계약의 물리 위치·실행 라이브러리 참조 금지를 검사했다.
+- 임시 MySQL·Redis의 `MarketplaceDraftFlowIT`, `MarketplaceEditingFlowIT`,
+  `MarketplaceSubmissionFlowIT`, `MarketplaceOrderFlowIT`, `NaverProductFlowIT` 68개 통과.
+- 이후 실행 워커 분리에 대해 단위·경계 테스트 67개와
+  `MarketplaceSubmissionFlowIT`, `NaverProductFlowIT`를 다시 실행해 통과했다.
+  신규 등록·승인/반영 대기·응답 유실·재조회·재시도와 Spring 조립을 모의 응답으로 확인했다.
+- 처음 전체 단위 테스트 실행은 관련 없는 `NaverSearchRecoveryBrowserTest`에서 대기하여 중단했다.
+  전체 테스트 통과로 기록하지 않는다. 모의 HTTP 테스트는 샌드박스의 포트 바인딩 제한으로
+  실패한 뒤 로컬 포트 사용을 허용한 환경에서 재실행했다.
+- 실제 판매 마켓·공개 R2 쓰기·운영 DB 변경·실행 중인 앱 재시작은 하지 않았다.
+  이번 변경의 PC/모바일 화면 테스트는 실행하지 않았다.
+
+소스 이동 후 기존 기본 target의 오래된 클래스가 남지 않도록 최초 빌드는
+루트에서 `./mvnw clean verify`로 수행한다. 이 작업의 테스트는 별도 빌드 경로를 사용했다.
+롯데ON·ESM 실제 상품 조회·등록·수정 화면/실행은 여전히 연결 전이며,
+위 검증을 해당 기능의 완료 검증으로 해석하지 않는다.
+
 ## PR 32 공통 전송 입력 수정·주문 수집 Enter 회귀 (2026-10-10)
 
 - `node --test src/test/js/*.test.cjs`: 199개 통과. 공통 실행의 확정 실패 후 `/revise`, 현재 입력 보존·중복 클릭 방지·실패 복구·기존 미리보기 폐기·초안 전환 후 지연 응답 차단과 주문 수집의 명시적 제출을 확인했다.
@@ -507,3 +638,261 @@ PR #33이 머지된 main에서 화면·메뉴·관련 테스트와 문서만 분
 - `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home ./mvnw -o -pl molebutter-app -am -Dtest=LayoutViewTest,ProductImageControllerTest,ProductImageUploadServiceTest,ProductImageUploadHttpTest -Dsurefire.failIfNoSpecifiedTests=false test`: 39개 통과. 화면 접근·렌더링, 업로드 권한·스냅샷·예약과 응답 유실 회귀를 확인했다.
 - `NODE_PATH=<Playwright 설치 경로> node scripts/test-product-images-ui.cjs`: Chrome 2560px·1440px·390px 통과. 코드와 선택 목록 고정, 모달 취소 후 다른 코드 선택, 중복 업로드·접수 전 조회 실패·응답 유실·새로고침 복원·CSRF를 로컬 합성 API로 검증했다. 저장용 코드 입력의 Enter와 폼 submit은 쓰기를 실행하지 않으며, 확인 버튼에 초점을 둔 Enter는 업로드를 한 번 실행한다.
 - `git diff --check` 통과. 실계정 LF몰·판매 마켓·R2 요청과 배포는 수행하지 않았다.
+
+### 스마트스토어 등록상품 판매상태 검색 (2026-10-10)
+
+- `NaverCatalogTest`, `NaverProductControllerTest`, `ModuleArchitectureTest`: 별도 빌드 경로 `target/naver-status-search`에서 19개 통과. 상태별 `productStatusTypes` 매핑, 전체 조건 생략, 상품번호·판매자 코드와 병행, 잘못된 상태의 외부 요청 전 차단을 확인했다.
+- `node --test src/test/js/naver-products.test.cjs src/test/js/form-actions.test.cjs`: 10개 통과. 검색 조건 고정·처리 중 잠금·실패 후 선택 보존·초기화·기존 복귀 정보 호환성을 확인했다.
+- `NODE_PATH=<Playwright 설치 경로> node scripts/test-naver-products-ui.cjs`: 실제 목록 템플릿·스크립트와 모의 API로 Chrome 1440px·390px 통과. 판매상태 선택, Enter 검색, 페이지 이동, 수정 화면 복귀 시 조건 복원과 초기화를 확인했다.
+- 실계정 네이버 API 호출·상품 변경·운영 DB 변경·앱 재시작은 수행하지 않았다. `DELETE` 상태는 공식 enum에 포함되지만 설명 목록에는 누락되어 있으며 실계정 검색 동작은 확인하지 않았다.
+
+### 공통 편집기 마켓별 브랜드 유지·변경 비교 (2026-10-10)
+
+- `node --test src/test/js/*.test.cjs`: 268개 통과. 쿠팡 개별 브랜드명·ID의 반복 재구성, 공통/타 마켓 불변, 초안 직렬화·재진입, 최신 기준 비교·브랜드 취소 시 다른 설정 보존, 빈값·0과 부분 취소 시 충돌 잠금 보존을 포함한다.
+- `NODE_PATH=<Playwright 설치 경로> node scripts/test-common-marketplace-editor.cjs`: 로컬 모의 응답으로 Chrome 1440px·390px 통과. 실제 편집기에서 공통 브랜드 검색·마켓 선택, 쿠팡 개별 변경 후 탭 왕복, 브랜드 한 행 표시·취소, 임시 저장 후 새로고침 복원을 검증했다. 기존 가격·재고·검색어·고시·설명·업로드 처리 중 잠금과 외부 변경 확인 흐름도 검증했다.
+- `git diff --check` 통과. 서버 코드·API 계약 변경은 없으며 이번 작업에서 Java 테스트, 실제 마켓 API 호출·외부 상품 쓰기·운영 DB 변경은 수행하지 않았다.
+
+### 스마트스토어 브랜드 변경 통합·검색 선택 제한 (2026-10-10)
+
+- `node --test src/test/js/*.test.cjs`: 269개 통과. 스마트스토어 브랜드명·ID 통합 비교, 함께 취소, 다른 필드 변경 유지와 브랜드 개별 상속 해제를 포함한다.
+- `NODE_PATH=<Playwright 설치 경로> node scripts/test-common-naver-editor.cjs`: 로컬 모의 API로 Chrome 1440px·390px 통과. 브랜드명·ID 읽기 전용, Enter로 검색창 열기, 검색 결과 선택과 브랜드 변경 한 행 표시를 검증하고 기존 임시 저장·전송 준비·충돌 확인 흐름을 확인했다.
+- `git diff --check` 통과. 실제 네이버 호출·상품 등록/수정·운영 DB 변경은 수행하지 않았다.
+
+### 공통 편집기 전체 입력·상속 상태 저장 (2026-10-10)
+
+- 자바스크립트 전체 272개 통과: 쿠팡 모든 허용 입력의 변경 기록 직렬화·복원, 명시적 빈값·0, 공통값과 같아진 개별값 유지, 설정 하위 필드별 상속, 스마트스토어 입력·상속 표시 복원과 변경 취소를 검사했다.
+- 격리 MySQL·Redis의 서버 검사 105개 통과: `MarketplaceEditingFlowIT` 20개, `MarketplaceTargetEditingTest` 16개, `NaverWorkflowServicesTest` 12개, `CoupangProductDocumentsTest` 5개, `CoupangWriteGatewayTest` 48개, `ModuleArchitectureTest` 4개. 실제 DB 변경 기록 재조회·revision 충돌·외부 변경 충돌·신규 카테고리 허용과 기존 상품 거부·마켓 전용 이미지 참조 유지/해제·확인된 등록 이후 CREATE 기록 정리를 검사했다. 이미지 참조는 기존 공통 초안 저장 API 경유도 확인했다.
+- `scripts/test-common-marketplace-editor.cjs`, `scripts/test-common-naver-editor.cjs`: 각각 PC 1440px·모바일 390px 통과. 개별 이름·브랜드·가격·재고·배송·카테고리·이미지 등 변경, 여러 탭 이동, 저장 실패 시 입력 유지, 임시 저장 후 새로고침과 목록 재진입, 최신 공통값 변경 이후 개별값 유지, 취소 후 상속 복원 및 재저장을 확인했다.
+- 취소한 저장값이 최신 조회로 다시 나타나던 문제와 스마트스토어 취소 직후 폼이 이전 값을 표시하던 문제를 브라우저 회귀에 포함했다. 입력창 Enter 실행 제한·업로드 중 잠금도 기존 모의 화면 검사에 포함된다.
+- 마켓 응답은 가짜 응답을 사용했으며 실제 판매 상품 등록·수정이나 R2 업로드는 수행하지 않았다.
+
+공통 카테고리 검색 검증: `src/test/js/common-category-picker.test.cjs`는 마켓별 선택·리프 필터·목록 캐시·검색 코드·취소 후 늦은 응답·잠금을 모의 응답으로 확인한다. 공통 편집 모델 테스트는 쿠팡·네이버 카테고리 개별 변경과 임시 저장 상태 재구성을 검사한다. `CoupangClientTest`는 ACTIVE 종단 카테고리와 경로·잘못된 응답을, `NaverCommonProjectionTest`는 카테고리 상속과 개별값 보존을 검사한다. `node scripts/test-common-category-picker.cjs`는 LayoutViewTest가 만든 실제 템플릿으로 PC 1440px·모바일 390px에서 검색·선택·Enter 검색·개별 수정·임시 저장·새로고침 복원을 검사한다. API·저장은 모두 모의 처리하며 외부 마켓 쓰기를 하지 않는다.
+
+### 공통 등록 전체 흐름 재검증 (2026-10-11)
+
+- 자바스크립트 전체 281개 통과. 공통값과 마켓별 개별값, 빈값·0, 옵션 UUID, 브랜드·카테고리와 상속 상태의 직렬화·복원 검사를 포함한다.
+- `scripts/test-integration.sh`로 격리 MySQL·Redis에서 서버 검사 162개 통과: `MarketplaceEditingFlowIT` 20, `MarketplaceTargetEditingTest` 16, `NaverWorkflowServicesTest` 12, `CoupangProductDocumentsTest` 7, `CoupangWriteGatewayTest` 48, `NaverCommonProjectionTest` 14, `NaverWriteGatewayTest` 38, `LayoutViewTest` 3, `ModuleArchitectureTest` 4. 임시 저장·재진입, revision·외부 변경 충돌, 실행 중복 방지·응답 유실 확인과 요청 구성을 검사했다.
+- 실제 템플릿을 사용하는 공통 쿠팡·스마트스토어·카테고리 브라우저 검사 모두 PC 1440px·모바일 390px 통과. 스마트스토어에 공통 상품명이 원상품명과 채널상품명 두 곳에 들어가는지 확인하고, 개별 채널상품명을 변경한 뒤 최신 공통 상품명 변경·탭 왕복·임시 저장·새로고침·전송 확인에서도 이름과 상속 상태가 유지되는 시나리오를 추가했다.
+- `NaverWriteGatewayTest`에 실제 CREATE POST 본문의 원상품명·채널상품명 매핑 검사를 보강하고 38개를 다시 실행해 통과했다. 쿠팡 브라우저 검사의 브랜드 선택자는 새 카테고리 검색 영역과 혼동하지 않도록 범위를 한정했다.
+- 이번 재검증에서 추가 앱 동작 오류는 확인되지 않았다. 외부 요청은 가짜 응답으로 검증했으며 실제 마켓 등록·수정이나 R2 업로드는 수행하지 않았다.
+
+### 옵션 판매자상품코드와 카테고리 결과 표시 (2026-10-11)
+
+- 쿠팡 신규 대상은 공통 옵션별 판매자상품코드만 상속한다. 옵션 코드가 비어 있어도 공통 상품코드로 대체하지 않는다. 개별값·명시적 빈값·변경 취소·저장 상태 복원을 포함한 JS 검사 44개, 쿠팡 문서·쓰기 요청 및 템플릿 검사 58개 통과.
+- 공통 카테고리 검색은 마켓별 결과를 최대 5개 표시 높이(항목 96px, 간격 6px)로 제한한다. 초과 결과는 해당 마켓 결과 영역 안에서 스크롤한다. PC 1440px·모바일 390px에서 8개 결과 중 5개 표시, 아래 항목 선택, 다른 마켓의 스크롤 유지와 기존 저장·재진입 검사를 통과했다.
+- 가짜 마켓 응답만 사용했으며 실제 마켓 쓰기는 실행하지 않았다.
+
+### 11번가 API 문서 반영 (2026-10-11)
+
+- 사용자 제공 패키지의 README·11st OVERVIEW/INDEX·KNOWN-ISSUES와 cross-market의 11번가 안내를 다시 확인했다. 등록 1003·수정 1619·카테고리 1001/1617·상품 목록/상세 1007/1620·재고 1625·주문 1876/1634의 관련 SOURCE, 이미지·IP·셀러재고번호 FAQ와 이미지/브랜드 공지를 대조했다. 이미지·브랜드 코드·옵션 수정 필드는 `_raw/st11/api/81_1003.json`·`81_1619.json`과도 대조했다. 전체 387개 문서의 독립 재검수는 수행하지 않았다.
+- `MarketplaceChannels`의 ELEVENST 비활성 상태, 런타임 키 매핑, DraftValidation의 준비 판정과 공통 브랜드·카테고리 검색의 미연결 상태를 코드로 확인했다. 문서 확보와 어댑터 구현·실계정 검증을 구분하여 [11번가 안내](market-api/11st.md)를 추가하고 AGENTS·연동 색인·공통 편집·첫 조회·주문·파트너 구현·모듈 안내를 갱신했다.
+- 위 안내 8개 파일의 로컬 링크 119개에 누락이 없음을 확인했다. 제공된 `marketplace-api-docs` 전체 7,977개 파일은 작업 전후 SHA-256 비교에서 추가·삭제·내용 변경이 없었다. 변경 문서의 공백 오류 검사도 통과했다.
+- 문서 변경이므로 앱 테스트·브라우저 검증은 실행하지 않았다. 실제 마켓 요청·상품 쓰기·주문 처리·키 권한 확인·운영 DB/R2 변경·서버 재시작은 수행하지 않았다. 비밀 파일은 직접 열거나 수정하지 않았다.
+
+### 쿠팡 구매옵션 동적 표 (2026-10-11)
+
+- `CoupangPurchaseAttributesTest`: boolean/string/미확인 권한, 기존 빈값, 누락 필수속성 추가, 이름·삭제 차단, 숫자 0·단위·날짜·택1 그룹, 원격 추가 필드 보존.
+- `CoupangWriteGatewayTest`: 준비 후 실행 직전 권한 변경 시 쓰기 차단, editable 위조 패치 차단, 기존 itemName 보존, 옵션 ID에 따른 순서 변경, CREATE 카테고리 검증.
+- `src/test/js/coupang-purchase-options.test.cjs`: 필수/선택 구매 열, 색상·사이즈 순서, 검색·식별자 제외, 그룹 선택과 속성별 읽기 전용.
+- `scripts/test-marketplace-editor.cjs`: 2560·1440·390px, 동적 표와 입력 너비, true/false 속성 권한, 기존 옵션명 유지, 이미지·설명·배송 회귀. `scripts/test-common-marketplace-editor.cjs`: 1440·390px, 개별 구매속성 입력·탭 이동·임시 저장·재진입과 기존 가격·재고·이미지·고시 회귀.
+- 검증은 모의 응답만 사용한다. 실제 쿠팡 등록·수정·승인 요청은 수행하지 않는다.
+
+### 쿠팡 구매옵션 재검토 보완 (2026-10-11)
+
+- 신규 전송은 옵션 UUID로 연결된 쿠팡 속성 목록을 최종 적용값으로 사용한다. 쿠팡 탭에서 그룹 항목을 교체하거나 카테고리에서 제외한 뒤 공통 구매속성을 다시 붙여 택1 조건을 깨던 경로를 제거했다. `CoupangWriteGatewayTest`에서 공통 용량 → 쿠팡 중량(0g) 전송과 쿠팡 옵션 배열 역순의 복수 옵션 요청을 대조한다.
+- 기존 상품에 존재하는 빈 선택 구매속성도 표에 유지한다. 신규 규격의 비어 있는 선택속성 기본값과 구분하여 `coupang-purchase-options.test.cjs`에서 검사한다. 읽기 전용 권한 안내 문구를 제거하되 입력 잠금과 서버 권한 검사는 유지한다.
+- `common-marketplace-editor.test.cjs`에서 복수 옵션 UUID·순서 변경·공통값 갱신·개별값 유지·보관된 변경 JSON 복원·변경 취소를 검사한다. 브라우저 모의 검증에는 옵션별 블랙/브라운, 서로 다른 그룹 항목 용량/중량, 값 0g, 탭 왕복·임시 저장·새로고침·목록에서 재진입과 이미지·설명 전환 이름 확인을 추가했다.
+- 실제 마켓 등록·수정 요청, 운영 데이터 변경과 서버 재시작은 하지 않는다.
+
+### 스마트스토어 카테고리 자동 조회 화면 (2026-10-11)
+
+- `scripts/test-naver-product-form.cjs`: 1440px·390px 통과. 별도 규격 조회 버튼 없음, 조회 실패 후 입력 보존·재검색 안내, 코드 Enter → 검색 → 재선택 → 규격 자동 조회 복구를 모의 응답으로 확인했다.
+- `scripts/test-common-naver-editor.cjs`: 1440px·390px 통과. 코드와 검색 버튼 한 행, 가로 넘침 없음, 탭 이동·임시 저장·재진입·전송 준비 회귀를 모의 응답으로 확인했다.
+- 실제 네이버 카테고리 `50003982`의 읽기 전용 메타정보 조회 성공. 응답은 `docs/verification/naver-category-50003982-2026-10-11.json`에 보관했다. 상품 등록·수정·이미지 업로드는 실행하지 않았다.
+
+### 공통 정상가·판매가와 스마트스토어 즉시할인 계산 (2026-10-12)
+
+- JS 전체 290개 통과. 정상가 최댓값·기존 기본 판매가 비교, 정액·정률 할인, 음수 추가금, 0과 빈값, 원 미만 계산 차단, 옵션 UUID 재정렬·개별 수정·상속 복원·직렬화를 포함한다.
+- Java 모의 전송·편집·스냅샷·레이아웃 회귀 검사 통과. 공통 정상가 필드의 JSON 왕복, 기존 초안의 판매가 의미 유지, 쿠팡 CREATE의 정상가·판매가 전문과 개별 정상가 우선순위를 확인했다.
+- `scripts/test-common-naver-editor.cjs`, `scripts/test-common-marketplace-editor.cjs`: 1440px·390px 통과. 5개 공통 입력의 배치, 정상가 128000원·판매가 99000원·즉시할인 20% → 추가금 -3400원, 기본 판매가 150000원 변경 → 추가금 -21000원, 탭 왕복·임시 저장·새로고침 재진입 보존을 모의 응답으로 검증했다.
+- 실제 마켓 등록·수정, 이미지 업로드, 운영 서버 재시작은 수행하지 않았다.
+
+2026-10-12 공통 등록 상품고시 분리·할인 재계산: 이미지·상세설명과 상품고시 기본 정보를 별도 영역으로 분리했다. 신규 스마트스토어 대상에서 즉시할인 금액·단위를 바꾸면 저장된 개별 추가금 상태도 공통 판매가 기준으로 다시 계산한다. 다중 옵션 UUID 연결, 정액·정률 계산, 다른 옵션 입력 보존, 기존 상품의 개별 추가금 유지, 탭 왕복·임시 저장·새로고침 복원을 검증했다. JavaScript 전체 292개, LayoutViewTest 3개가 통과했다. scripts/test-common-naver-editor.cjs와 scripts/test-common-marketplace-editor.cjs의 모의 Chrome 1440·390px 검증도 통과했다. 실제 마켓 요청·등록·수정은 수행하지 않았다.
+
+2026-10-12 공통 상품 편집 고정 제어 배치: 상단 저장 상태 문구 제거, 전송 대상의 하단 작업 영역 이동, 마켓 탭 상단 고정과 입력 구역 메뉴의 높이 연동을 적용했다. LayoutViewTest 3개와 scripts/test-common-marketplace-editor.cjs·scripts/test-common-naver-editor.cjs의 Chrome 1440·390px 검증이 통과했다. 탭 상단 위치·하단 작업 영역 위치·PC 좌우 및 모바일 상하 배치·구역 메뉴 겹침·가로 넘침을 검사하고 기존 입력·저장 흐름을 모의 API로 확인했다. 실제 마켓 쓰기는 실행하지 않았다.
+
+### 공통 이미지 일괄 업로드 CSRF 수정 (2026-10-12)
+
+- 실제 Chrome의 localhost:8081에서 WCWA705R2/official/01.jpg 단독 업로드는 성공했지만 01.jpg~07.jpg 일괄 선택에서는 일부 POST가 INVALID_CSRF_TOKEN으로 실패했다. 요청 쿠키·응답 쿠키의 메타정보와 격리된 로그인 테스트로 서버의 CSRF 쿠키 삭제를 확인했다. 실제 쿠키 값은 진단 기록에 저장하지 않았다.
+- 원인: STATELESS 설정에도 SessionManagementFilter가 활성화되어 JWT를 매 요청 복원하는 동작을 새로운 인증으로 판단하고 CsrfAuthenticationStrategy가 쿠키를 초기화했다. 인증하지 않은 요청만 반복한 검사는 이 문제를 드러내지 못했다. 쿠키 이름 분리도 해결하지 못해 해당 변경은 되돌렸다.
+- CSRF 검증은 유지하고 일반 JWT 요청에서는 CSRF 인증 전략의 쿠키 초기화를 수행하지 않는다. 실제 로그인·로그아웃·비밀번호 변경 성공 때는 공유 CsrfTokenRepository로 명시적으로 초기화한다. 인증 갱신은 기존 토큰을 유지한다.
+- API 헬퍼에서 늦게 도착한 이전 CSRF 실패가 새 토큰 캐시를 폐기하는 경쟁 조건도 수정했다. 병렬 실패 회귀 검사를 포함한 JavaScript 293개가 통과했다.
+- 수정된 개발 서버를 재시작한 뒤 별도 신규 등록 탭에서 동일 7개 파일을 함께 선택했다. Network의 정확한 /api/marketplaces/assets 요청 7건 모두 200, 이미지 카드 7개, CSRF 오류 없음으로 확인했다. 기존 탭의 입력은 유지했으며 공통 초안 저장·외부 마켓 등록·수정은 실행하지 않았다.
+- 격리 MySQL·Redis의 AuthenticationFlowIT 전체 25개 중 21개 통과·실계정 조건 4개 생략. 로그인·로그아웃 초기화와 로그인 상태의 7회 multipart 요청·조회 사이 쿠키 유지, 로그인 상태의 CSRF 누락·위조 차단을 검사했다. 마지막 보강 검사 1개도 통과했다. 이미지가 아닌 시험 본문은 400으로 거부되며 파일을 저장하지 않는다.
+
+## 상품 등록 R2 이미지 조회·선택 연결 (2026-10-12)
+
+공통 상품 등록과 쿠팡·스마트스토어 단독 등록·편집의 신규 파일 업로드 UI를 공용 R2 선택창으로 교체했다. 상품 정보 도구 업로드는 유지한다. 새 대표·추가·설명 이미지는 PUBLIC R2 실제 객체를 확인하고, 기존 CDN 및 미변경 이미지·설명은 유지한다. 로컬 초안 이미지는 표시·임시 저장을 유지하되 신규 전송 시 재선택을 요구한다.
+
+실행한 검사:
+
+- JDK 21에서 `mvn -pl molebutter-app -am test -Dtest=LayoutViewTest,ModuleArchitectureTest,R2ImageLibraryTest,ImageAssetsTest,CoupangWriteGatewayTest,NaverWriteGatewayTest,NaverGatewayTest -Dsurefire.failIfNoSpecifiedTests=false` 실행. Mockito premain을 사용했으며 125개 통과했다. 목록 100개 제한·코드별 커서·폴더 구분·한글 URL, 다른 호스트·경로 이동·삭제된 객체·실제 형식 검증, 기존 CDN 보존, 쿠팡 R2 vendorPath, 네이버 반환 URL 적용·같은 실행 URL 재사용을 포함한다. 삭제된 R2 이미지와 로컬 이미지가 네이버 업로드 전에 차단되는지 검사했다.
+- `node --test src/test/js/*.test.cjs`: 293개 통과. 기존 초안·마켓별 개별값·상속·UUID 편집 모델 회귀를 포함한다.
+- `scripts/test-r2-image-picker.cjs`: 1440·390px에서 폴더 전환·페이지 추가·선택 순서·조회 및 객체 확인 실패 후 선택 유지·processed 기본 표시·Enter 조회·가로 넘침 검사를 통과했다.
+- `scripts/test-common-marketplace-editor.cjs`, `scripts/test-common-naver-editor.cjs`, `scripts/test-naver-product-form.cjs`, `scripts/test-naver-product-ui.cjs`: 1440·390px의 모의 API 브라우저 검사 통과. 읽기 중 탭·저장 잠금, 실패 후 입력 유지, 대표·추가 정렬과 공통/개별 입력 보존을 확인했다. 공통 스마트스토어에서 새 R2 이미지 선택 후 임시 저장·새로고침 시 동일 URL과 UUID가 유지되는지도 대조했다.
+- `scripts/test-marketplace-editor.cjs`: 2560·1440·390px에서 쿠팡 옵션별 이미지 추가·대표 전환·정렬·개수 제한·기존 입력·읽기 전용·모바일 가로 넘침 검사 통과. 비동기 R2 객체 확인이 끝난 뒤 다음 조작을 진행하도록 테스트를 변경했다.
+
+실제 R2는 기존 실행 설정을 사용하는 독립적인 읽기 전용 Spring 검사에서 확인했다. `WCWA705R2` 목록 9개, 다음 페이지 없음. 첫 이미지의 실제 JPEG 바이트 88,040, 해상도 750×962를 확인했고 공개 URL HEAD는 200 / image/jpeg였다. 이 사진은 쿠팡 정사각형 조건과 구분해야 한다. 이 검사는 저장소·이미지 라이브러리의 실제 읽기이며 실행 중 앱의 인증 HTTP 경로 검증이나 실제 마켓 전송 검증을 뜻하지 않는다.
+
+실제 네이버 이미지 업로드·상품 등록·수정, 쿠팡 상품 전송, R2 객체 생성·교체·삭제·이전은 실행하지 않았다. 브라우저 검사는 모의 서버와 Chrome에서 수행했으며 실행 중 서버를 재시작하거나 사용자 초안을 변경하지 않았다. ESM·롯데ON·11번가 전송은 활성화하지 않았다.
+
+### R2 조회 실제 서버 재시작 확인 (2026-10-12 19:19 이후)
+
+8081에서 16:52 시작된 이전 Java 프로세스가 계속 응답하고 있었다. 로그인된 Chrome에서 `/api/marketplaces/r2-images?productCode=WCWA705R2`를 직접 열어 NOT_FOUND / 404를 재현했다. 해당 프로세스를 정상 종료하고 최신 reactor 빌드·기존 Spring 설정·R2 활성화 환경 변수로 서버를 다시 실행했다. 새 서버는 19:19에 8081 기동을 완료했다.
+
+같은 로그인 Chrome의 API 직접 조회에서 SUCCESS와 official 객체 키·공개 URL·크기·수정일 응답을 확인했다. 상품 등록의 공용 R2 선택창에서도 상품 사진 7장(01.jpg~07.jpg)이 표시되는 것을 확인했다. 별도 읽기 전용 검사에서도 전체 9개와 첫 JPEG의 실제 바이트·공개 HEAD 200을 재확인했다. 폴더 이름 변경이나 R2 객체 변경, 마켓 이미지 업로드·상품 저장은 하지 않았다. 기존 편집 탭의 새로고침은 미저장 변경 경고로 자동 승인 검토가 거부하여 강제 폐기하지 않았다.
+
+추가 화면 확인: 로그인된 Chrome의 R2 선택창에서 작업 결과 폴더로 전환해 `processed/사이즈.png`(60 KB), `processed/상품정보.png`(66 KB) 두 항목과 0개 선택 상태를 확인했다. 상품 사진 7장과 작업 결과 2장 모두 목록에 표시되며, 이미지 추가·상품 저장은 실행하지 않았다.
+
+### R2 실제 폴더 탐색 (2026-10-12)
+
+고정 분류 대신 상품코드 루트·실제 하위 폴더·경로 탐색을 사용한다. 목록 API의 folders는 현재 페이지 객체 키에서 추출한 실제 상대 폴더 경로이며, 이미지가 아닌 파일 및 폴더 표시 객체의 경로도 포함한다. 100개 단위 더 보기에서 폴더와 이미지 목록을 누적한다. 폴더 이동은 선택 순서를 유지하며, 다른 상품코드 조회에 성공하면 이전 선택을 비운다. 모의 화면 검사는 PC·모바일 중첩 폴더 탐색, 루트 복귀, 페이지 추가, 조회·선택 확인 실패 후 선택 유지, Enter 조회만 실행을 다룬다.
+
+검증 실행: R2ImageLibraryTest 5개 통과, scripts/test-r2-image-picker.cjs 1440px·390px 통과, app reactor compile 통과. 최신 빌드로 개발 서버 재시작. 실제 R2 객체 변경·마켓 전송은 하지 않았다.
+
+R2 선택창 고정 크기: PC 5열·2행, 11개 이상 내부 스크롤, 화면 높이에 맞춘 모달 크기 제한 및 하단 선택 버튼 노출을 모의 1440px·390px 화면에서 검증했다. 모바일은 2열로 표시한다. 이미지 개수로 모달 높이를 늘리지 않는다.
+
+### 공통 마켓별 주소록 선택 (2026-10-12)
+
+- `node --test src/test/js/common-marketplace-editor.test.cjs src/test/js/common-naver-editor.test.cjs`: 주소 선택의 마켓별 분리, JSON 보존, 기준 주소 변경 후 개별 수정 유지와 취소 시 최신 기준 복원 포함.
+- `CoupangProductDocumentsTest`, `NaverCommonProjectionTest`: 서버 정규화·JSON 왕복·마켓 전송 입력으로의 주소 기본값 투영·기존 개별 수정 보존을 모의 객체로 검증.
+- `LayoutViewTest`: 변경된 스크립트 연결을 포함한 화면 렌더링 검사.
+- `scripts/test-common-address-picker.cjs`: 격리된 PC 1440px·모바일 390px 브라우저에서 사용 가능 주소·유형 필터, 페이지 이동, 명시적 적용, 탭 이동, 임시 저장·새로고침 복원, 부분 조회 실패·취소를 검사한다. 실제 주소록과 상품·마켓 요청은 사용하지 않는다.
+- G마켓·옥션·롯데ON·11번가의 주소록 조회는 연결 준비 상태이며 실제 계정 주소 조회·상품 등록·수정은 이 검증에 포함하지 않는다.
+
+실행 결과: JavaScript 모델 60개, 서버 투영 23개, 화면 렌더링 3개 통과. 주소 선택 및 기존 카테고리 선택 브라우저 검사는 각각 1440px·390px에서 통과했다. 스마트스토어 개별 주소 수정도 공통값 재선택·저장·새로고침 후 유지됨을 모의 서버에서 확인했다. Java 21 컴파일과 `git diff --check` 통과. 로컬 서버를 재시작하고 로그인 페이지 HTTP 200 및 최신 정적 스크립트의 바이트 일치를 확인했다. 실계정 주소록 호출은 실행하지 않았다.
+
+### 2026-10-12 주소록 조회 순서·네이버 접근 거절
+
+- `src/test/js/marketplace-requests.test.cjs`: 요청 실패 후 다음 요청 진행, 완료 후 1초 대기, 대기·실행 중 취소, pagehide 취소를 검사한다.
+- `scripts/test-common-address-picker.cjs`: PC 1440px·모바일 390px에서 최초 쿠팡 두 요청의 1초 이상 간격과 네이버 주소록 1회 공유, 기존 선택·개별 수정·저장 후 복원을 검사한다. 모의 응답이며 실제 마켓 쓰기는 없다.
+- `NaverGatewayTest`: 403의 알려진 코드에 고정 안내를 제공하고 외부 메시지·임의 코드를 노출하지 않는지 검사한다.
+- 실제 읽기: 네이버 주소록 403/GW.AUTHN과 같은 토큰 카테고리 200 확인. 판매자정보 API 그룹 권한 누락 여부는 콘솔 확인 전이므로 확정하지 않는다.
+
+2026-10-12 첫 상품 등록 점검: 공통 상품고시 기본 정보와 기타 설정의 제조사·제조국·소재·A/S 중복 입력을 제거했다. 쿠팡 탭의 입력 검증 요청은 쿠팡만 포함하며, 다른 마켓 선택 상태는 보존한다. 신규 쿠팡 전송 준비에서 택배사 표시명 대신 코드 입력을 검사한다. Java 146개(LayoutView 3, CoupangWriteGateway 55, NaverWriteGateway 39, NaverCommonProjection 15, SubmissionExecution 27, NaverSubmissionRouting 7)가 통과했다. 공통 편집·스마트스토어 편집·전송 실행 모의 브라우저 검증은 각각 1440·390px에서 통과했다. 중복 필드 개수, 탭 이동·임시 저장·재진입, 현재 탭 검증 범위, 확인 전 실행 없음, 재시도 및 응답 유실 시 동일 키 재사용을 확인했다. 기존 전송 테스트의 오래된 초안 저장 경로·연결 상품 정보·스마트스토어 비활성 가정을 현 계약에 맞췄다. 실 브라우저 쿠팡 입력은 읽었으나 스마트스토어 최신 입력의 최종 확인은 창 접근 종료로 완료하지 못했다. 실제 상품 등록·수정, 네이버 이미지 업로드, 서버 재시작·실제 초안 저장은 실행하지 않았다.
+
+
+## 2026-10-13 11번가 상품 연동 검증
+
+- `ElevenstIntegrationTest`, `ServerImageInspectionTest`, `MarketplaceProductEditorTest`, `MarketplaceTargetEditingTest`, `MarketplaceUnifiedViewTest`, `LayoutViewTest`, `ModuleArchitectureTest`와 기존 쿠팡·네이버 write gateway 회귀 테스트를 실행한다.
+- `scripts/test-integration.sh -pl molebutter-app -am -Dtest=MarketplaceEditingFlowIT,MarketplaceSubmissionFlowIT,NaverProductFlowIT,MarketplaceUnifiedViewTest -Dsurefire.failIfNoSpecifiedTests=false`: 별도 MySQL·Redis에서 실행한다. `ProviderElevenstFixture`는 기본 읽기 전용 모의 transport이며, 등록 매핑 테스트 한 곳에서만 모의 쓰기를 허용한다. 실제 HTTP 쓰기는 없다.
+- `node --test src/test/js/elevenst-editor.test.cjs src/test/js/common-marketplace-editor.test.cjs src/test/js/marketplace-submissions.test.cjs` 및 `node scripts/test-elevenst-editor.cjs`: 공통 상속·개별값·UUID, 1440/390px 조회·Enter·다중 옵션·임시 저장·재진입·버튼 문구를 검사한다.
+- 실계정 HTTPS 읽기: 카테고리 15,295개, 출고지·반품지 각 1개, 발송마감 템플릿 0개, 상품 목록 0개. 상품 상세는 대상 부재로 미실행이다. 등록·수정·이미지 전송·R2 변경·운영 서버 재시작은 수행하지 않았다. [구현 범위·제한](market-api/11st.md).
+
+최종 실행 결과: 격리 통합 테스트 82건, JavaScript 모델·전송 UI 테스트 60건 통과. 11번가 전용 브라우저와 기존 통합 편집 브라우저는 각각 1440·390px에서 통과했다. 실제 등록 요청은 모의 transport로만 실행했다.
+
+
+## 2026-10-14 롯데ON 상품 통합
+
+현재 구현과 규격 근거는 [롯데ON](market-api/lotteon.md)을 따른다. 최신 `marketplace-api-docs`의 SOURCE·FAQ·공지와 알려진 불일치를 대조했으며 제공된 원문을 수정하지 않았다.
+
+- 롯데ON 모의 단위 30개: LotteonProductMappingTest 20, LotteonCallsTest 2, LotteonBrandsTest 5, LotteonBrandTransportTest 3. UUID와 코드·옵션별 이미지, 부분 수정 허용 목록, 새 단품 추가·기존 이름/값/삭제 거절, 201개 전체 조회 및 편집 제한, 실제 이미지 역할 기준, 설명 alt, 편집본 공개 URL·다른 단품 이미지 보존, 반려 상태·사유, 전용 재고 API, 개별 실패·응답 유실·읽기 전용 결과 확인, 할인 조회 실패, 계정·날짜 범위·공용 호출 간격·429 즉시 안내를 검사한다.
+- 기존 11번가 모의 15개, 모듈 경계 4개, Thymeleaf 레이아웃 3개, 모든 진입 주소의 통합 HTML 검사 1개를 함께 실행한다.
+- 격리 DB 회귀 85개: MarketplaceEditingFlowIT 35, MarketplaceSubmissionFlowIT 32, NaverProductFlowIT 18. 새 롯데ON 4개 흐름은 단독 열기 시 공통 자동 생성 없음, 새 공통 가져오기, 직접 옵션 연결과 native UUID 맵 재대응, 다른 마켓 지연 조회, 임시 변경·재진입, 모의 등록 반환 상품·단품 매핑, 87000원 전문, 인증·권한·문자 상품번호를 확인한다. 운영 DB를 사용하지 않는다.
+- JS 회귀 87개: 롯데ON·11번가·공통·네이버 모델, 전송 UI, 공통 카테고리 선택. 가격 이중 할인 방지, 옵션별 0·상속, 코드·옵션 이미지 보존, 선택하지 않은 값 보존, 4개 활성 카테고리 공급자·실패·늦은 응답을 포함한다.
+- 실제 Thymeleaf HTML의 Chrome 1440/390px: `scripts/test-lotteon-editor.cjs`, `test-elevenst-editor.cjs`, `test-unified-marketplace-editor.cjs`. 조회 선택, 탭·저장 문구·비활성 탭, Enter 쓰기 금지, 임시 저장·새로고침·재진입, 입력 검증, 공통 연결과 기존 쿠팡·네이버 편집 회귀를 모의 API로 확인한다. 외부 브라우저 요청과 실제 마켓 실행은 차단한다.
+
+재실행:
+
+```sh
+mvn -pl molebutter-app -am -Dtest=LotteonProductMappingTest,LotteonCallsTest,LotteonBrandsTest,LotteonBrandTransportTest,ElevenstIntegrationTest,LayoutViewTest,MarketplaceUnifiedViewTest,ModuleArchitectureTest -Dsurefire.failIfNoSpecifiedTests=false test
+bash scripts/test-integration.sh -pl molebutter-app -am -Dtest=MarketplaceEditingFlowIT,MarketplaceSubmissionFlowIT,NaverProductFlowIT -Dsurefire.failIfNoSpecifiedTests=false
+node --test src/test/js/lotteon-editor.test.cjs src/test/js/elevenst-editor.test.cjs src/test/js/common-marketplace-editor.test.cjs src/test/js/common-naver-editor.test.cjs src/test/js/marketplace-submissions.test.cjs src/test/js/common-category-picker.test.cjs
+node scripts/test-lotteon-editor.cjs
+node scripts/test-elevenst-editor.cjs
+node scripts/test-unified-marketplace-editor.cjs
+```
+
+Java 21과 로컬 Playwright 런타임을 사용한다. 브라우저·Mockito 검증은 실행 환경의 권한이 필요할 수 있다. Maven unit의 schema/HTML fixture를 먼저 생성한다. 최종 실행 JAR는 `molebutter-app/target/molebutter-0.0.1-SNAPSHOT.jar`다.
+
+실계정 읽기 전용 probe는 기존 애플리케이션 설정을 최소 런타임으로 읽었지만 `marketplace.lotteon.api-key`가 비어 있어 Identity·목록·메타정보 모두 CONFIGURATION으로 종료됐다. 비밀 파일을 직접 열거나 수정하지 않았다. 실제 계정의 API 성공·135 할인 응답 구조는 미확인이다. 실제 마켓 등록/수정·이미지 전송·R2 변경·운영 DB 변경·서버 재시작은 수행하지 않았다.
+
+## ESM 제외 상품 연동 재검토 — 2026-10-14
+
+범위: 쿠팡·스마트스토어·11번가·롯데ON의 상품 조회, 등록·수정 전문, 결과 확인, 공통 상품 연결·옵션 대응·지연 조회·임시 저장·재진입과 이미지 처리. ESM 연동과 주문·클레임 기능은 이번 변경 범위가 아니다.
+
+확인·수정한 문제:
+
+- 쿠팡·스마트스토어·11번가: 상품 전송 전 재조회 실패를 이미 전송된 요청처럼 결과 미확인으로 분류하는 문제를 수정했다. 쓰기 이전 실패는 재시도 가능한 실패, dispatch 이후 통신 실패는 계속 미확인으로 보관한다. 11번가 dispatch 기록은 호출 간격 대기·XML 인코딩이 끝난 뒤 transport 직전에 남긴다.
+- 11번가: 이미지 반영 비교에서 브라우저 이미지 UUID·자산 ID 때문에 최신 조회와 불일치하는 문제를 수정했다. 공개 URL·대표 여부·전송 순서와 편집본 상세설명을 비교한다. 기존 실행 스냅샷도 같은 비교를 적용한다. 공식 WebP 변환 공지로 인해 URL만으로 검증할 수 없는 결과는 `IMAGE_REVIEW_REQUIRED`로 유지하며 자동 완료·재전송하지 않는다.
+- 11번가·롯데ON: HTTP 200의 업무 결과 코드 누락·미확인 응답을 확정 실패로 처리하여 재전송할 수 있던 문제를 수정했다. 정상 코드·명시적 업무 거절·미확인을 나누며, 11번가 `AuthMessage` 인증 오류도 성공 코드와 구분한다.
+- 롯데ON: 비활성 항목 제외 후 개수로 다음 페이지를 판단하는 문제를 수정했다. `/api/marketplaces/lotteon/metadata/{kind}/page`는 필터 전 개수의 `hasNext`를 반환한다. 표시 항목이 없는 첫 페이지 다음의 정상 항목과 다음 조회 실패 후 목록·페이지 보존을 검사했다. 기존 목록 API는 유지한다.
+- 기존 검증 fixture의 쿠팡 서버 Wing ID와 채널 활성화 기대값을 현재 계약에 맞췄다. 실제 설정 필수 검사는 완화하지 않았다.
+
+실행 검증:
+
+| 검사 | 실행 결과 |
+|---|---|
+| 마켓·공통·미디어 관련 단위 테스트 57개 클래스 | 537개 통과, 실패·오류·스킵 0 |
+| 격리 MySQL·Redis 통합: MarketplaceEditingFlowIT / MarketplaceSubmissionFlowIT / MarketplaceDraftFlowIT / NaverProductFlowIT | 35 / 32 / 7 / 18개, 총 92개 통과 |
+| 관련 JS 모델·바인딩·폼 테스트 | 128개 통과 |
+| Chrome: test-unified-marketplace-editor.cjs / test-elevenst-editor.cjs / test-lotteon-editor.cjs | 각 1440px·390px 통과; 외부 요청 차단; 탭·조회·Enter·내부 저장·재진입·가로 넘침 검사 |
+| Maven package | 최종 JAR 빌드 성공 (서버 재시작 없음) |
+| git diff --check | 통과 |
+
+통합 검증은 `JAVA_HOME`을 Java 21로 설정하고 `MOLEBUTTER_COUPANG_LIVE=false MOLEBUTTER_ORDER_LIVE=false CLOUDFLARE_R2_ENABLED=false bash scripts/test-integration.sh -pl molebutter-app -am -Dtest=MarketplaceEditingFlowIT,MarketplaceSubmissionFlowIT,MarketplaceDraftFlowIT,NaverProductFlowIT -Dsurefire.failIfNoSpecifiedTests=false`로 실행했다. 운영 DB·Redis 대신 스크립트가 만든 별도 인스턴스를 사용하고 종료 후 정리했다.
+
+실제 계정 읽기: 앱의 일반 ConfigData를 사용하는 최소 Spring 컨텍스트에서 확인했다. 비밀 파일을 직접 열지 않았고 DB·워커·웹서버를 시작하지 않았다. 출력은 상태와 개수뿐이다.
+
+| 마켓 | 읽기 확인 |
+|---|---|
+| 쿠팡 | 상품 목록 첫 10건·다음 페이지 있음, 그중 1건 상세·옵션 1개, 출고지·반품지 각 1개 |
+| 스마트스토어 | 상품 목록 10건·다음 페이지 없음, 그중 1건 상세·옵션 1개, 주소록 2개 |
+| 11번가 | 카테고리 15,295개, 출고지·반품지 각 1개, 발송마감 템플릿 0개, 상품 0개. 실제 상품 상세는 미실행 |
+| 롯데ON | 진단 런타임에서 CONFIGURATION 오류. 실제 계정의 상품·주소·판매자할인 조회 미확인 |
+
+실제 마켓 상품 등록·수정·이미지 업로드와 R2 객체 변경은 수행하지 않았다. 롯데ON의 실계정 설정·판매자할인 응답과 11번가 실제 상품 상세·이미지 변환 반영 확인은 남아 있다. 11번가 이미지 URL이 변환되어 같은 이미지인지 확인할 수 없는 실행은 미확인 상태가 유지된다.
+
+## 롯데ON 인증 설정 후 실제 조회 — 2026-10-14
+
+이전 ESM 제외 연동 검토의 롯데ON CONFIGURATION 미확인 항목을 다시 검사했다. 사용자가 추가한 기존 설정은 Spring ConfigData로 정상 연결되었고 `lotteon_api_key` → `marketplace.lotteon.api-key`의 존재·동일성을 값 없이 확인했다. 실제 서버 작업 디렉터리에서도 classpath 설정 연결이 같았다. 비밀 파일은 직접 열거나 수정하지 않았다.
+
+실제 Identity 인증 성공. 출고지·반품지·배송비 정책은 정상 0건. 상품은 최근 30일 및 2010-01-01부터 2026-10-14까지 등록일 조건의 첫 페이지에서 0건·다음 페이지 없음이었다. 실제 상세는 반환 상품번호가 없어 미실행했다. 실제 등록·수정·업로드·주소 생성은 수행하지 않았다.
+
+상품 0건의 실제 응답 `returnCode=0000, dataCount=0, data=null`에서 파서가 오류를 내는 것을 확인했다. 성공 코드와 명시적인 숫자 0건이 있을 때만 null/생략 data를 빈 페이지로 반환하도록 수정했다. `LotteonEmptyProductListTest`의 정상 null/생략과 미확인·불일치·객체·업무 실패 6개 사례에서 수정 전 정상 2개가 오류를 재현했고 수정 후 모두 통과했다.
+
+- 모의 단위: `Lotteon*Test,MarketplaceCredentialConfigurationTest` 46개 통과.
+- 격리 MySQL·Redis: `MarketplaceEditingFlowIT` 36개 통과. 새 HTTP 회귀 검사에서 실제 형태의 빈 응답이 `200`과 빈 `items`, `hasNext=false`로 전달됨을 확인했다.
+- 실제 읽기 재실행: 수정 후 상품·주소록 정상 빈 결과 확인.
+- JAR 재빌드 및 `git diff --check` 통과. 운영 서버는 재시작하지 않았다.
+
+JAR에는 기존 보안 정책상 비밀 파일이 들어가지 않는다. 개발 classpath의 인증값 해석 성공과, 외부 설정이 없는 JAR 실행에서 인증값이 비어 있는 결과를 구분했다. JAR 배포 시 실행 위치의 외부 `application-secret/marketplace.properties` 또는 기존 환경 설정이 필요하다.
+
+## 롯데ON·11번가 등록 준비 조회 보강 (2026-10-14)
+
+[상세 검증 기록](verification/2026-10-14-market-registration-lookups.md): 관련 단위 83개·격리 통합 37개·전체 JS 310개 통과. PC 1440px/모바일 390px에서 공통 주소·공통 카테고리·롯데ON·11번가 네 화면을 모의 API로 확인했다. 실제 계정은 카테고리·브랜드·주소·정책 등 읽기만 실행했고, 롯데ON 주소·정책 및 11번가 발송마감 템플릿의 빈 목록, 관리 브랜드 CSV 미설정, 인증 첨부파일 불일치를 구분했다. 실제 상품 전송과 서버 재시작은 수행하지 않았다.
+
+## 쿠팡 저장 후 판매 승인 순차 실행 — 2026-10-14
+
+[상세 검증 기록](verification/2026-10-14-coupang-save-approval.md): 승인 체크박스 없이 쿠팡 저장 후 별도 승인 PUT을 실행한다. Java 회귀 241개·아키텍처 4개·격리 MySQL/Redis 통합 53개·관련 JS 60개 통과. PC 1440px/모바일 390px의 통합 화면과 전송 UI에서 단일 저장 버튼·두 단계 표시·응답 유실·재시도·임시 저장 및 재진입을 확인했다. 승인 실패 시 승인만 재시도하고 UNKNOWN은 GET 결과 확인만 수행한다. 실행 JAR를 빌드했으며 실제 마켓 쓰기·운영 DB 변경·서버 재시작은 수행하지 않았다.
+
+## 공통 배송·판매기간·A/S 설정 — 2026-10-14
+
+[상세 구현·검증 기록](verification/2026-10-14-common-delivery-sales-service.md): Java 회귀·아키텍처·뷰 340개, 전체 JS 319개, 격리 MySQL/Redis 통합 98개 통과. 모의 쿠팡·네이버·롯데ON·11번가 전문, 무료/유료/조건부/착불 금액, 반품 편도 합계, 지역비의 0과 누락, 정책 불일치·조회 실패, 묶음배송 그룹 ID, 판매기간·출고 소요일·과세·A/S, 기존 개별값·JSON 호환을 검사했다. PC 1440px/모바일 390px 통합 화면과 네이버 공용 폼에서 조회·선택·Enter 쓰기 금지·임시 저장·재진입을 확인했다. 실행 JAR 빌드와 포함 파일 확인을 수행했다. 실제 마켓 상품 전송·공유 정책 변경·운영 DB 변경·서버 재시작은 수행하지 않았다.
+
+2026-10-14 마켓 최신 조회값/앱 저장값 비교: 관련 Java 단위 테스트 228개, JavaScript 321개 및 통합 편집기·새 비교 화면의 Chrome 1440·390px 검사가 통과했다. 격리 통합 검증 122개가 통과했으며 `MarketplaceEditingFlowIT`, `MarketplaceSubmissionFlowIT`, `MarketplaceDraftFlowIT`, `NaverProductFlowIT`, `MigrationUpgradeIT`를 실행했다. 네 마켓의 두 선택·재진입, 필드별 확인, 동시 요청, 위조/오래된 토큰과 연결 세대, 자산·기존 실행 보존을 검사한다. 재현 명령과 실제 WCWA705R2 범위는 [검증 기록](verification/2026-10-14-marketplace-value-comparison.md)에 기록한다. 실제 마켓 상품/이미지 쓰기는 검증하지 않는다.
+
+2026-10-14 21시 후속 실측: 실제 쿠팡 writer의 non-null CREATE 옵션 연결 틀을 추가 재현하여 복원 판정을 보완했다. 관련 단위 44개, 편집/전송 통합 96개(최종 편집 61개 재실행), JavaScript 321개 및 Chrome 1440·390px 검사가 통과했다. 실패 비교 목록·60개 저장값 없는 행·스마트스토어→쿠팡 전용 설정 노출을 회귀 검사했다. 실제 WCWA705R2에서 수정 준비·임시 저장·탭 왕복·목록 재진입과 시험 입력 복원을 확인했으며 외부 전송은 실행하지 않았다. [실측·수정·최종 JAR](verification/2026-10-14-marketplace-comparison-live-fixes.md).
+
+```sh
+JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home \
+MOLEBUTTER_COUPANG_LIVE=false MOLEBUTTER_ORDER_LIVE=false CLOUDFLARE_R2_ENABLED=false \
+bash scripts/test-integration.sh -pl molebutter-app -am \
+  -Dtest=MarketplaceEditingFlowIT,MarketplaceSubmissionFlowIT,MarketplaceDraftFlowIT,NaverProductFlowIT,MigrationUpgradeIT \
+  -Dsurefire.failIfNoSpecifiedTests=false
+node --test src/test/js/*.test.cjs
+NODE_PATH=/Users/lee/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules \
+node scripts/test-marketplace-comparison.cjs
+```
+
+- 2026-10-14 쿠팡 실제 적용값 비교: `CoupangComparisonTest`, `ComparisonMediaTest`, `TargetComparisonsTest`, `ServerImageInspectionTest`, `MarketplaceEditingFlowIT`의 CDN 지문·오래된 정책·빈 개별 목록 테스트와 `scripts/test-marketplace-comparison.cjs`(1440/390px). 실계정 읽기/내부 저장과 모의 외부 쓰기 검증을 구분해 `docs/verification/2026-10-14-coupang-semantic-comparison.md`에 기록한다.

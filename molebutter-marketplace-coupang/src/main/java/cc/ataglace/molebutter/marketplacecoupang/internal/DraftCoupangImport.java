@@ -16,7 +16,7 @@ final class DraftCoupangImport {
         for(var option:source.options()){
             var id=UUID.randomUUID().toString();var fields=DraftCoupangProjection.fields(option.registration());
             var attrs=option.attributes().stream().filter(a->"EXPOSED".equals(a.exposed())).map(a->new Attribute(safe(a.name()),safe(a.value()))).toList();
-            options.add(new Option(id,safe(option.itemName()),fields.getOrDefault("externalVendorSku",""),option.current()==null||option.current().salePrice()==null?"":Long.toString(option.current().salePrice()),option.current()==null||option.current().amountInStock()==null?"":Long.toString(option.current().amountInStock()),attrs));
+            options.add(new Option(id,safe(option.itemName()),fields.getOrDefault("externalVendorSku",""),option.current()==null||option.current().salePrice()==null?"":Long.toString(option.current().salePrice()),option.current()==null||option.current().amountInStock()==null?"":Long.toString(option.current().amountInStock()),attrs,fields.getOrDefault("originalPrice","")));
             for(var i:option.images())if(i.url()!=null&&MarketplaceDocuments.https(i.url()))images.add(new Image(UUID.randomUUID().toString(),null,i.url(),"REPRESENTATION".equals(i.type()),i.order()==null?0:i.order(),id,i.type()));
             for(var c:option.contents()){
                 String value=safe(c.content());if("IMAGE".equals(c.detailType())){if(!MarketplaceDocuments.https(value))value=cdn(value);if(value==null)continue;contents.add(new Content(UUID.randomUUID().toString(),"IMAGE",value,id));}

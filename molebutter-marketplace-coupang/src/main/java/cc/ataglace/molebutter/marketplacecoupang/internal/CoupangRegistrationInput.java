@@ -44,8 +44,8 @@ final class CoupangRegistrationInput {
         var options=doc.options().stream().map(o->{var cfg=c.options().stream().filter(v->v.optionId().equals(o.id())).findFirst().orElseThrow();
             var images=doc.media().images().stream().filter(i->o.id().equals(i.optionId())).map(i->new CoupangProductRegistrations.Image(i.id(),i.assetId(),i.url(),i.imageType(),i.order())).toList();
             var contents=doc.media().contents().stream().filter(i->o.id().equals(i.optionId())).map(i->new CoupangProductRegistrations.Content(i.id(),"HTML".equals(i.type())?"HTML":"IMAGE","HTML".equals(i.type())?"TEXT":"IMAGE",i.value())).toList();
-            return new CoupangProductRegistrations.Option(o.id(),cfg.attributes(),images,contents,cfg.notices(),DraftCoupangProjection.fields(cfg.registration()),cfg.certifications(),cfg.notices().isEmpty()?"":cfg.notices().getFirst().category());
-        }).toList();return new CoupangProductRegistrations.Input(basic,options,DraftCoupangProjection.fields(c.delivery()),DraftCoupangProjection.fields(c.settings()),c.documents());
+            return new CoupangProductRegistrations.Option(o.id(),cfg.attributes(),images,contents,cfg.notices(),DraftCoupangProjection.registration(doc,config,o),cfg.certifications(),cfg.notices().isEmpty()?"":cfg.notices().getFirst().category());
+        }).toList();return new CoupangProductRegistrations.Input(basic,options,DraftCoupangProjection.delivery(doc,config),DraftCoupangProjection.settings(doc,config),c.documents());
     }
     static String optionName(List<CoupangCatalog.Attribute> attributes){
         var purchase=attributes.stream().filter(a->"EXPOSED".equals(a.exposed())&&!PRODUCT_IDENTITIES.contains(a.name())).toList();

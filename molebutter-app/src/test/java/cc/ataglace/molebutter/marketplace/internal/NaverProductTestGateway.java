@@ -14,13 +14,13 @@ public final class NaverProductTestGateway implements NaverGateway {
     private final ObjectMapper json=new ObjectMapper();
     private JsonNode source;
     private final List<String> writes=new ArrayList<>();
-    private boolean loseResponse;
+    private boolean loseResponse,failProductRead;
     private Long stockBeforePut;
     private Long optionBeforePutId,optionBeforePutStock;
     private boolean shoppingAdvertiser=true;
     public String accountKey(){return DefaultMarketplaceSubmissions.account("NAVER:synthetic-product-flow");}
     public <T>T session(Supplier<T> work){return work.get();}
-    public JsonNode product(String id){if(source==null)throw new MarketplaceFailure(MarketplaceFailure.Kind.REJECTED,"NAVER");return source.deepCopy();}
+    public JsonNode product(String id){if(failProductRead){failProductRead=false;throw new MarketplaceFailure(MarketplaceFailure.Kind.NETWORK,"NAVER");}if(source==null)throw new MarketplaceFailure(MarketplaceFailure.Kind.REJECTED,"NAVER");return source.deepCopy();}
     public JsonNode channel(String id){return product(id);}
     public JsonNode search(JsonNode request){var page=json.createObjectNode().put("page",1).put("totalPages",1).put("last",true);var rows=page.putArray("contents");if(source!=null)rows.addObject().put("originProductNo",101);return page;}
     public JsonNode metadata(String kind,Map<String,String> query){return kind.equals("category")?json.createObjectNode().put("id","50000001").put("last",true):json.createArrayNode();}
@@ -48,7 +48,7 @@ public final class NaverProductTestGateway implements NaverGateway {
     }
     public String uploadImage(Long actor,NaverEditor.Image image){return "https://shop-phinf.pstatic.net/"+image.id()+".jpg";}
     public JsonNode parse(NaverGateway.Response response){return json.readTree(response.body());}
-    public void reset(){source=null;writes.clear();loseResponse=false;stockBeforePut=null;optionBeforePutId=null;optionBeforePutStock=null;shoppingAdvertiser=true;}
+    public void reset(){failProductRead=false;source=null;writes.clear();loseResponse=false;stockBeforePut=null;optionBeforePutId=null;optionBeforePutStock=null;shoppingAdvertiser=true;}
     public void seed(NaverEditor.Input input){source=json.createObjectNode();var origin=json.createObjectNode().put("originProductNo",101).put("detailContent",input.description());var channel=json.createObjectNode().put("channelProductNo",202);source.asObject().set("originProduct",origin);source.asObject().set("smartstoreChannelProduct",channel);
         for(var e:input.fields().entrySet())put(source.asObject(),e.getKey(),json.valueToTree(e.getValue()));var images=origin.putObject("images");images.putObject("representativeImage").put("url","https://shop-phinf.pstatic.net/existing.jpg");images.putArray("optionalImages");
         origin.putObject("preservedRemote").put("value","keep-this-remote-field");
@@ -64,6 +64,7 @@ public final class NaverProductTestGateway implements NaverGateway {
     public void omitChannelNumber(){source.asObject().put("originProductNo",101);source.path("smartstoreChannelProduct").asObject().remove("channelProductNo");}
     public void shoppingAdvertiser(boolean enabled){shoppingAdvertiser=enabled;}
     public void channelNumber(long value){source.path("smartstoreChannelProduct").asObject().put("channelProductNo",value);}
+    public void failNextProductRead(){failProductRead=true;}
     public void salePrice(long value){source.path("originProduct").asObject().put("salePrice",value);}
     public void stockBeforeNextPut(long quantity){stockBeforePut=quantity;}
     public void optionStock(long id,long quantity){for(var row:source.path("originProduct").path("detailAttribute").path("optionInfo").path("optionCombinations"))if(row.path("id").asLong()==id)row.asObject().put("stockQuantity",quantity);}

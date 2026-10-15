@@ -12,6 +12,33 @@ import java.util.concurrent.atomic.*;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 class CoupangClientTest {
+    @Test void deletedStatusIsExplicitEvidenceAndRequiresTheLinkedOwner(){
+        String body=DETAIL.replace("\"sellerProductId\":123","\"statusName\":\"상품삭제\",\"sellerProductId\":123");
+        assertThatThrownBy(()->client(new CoupangHttpTransport()).parseDetail(body.getBytes(StandardCharsets.UTF_8),"123")).isInstanceOf(cc.ataglace.molebutter.marketplace.api.MarketplaceListingMissing.class);
+        assertThatThrownBy(()->client(new CoupangHttpTransport()).parseDetail(body.getBytes(StandardCharsets.UTF_8),"999")).isInstanceOf(MarketplaceFailure.class);
+    }
+    @Test void wingUserIsInjectedSeparatelyFromVendorAndDefaultsToMissing(){
+        assertThat(new CoupangProductClient("A000-test","fake-access","fake-secret",new ObjectMapper()).registrationUserId()).isEmpty();
+        try(var context=new org.springframework.context.annotation.AnnotationConfigApplicationContext()){
+            context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("test",java.util.Map.of("marketplace.coupang.vendor-id","A000-test","marketplace.coupang.vendor-user-id","  fake-wing-login  ")));
+            context.registerBean(ObjectMapper.class);context.register(CoupangProductClient.class);context.refresh();
+            var client=context.getBean(CoupangProductClient.class);
+            assertThat(client.registrationUserId()).isEqualTo("fake-wing-login");assertThat(client.vendorId()).isEqualTo("A000-test");
+        }
+    }
+    @Test void categoryTreeReturnsOnlyActiveLeavesWithFullPaths(){
+        var body="""
+          {"code":"SUCCESS","data":{"displayItemCategoryCode":0,"name":"ROOT","status":"ACTIVE","child":[
+          {"displayItemCategoryCode":1,"name":"가방","status":"ACTIVE","child":[
+          {"displayItemCategoryCode":123,"name":"크로스백","status":"ACTIVE","child":[]},
+          {"displayItemCategoryCode":124,"name":"준비","status":"READY","child":[]}]},
+          {"displayItemCategoryCode":2,"name":"종료","status":"DISABLED","child":[]}]}}
+          """;
+        var choices=client(new CoupangHttpTransport()).parseCategories(body.getBytes(StandardCharsets.UTF_8));
+        assertThat(choices).containsExactly(new cc.ataglace.molebutter.marketplace.api.CoupangEditor.CategoryChoice("123","가방 > 크로스백"));
+        failure(()->client(new CoupangHttpTransport()).parseCategories("{\"code\":\"SUCCESS\",\"data\":{}}".getBytes(StandardCharsets.UTF_8)),RESPONSE);
+        failure(()->client(new CoupangHttpTransport()).parseCategories("{\"code\":\"ERROR\"}".getBytes(StandardCharsets.UTF_8)),REJECTED);
+    }
     @Test void categoryRulesPreserveIndependentExposureAndRequiredness(){
         String body="""
             {"code":"SUCCESS","data":{"isAllowSingleItem":true,"attributes":[

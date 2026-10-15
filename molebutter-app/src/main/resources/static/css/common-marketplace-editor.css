@@ -59,3 +59,71 @@
 .common-brand-field .coupang-brand-inline .btn{white-space:nowrap}
 .common-brand-note{font-size:12px;color:#64748b;line-height:1.5;margin:6px 0 0}
 @media(max-width:700px){.common-brand-field{grid-column:1/-1}.common-brand-field .coupang-brand-inline .btn{font-size:12px;padding:8px}}
+
+.common-naver-brand{max-width:560px;margin:16px 0}
+.common-naver-brand>.coupang-brand-inline{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:8px;align-items:center}
+.common-naver-brand input{width:100%;min-width:0}.common-naver-brand .btn{white-space:nowrap}
+@media(max-width:700px){.common-naver-brand .btn{font-size:12px;padding:8px}.common-tab-list{flex-wrap:wrap;overflow-x:visible}.common-tab-list button{padding:10px 12px}}
+
+.common-brand-inline{display:flex;align-items:center;gap:8px}.common-brand-inline input{flex:1;min-width:0}.common-brand-inline .btn{flex:none}
+.common-brand-summary{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.common-brand-summary>span{padding:5px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;overflow-wrap:anywhere}.common-brand-summary small{color:#64748b}
+.common-brand-dialog{box-sizing:border-box;width:min(1080px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:24px;border:1px solid #e2e8f0;border-radius:14px;color:#202632}.common-brand-dialog::backdrop{background:rgba(15,23,42,.45)}
+.common-brand-dialog .common-subheading{margin:0 0 18px}.common-brand-dialog h2{font-size:20px;margin:0}.common-brand-dialog form{display:flex;gap:10px;align-items:end}.common-brand-dialog form .field{flex:1;min-width:0}.common-brand-dialog form .btn{flex:none}
+.common-brand-providers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}.common-brand-provider{border:1px solid #e2e8f0;border-radius:10px;padding:14px;min-width:0}.common-brand-provider-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.common-brand-provider h3{font-size:15px;margin:0}.common-brand-selected{background:#eff6ff;border-radius:6px;padding:8px;font-size:13px;overflow-wrap:anywhere;min-height:36px}.common-brand-selected span{display:block;color:#64748b;font-size:12px}
+.common-brand-result{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;width:100%;text-align:left;padding:10px;margin-top:6px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;font:inherit;font-size:13px;overflow-wrap:anywhere;cursor:pointer}.common-brand-result strong{grid-column:1/-1}.common-brand-result span{font-size:12px;color:#64748b}.common-brand-result.is-selected{border-color:#2f6df6;background:#eff6ff}.common-brand-pagination{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:12px;font-size:12px}.common-brand-actions{display:flex;justify-content:flex-end;gap:8px;position:sticky;bottom:-24px;background:#fff;padding:16px 0 0;border-top:1px solid #e2e8f0}
+@media(max-width:700px){.common-brand-dialog{padding:16px}.common-brand-providers{grid-template-columns:minmax(0,1fr)}.common-brand-dialog .common-subheading{align-items:center}.common-brand-dialog h2{font-size:18px}.common-brand-actions{bottom:-16px}.common-brand-field{max-width:100%}}
+
+.common-naver-controls>.common-subheading{margin:0 0 12px}.common-naver-controls .common-row{margin:8px 0}.common-naver-controls .common-row>.field{max-width:360px}
+#common-naver-host{min-width:0}#common-naver-host .editor-section-nav{margin-top:0}
+
+.common-change-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;border-top:1px solid #e2e8f0}.common-change-row>strong{width:140px;overflow-wrap:anywhere}.common-change-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;flex:1;min-width:0}.common-change-values>div{min-width:0;overflow-wrap:anywhere}.common-change-values small{display:block;color:#64748b;margin-bottom:4px}.common-change-values pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;margin:6px 0}.common-change-values details{max-width:100%}@media(max-width:700px){.common-change-row>strong{width:100%}.common-change-values{flex-basis:100%;grid-template-columns:minmax(0,1fr)}}
+
+/* Category paths use the full dialog width; brand results keep their own grid. */
+.common-category-dialog .common-category-providers{grid-template-columns:minmax(0,1fr)}
+
+.common-category-results{display:grid;grid-auto-rows:96px;gap:6px;max-height:504px;overflow-y:auto;overscroll-behavior:contain}
+.common-category-results .common-category-result{margin:0;min-height:0;box-sizing:border-box}
+.common-category-result strong{min-height:0;overflow:auto}
+
+.common-marketplace-editor .common-option-inputs{grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;width:min(100%,1200px)}
+@media(max-width:700px){.common-marketplace-editor .common-option-inputs{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.common-marketplace-editor .common-option-inputs{grid-template-columns:minmax(0,1fr)}}
+
+/* Keep marketplace navigation and submission choices available while editing. */
+.app-layout .page.common-marketplace-editor{padding-bottom:calc(var(--common-actions-height,110px) + 32px)}
+.common-marketplace-editor #common-view-tabs{position:sticky;top:0;z-index:12;background:#f4f5f7;margin-bottom:16px;border-bottom:0}
+.common-marketplace-editor .editor-section-nav{top:var(--common-tabs-height,48px)}
+.common-marketplace-editor .editor-section{scroll-margin-top:calc(var(--common-tabs-height,48px) + 80px)}
+.common-marketplace-editor .editor-actions{align-items:center;flex-wrap:wrap}
+.common-marketplace-editor .editor-actions .common-market-picker{flex:1;min-width:0;margin:0;border:0;border-radius:0;padding:0}
+.common-marketplace-editor .editor-actions .common-market-picker legend{font-size:12px;padding:0;margin-bottom:6px;color:#64748b}
+.common-marketplace-editor .editor-actions .common-market-picker>div{gap:6px 12px}
+.common-marketplace-editor .editor-actions .common-market-picker label{font-size:12px;gap:5px}
+.common-marketplace-editor .editor-actions .common-market-picker input{width:16px;height:16px;margin:0}
+.common-action-buttons{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.common-action-buttons .btn{white-space:nowrap}
+@media(max-width:1023px){.common-marketplace-editor .editor-actions{left:0}}
+@media(max-width:700px){
+ .common-marketplace-editor #common-view-tabs{flex-wrap:nowrap;overflow-x:auto}
+ .common-marketplace-editor .editor-actions{padding:10px 12px}
+ .common-marketplace-editor .editor-actions .common-market-picker{flex-basis:100%}
+ .common-marketplace-editor .editor-actions .common-market-picker>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+ .common-marketplace-editor .editor-actions .common-market-picker label{white-space:normal;align-items:start;font-size:11px}
+ .common-action-buttons{width:100%;gap:6px}
+ .common-marketplace-editor .common-action-buttons .btn{font-size:12px;padding:8px}
+}
+
+.common-address-dialog{width:min(1000px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto}
+.common-address-provider{border:1px solid #dce4ef;border-radius:12px;padding:16px;margin-top:16px}
+.common-address-kinds{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.common-address-kinds>div{min-width:0}.common-address-kinds h4{margin:12px 0}
+.common-address-results{max-height:360px;overflow-y:auto;overscroll-behavior:contain;display:grid;gap:8px}
+.common-address-results button{width:100%;overflow-wrap:anywhere}
+.common-address-summary{display:grid;gap:8px;margin-bottom:16px;overflow-wrap:anywhere}
+@media(max-width:640px){.common-address-kinds{grid-template-columns:1fr}.common-address-dialog{padding:16px}.common-address-kinds .common-row{flex-wrap:wrap}}
+
+.common-service-settings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.common-service-settings .field:last-child { grid-column: 1 / -1; }
+@media (max-width: 640px) { .common-service-settings { grid-template-columns: 1fr; } }
+
+.common-saved-comparison{margin-top:16px}.common-saved-comparison .common-change-row{align-items:flex-start}.common-saved-comparison .common-change-row>label{flex:0 0 170px;overflow-wrap:anywhere}.common-saved-comparison .common-change-row>.common-row{flex-basis:100%;justify-content:flex-end}.common-saved-comparison .common-change-row>p{flex-basis:100%;margin:0}.common-saved-comparison button{white-space:normal;max-width:100%}@media(max-width:700px){.common-saved-comparison .common-change-row>label{flex-basis:100%}.common-saved-comparison .common-change-row>.common-row{justify-content:flex-start}}

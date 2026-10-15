@@ -1,4 +1,6 @@
 package cc.ataglace.molebutter.marketplacenaver.internal;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import cc.ataglace.molebutter.media.api.ImageAssets;
 import cc.ataglace.molebutter.marketplacenaver.api.NaverGateway;
 
@@ -23,14 +25,14 @@ class NaverGatewayTest {
     private HttpServer server;
     private DefaultNaverGateway gateway;
     private final ObjectMapper json=new ObjectMapper();
-    private final List<String> methods=new ArrayList<>(),paths=new ArrayList<>(),bodies=new ArrayList<>(),authorizations=new ArrayList<>();
+    private final List<String> methods=new ArrayList<>(),paths=new ArrayList<>(),queries=new ArrayList<>(),bodies=new ArrayList<>(),authorizations=new ArrayList<>();
     private java.util.function.BiFunction<String,Integer,Reply> respond;
     private record Reply(int status,String body) {}
     @BeforeEach void start() throws Exception {
         server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         server.createContext("/external/",exchange->{
             int number;String path=exchange.getRequestURI().getPath();
-            synchronized(paths){methods.add(exchange.getRequestMethod());paths.add(path);bodies.add(new String(exchange.getRequestBody().readAllBytes(),StandardCharsets.UTF_8));authorizations.add(exchange.getRequestHeaders().getFirst("Authorization"));number=paths.size();}
+            synchronized(paths){methods.add(exchange.getRequestMethod());paths.add(path);queries.add(exchange.getRequestURI().getRawQuery());bodies.add(new String(exchange.getRequestBody().readAllBytes(),StandardCharsets.UTF_8));authorizations.add(exchange.getRequestHeaders().getFirst("Authorization"));number=paths.size();}
             Reply reply=path.endsWith("oauth2/token")?new Reply(200,"{\"access_token\":\"synthetic-token\",\"expires_in\":10800,\"token_type\":\"Bearer\"}"):respond.apply(path,number);
             byte[] bytes=reply.body().getBytes(StandardCharsets.UTF_8);exchange.sendResponseHeaders(reply.status(),bytes.length);exchange.getResponseBody().write(bytes);exchange.close();
         });server.start();
@@ -40,6 +42,18 @@ class NaverGatewayTest {
         respond=(path,n)->new Reply(200,"{\"originProduct\":{\"originProductNo\":17},\"smartstoreChannelProduct\":{\"channelProductNo\":28}}");
     }
     @AfterEach void stop(){if(server!=null)server.stop(0);}
+    @Test void documentedMissingIsConfirmedTwiceAndChannelAndOriginStaySeparate(){
+        respond=(path,n)->new Reply(404,"{\"code\":\"NOT_FOUND\"}");
+        assertThatThrownBy(()->gateway.product("123")).isInstanceOf(MarketplaceListingMissing.class);
+        assertThat(paths.stream().filter(p->p.endsWith("origin-products/123"))).hasSize(2);
+        assertThatThrownBy(()->gateway.channel("456")).isInstanceOf(MarketplaceListingMissing.class);
+        assertThat(paths.stream().filter(p->p.endsWith("channel-products/456"))).hasSize(2);
+    }
+    @Test void generic404AndPermissionCannotEstablishDeletion(){
+        respond=(path,n)->new Reply(404,"{\"code\":\"OTHER\"}");assertThatThrownBy(()->gateway.product("123")).isInstanceOf(MarketplaceFailure.class);
+        respond=(path,n)->new Reply(403,"{\"code\":\"FORBIDDEN\"}");assertThatThrownBy(()->gateway.product("123")).isInstanceOf(MarketplaceFailure.class);
+        respond=(path,n)->n%2==0?new Reply(404,"{\"code\":\"NOT_FOUND\"}"):new Reply(403,"{\"code\":\"FORBIDDEN\"}");assertThatThrownBy(()->gateway.product("123")).isInstanceOf(MarketplaceFailure.class);
+    }
     @Test void signsFormCachesTokenAndKeepsTokenOutOfBusinessPayload(){
         gateway.session(()->{gateway.product("17");gateway.product("17");return null;});
         assertEquals(List.of("POST","GET","GET"),methods);assertNull(authorizations.get(0));assertEquals("Bearer synthetic-token",authorizations.get(1));
@@ -59,6 +73,18 @@ class NaverGatewayTest {
         assertEquals(429,response.status());assertEquals(2,paths.size());var failure=assertThrows(MarketplaceFailure.class,()->gateway.parse(response));
         assertEquals(MarketplaceFailure.Kind.RATE_LIMIT,failure.kind());assertFalse(failure.getMessage().contains("synthetic-token"));assertTrue(failure.getMessage().contains("스마트스토어"));
     }
+    @Test void permissionErrorsExposeOnlyKnownCodesAndFixedGuidance(){
+        for(String code:List.of("GW.IP_NOT_ALLOWED","GW.AUTHN","ROLE_NOT_FOUND","PROVISION_NOT_FOUND","INVALID_INTERLOCK_STATUS","RESOURCE_NOT_AVAILABLE")){
+            var response=new cc.ataglace.molebutter.marketplacenaver.api.NaverGateway.Response(403,
+                ("{\"code\":\""+code+"\",\"message\":\"private-token\"}").getBytes(StandardCharsets.UTF_8),null,Map.of());
+            var error=assertThrows(MarketplaceFailure.class,()->gateway.parse(response));
+            assertEquals(MarketplaceFailure.Kind.PERMISSION,error.kind());assertTrue(error.getMessage().contains(code));assertFalse(error.getMessage().contains("private-token"));
+        }
+        var response=new cc.ataglace.molebutter.marketplacenaver.api.NaverGateway.Response(403,
+            "{\"code\":\"private-code\",\"message\":\"private-token\"}".getBytes(StandardCharsets.UTF_8),null,Map.of());
+        var error=assertThrows(MarketplaceFailure.class,()->gateway.parse(response));
+        assertFalse(error.getMessage().contains("private-code"));assertFalse(error.getMessage().contains("private-token"));
+    }
     @Test void serverErrorWriteIsNotRetried(){
         respond=(path,n)->new Reply(500,"{\"message\":\"uncertain\"}");
         assertEquals(500,gateway.write("PUT","/v2/products/origin-products/17",json.createObjectNode()).status());assertEquals(2,paths.size());
@@ -76,6 +102,27 @@ class NaverGatewayTest {
         var a=gateway.session(()->gateway.metadata("categories",Map.of("last","true")));a.get(0).asObject().put("name","changed");
         var b=gateway.session(()->gateway.metadata("categories",Map.of("last","true")));assertEquals("test",b.get(0).path("name").asString());assertEquals(2,paths.size());
         assertThrows(InputValidationFailure.class,()->gateway.metadata("../oauth2/token",Map.of()));assertThrows(InputValidationFailure.class,()->gateway.product("17?other=1"));
+    }
+    @Test void brandsUseDocumentedGetNameAndExistingAuthenticatedCache(){
+        respond=(path,n)->new Reply(200,"[{\"id\":9007199254740993,\"name\":\"닥스 & DAKS\"}]");
+        var catalog=new DefaultNaverCatalog(mock(cc.ataglace.molebutter.identity.api.BusinessAccess.class),gateway,json);
+        var expected=List.of(new NaverCatalog.Brand("9007199254740993","닥스 & DAKS"));
+        assertEquals(expected,catalog.metadata(7L,"brands",Map.of("name","닥스 & DAKS")));
+        assertEquals(expected,catalog.metadata(7L,"brands",Map.of("name","닥스 & DAKS")));
+        assertEquals(List.of("POST","GET"),methods);assertEquals("/external/v1/product-brands",paths.get(1));
+        assertEquals("name=닥스 & DAKS",URLDecoder.decode(queries.get(1),StandardCharsets.UTF_8));
+        assertEquals("Bearer synthetic-token",authorizations.get(1));assertEquals("",bodies.get(1));
+    }
+    @Test void onlyBrandNotFoundIsAnEmptyCandidateList(){
+        respond=(path,n)->new Reply(404,"{\"code\":\"NOT_FOUND\",\"message\":\"synthetic private detail\"}");
+        assertTrue(gateway.session(()->gateway.metadata("brands",Map.of("name","없음"))).isEmpty());
+        assertTrue(gateway.session(()->gateway.metadata("brands",Map.of("name","없음"))).isEmpty());
+        assertEquals(2,paths.size());
+        assertEquals(MarketplaceFailure.Kind.REJECTED,assertThrows(MarketplaceFailure.class,
+            ()->gateway.session(()->gateway.metadata("categories",Map.of("last","true")))).kind());
+        respond=(path,n)->new Reply(403,"{\"code\":\"FORBIDDEN\"}");
+        assertEquals(MarketplaceFailure.Kind.PERMISSION,assertThrows(MarketplaceFailure.class,
+            ()->gateway.session(()->gateway.metadata("brands",Map.of("name","다른브랜드")))).kind());
     }
     @Test void documentedDetailWithoutProductIdsKeepsRequestedIdentityAndSourceFields(){
         String body=documentedDetail();respond=(path,n)->new Reply(200,body);
@@ -122,19 +169,27 @@ class NaverGatewayTest {
             assertEquals(MarketplaceFailure.Kind.RESPONSE,assertThrows(MarketplaceFailure.class,()->gateway.product("17")).kind());
         }
     }
-    @Test void imageUploadUsesLocalAssetBytesWithoutPublicBaseAndSingleFileMapping() throws Exception {
+    @Test void imageUploadUsesR2BytesAndSingleFileMapping() throws Exception {
         var image=new BufferedImage(2,2,BufferedImage.TYPE_INT_RGB);var bytes=new ByteArrayOutputStream();ImageIO.write(image,"png",bytes);
         var assets=mock(ImageAssets.class);when(assets.read(7L,"asset-id")).thenReturn(new ImageAssets.AssetContent(null,bytes.toByteArray()));
-        var source=new NaverImageSource(assets,"assets.molebutter.link");
+        var r2=mock(cc.ataglace.molebutter.media.api.R2Images.class);when(r2.read(7L,"https://assets.molebutter.link/products/CODE/official/01.png")).thenReturn(new cc.ataglace.molebutter.media.api.R2Images.Content(null,bytes.toByteArray()));
+        var source=new NaverImageSource(r2);
         gateway=new DefaultNaverGateway("synthetic-app","$2a$04$abcdefghijklmnopqrstuu","SELF","",json,new NaverHttpTransport(URI.create("http://127.0.0.1:"+server.getAddress().getPort()+"/external/"),Duration.ofSeconds(2),1024*1024),source,Clock.systemUTC(),Duration.ZERO);
         respond=(path,n)->new Reply(200,"{\"images\":[{\"url\":\"https://shop-phinf.pstatic.net/test.png\"}]}");
-        assertEquals("https://shop-phinf.pstatic.net/test.png",gateway.uploadImage(7L,new NaverEditor.Image("image-id","asset-id",null,true,0)));
-        assertTrue(bodies.get(1).contains("name=\"imageFiles\""));assertTrue(bodies.get(1).contains("Content-Type: image/png"));verify(assets).read(7L,"asset-id");
+        assertEquals("https://shop-phinf.pstatic.net/test.png",gateway.uploadImage(7L,new NaverEditor.Image("image-id",null,"https://assets.molebutter.link/products/CODE/official/01.png",true,0)));
+        assertTrue(bodies.get(1).contains("name=\"imageFiles\""));assertTrue(bodies.get(1).contains("Content-Type: image/png"));verify(r2).read(7L,"https://assets.molebutter.link/products/CODE/official/01.png");verify(assets,never()).read(anyLong(),anyString());
     }
-    @Test void rejectsPrivateAddressesRedirectUrlsAndUnapprovedImageHosts() throws Exception {
-        var source=new NaverImageSource(mock(ImageAssets.class),"assets.molebutter.link");
-        for(String url:List.of("http://assets.molebutter.link/a","https://127.0.0.1/a","https://assets.molebutter.link:8080/a","https://assets.molebutter.link@evil.invalid/a","https://evil.invalid/a"))assertThrows(InputValidationFailure.class,()->source.remoteUri(url));
-        assertFalse(NaverImageSource.publicAddress(InetAddress.getByName("127.0.0.1")));assertFalse(NaverImageSource.publicAddress(InetAddress.getByName("100.64.1.1")));assertFalse(NaverImageSource.publicAddress(InetAddress.getByName("fd00::1")));assertTrue(NaverImageSource.publicAddress(InetAddress.getByName("1.1.1.1")));
+    @Test void generatedCropUploadsItsActualServerBytesAndUsesTheReturnedNaverUrl()throws Exception{
+        var image=new BufferedImage(750,750,BufferedImage.TYPE_INT_RGB);var bytes=new ByteArrayOutputStream();ImageIO.write(image,"png",bytes);
+        var assets=mock(ImageAssets.class);when(assets.readEdited(7L,"server-crop")).thenReturn(new ImageAssets.AssetContent(null,bytes.toByteArray()));var r2=mock(cc.ataglace.molebutter.media.api.R2Images.class);
+        gateway=new DefaultNaverGateway("synthetic-app","$2a$04$abcdefghijklmnopqrstuu","SELF","",json,new NaverHttpTransport(URI.create("http://127.0.0.1:"+server.getAddress().getPort()+"/external/"),Duration.ofSeconds(2),1024*1024),new NaverImageSource(r2,assets),Clock.systemUTC(),Duration.ZERO);
+        respond=(path,n)->new Reply(200,"{\"images\":[{\"url\":\"https://shop-phinf.pstatic.net/crop.png\"}]}");
+        assertEquals("https://shop-phinf.pstatic.net/crop.png",gateway.uploadImage(7L,new NaverEditor.Image("image-id","server-crop","/api/marketplaces/assets/server-crop",true,0)));
+        assertTrue(bodies.get(1).contains("name=\"imageFiles\""));assertTrue(bodies.get(1).contains("Content-Type: image/png"));verify(assets).readEdited(7L,"server-crop");verifyNoInteractions(r2);
+    }
+    @Test void rejectsLegacyLocalSourcesBeforeReadingOrUploading(){
+        var r2=mock(cc.ataglace.molebutter.media.api.R2Images.class);var source=new NaverImageSource(r2);
+        assertThrows(InputValidationFailure.class,()->source.read(7L,new NaverEditor.Image("id","asset","/api/marketplaces/assets/asset",true,0)));verifyNoInteractions(r2);
     }
     @Test void missingConfigDoesNotDispatchAndAccountNamespaceIgnoresSecret(){
         var none=new DefaultNaverGateway("","","SELF","",json,null,null,Clock.systemUTC(),Duration.ZERO);

@@ -345,6 +345,60 @@ class AuthenticationFlowIT {
                 "INVALID_CSRF_TOKEN");
         assertStatus(browser.post("/api/auth/signin", Map.of("email", "admin@example.com",
                 "password", "IntegrationAdmin123!")), 200);
+        assertThat(browser.cookies).doesNotContainKey("XSRF-TOKEN");
+        assertStatus(browser.send("POST", "/api/auth/signout", Map.of(), browser.csrf), 403,
+                "INVALID_CSRF_TOKEN");
+        browser.csrf();
+        assertStatus(browser.post("/api/auth/signout", Map.of()), 200);
+        assertThat(browser.cookies).doesNotContainKey("XSRF-TOKEN");
+    }
+
+    @Test
+    void csrfCookieSurvivesAuthenticatedRequestsAndRejectsInvalidTokens() throws Exception {
+        Browser browser = new Browser();
+        var response = browser.get("/api/auth/csrf");
+        assertStatus(response, 200);
+        assertThat(browser.cookies).containsKey("XSRF-TOKEN");
+        String cookie = response.headers().allValues("set-cookie").stream()
+                .filter(value -> value.startsWith("XSRF-TOKEN=")).findFirst().orElseThrow();
+        assertThat(cookie).contains("HttpOnly", "Path=/", "SameSite=Lax").doesNotContain("Secure");
+        String token = json.readTree(response.body()).path("data").path("token").asText();
+        String cookieValue = browser.cookies.get("XSRF-TOKEN");
+        for (int index = 0; index < 7; index++) {
+            var request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/marketplaces/assets"))
+                    .header("Cookie", "XSRF-TOKEN=" + cookieValue)
+                    .header("X-XSRF-TOKEN", token)
+                    .header("Content-Type", "multipart/form-data; boundary=csrf-test")
+                    .POST(HttpRequest.BodyPublishers.ofString("--csrf-test--\r\n")).build();
+            // 인증 전 요청도 CSRF 검사를 통과해야 한다. 실제 파일이나 마켓에는 쓰지 않는다.
+            assertStatus(browser.client.send(request, HttpResponse.BodyHandlers.ofString()), 401, "UNAUTHORIZED");
+        }
+        assertStatus(browser.send("POST", "/api/marketplaces/assets", Map.of(), "forged"), 403,
+                "INVALID_CSRF_TOKEN");
+        Browser authenticated = admin();
+        authenticated.csrf();
+        String authenticatedCookie = authenticated.cookies.get("XSRF-TOKEN");
+        for (int index = 0; index < 7; index++) {
+            // 이미지 검증에서 거부되는 본문으로 실제 multipart·JWT 경로를 검사한다. 파일은 저장되지 않는다.
+            var request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/marketplaces/assets"))
+                    .header("Cookie", authenticated.cookies.entrySet().stream()
+                            .map(e -> e.getKey() + "=" + e.getValue()).collect(java.util.stream.Collectors.joining("; ")))
+                    .header("X-XSRF-TOKEN", authenticated.csrf)
+                    .header("Content-Type", "multipart/form-data; boundary=csrf-test")
+                    .POST(HttpRequest.BodyPublishers.ofString("--csrf-test\r\n"
+                            + "Content-Disposition: form-data; name=\"file\"; filename=\"invalid.jpg\"\r\n"
+                            + "Content-Type: image/jpeg\r\n\r\ninvalid-image\r\n--csrf-test--\r\n")).build();
+            var result = authenticated.client.send(request, HttpResponse.BodyHandlers.ofString());
+            assertThat(result.statusCode()).isEqualTo(400);
+            assertThat(json.readTree(result.body()).path("code").asText()).isNotEqualTo("INVALID_CSRF_TOKEN");
+            assertThat(result.headers().allValues("set-cookie")).isEmpty();
+            assertStatus(authenticated.get("/api/auth/csrf"), 200);
+            assertThat(authenticated.cookies.get("XSRF-TOKEN")).isEqualTo(authenticatedCookie);
+        }
+        assertStatus(authenticated.send("POST", "/api/marketplaces/assets", Map.of(), null), 403,
+                "INVALID_CSRF_TOKEN");
+        assertStatus(authenticated.send("POST", "/api/marketplaces/assets", Map.of(), "forged"), 403,
+                "INVALID_CSRF_TOKEN");
     }
 
     @Test

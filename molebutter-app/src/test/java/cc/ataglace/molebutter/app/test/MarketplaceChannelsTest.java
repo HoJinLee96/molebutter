@@ -17,6 +17,10 @@ class MarketplaceChannelsTest {
         assertThat(MarketplaceChannels.find("AUCTION").provider()).isEqualTo(MarketplaceChannels.Provider.ESM);
         assertThat(MarketplaceChannels.find("NAVER").productCreate()).isTrue();
         assertThat(MarketplaceChannels.find("NAVER").orderRead()).isFalse();
-        assertThat(MarketplaceChannels.find("ELEVENST").productCreate()).isFalse();
+        for(var market:java.util.List.of("COUPANG","NAVER","ELEVENST","LOTTEON")){
+            assertThat(MarketplaceChannels.find(market).productRead()).as(market).isTrue();
+            assertThat(MarketplaceChannels.find(market).productCreate()).as(market).isTrue();
+            assertThat(MarketplaceChannels.find(market).productUpdate()).as(market).isTrue();
+        }
     }
 }
