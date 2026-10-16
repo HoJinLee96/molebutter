@@ -5,7 +5,7 @@ let active=false;
 async function open({url,assetId=null,square=false}){
  if(active)return null;active=true;let dialog;
  try{
-  const source=await apiGet('/api/marketplaces/image-edits/source?'+new URLSearchParams(assetId?{assetId}:{url}));
+  const source=await apiGet('/api/coupang/image-edits/source?'+new URLSearchParams(assetId?{assetId}:{url}));
   dialog=document.createElement('dialog');dialog.className='image-crop-dialog';dialog.setAttribute('aria-labelledby','image-crop-title');
   const dim=Math.min(source.width,source.height);
   let rect=source.rect||{x:0,y:0,width:square?dim:source.width,height:square?dim:source.height},locked=square,working=false,drag=null;
@@ -27,7 +27,7 @@ async function open({url,assetId=null,square=false}){
    const done=value=>{dialog.close();resolve(value);};dialog.oncancel=event=>{if(working)event.preventDefault();else done(null);};
    for(const key of ['close','cancel'])dialog.querySelector('[data-crop-'+key+']').onclick=()=>{if(!working)done(null);};
    dialog.querySelector('[data-crop-restore]').onclick=()=>{if(!working)done({url:source.originalUrl,assetId:null});};
-   dialog.querySelector('[data-crop-confirm]').onclick=async()=>{if(working)return;working=true;error('');dialog.querySelectorAll('button,input').forEach(el=>el.disabled=true);try{const asset=await apiPost('/api/marketplaces/image-edits',{token:source.token,rect:{...rect}});done({assetId:asset.id,url:asset.url});}catch(err){error(err.message);}finally{working=false;dialog.querySelectorAll('button,input').forEach(el=>el.disabled=false);}};
+   dialog.querySelector('[data-crop-confirm]').onclick=async()=>{if(working)return;working=true;error('');dialog.querySelectorAll('button,input').forEach(el=>el.disabled=true);try{const asset=await apiPost('/api/coupang/image-edits',{token:source.token,rect:{...rect}});done({assetId:asset.id,url:asset.url});}catch(err){error(err.message);}finally{working=false;dialog.querySelectorAll('button,input').forEach(el=>el.disabled=false);}};
   });
  }finally{dialog?.remove();active=false;}
 }

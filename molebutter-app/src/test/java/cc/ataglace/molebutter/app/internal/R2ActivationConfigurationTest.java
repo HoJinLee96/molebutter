@@ -71,7 +71,7 @@ class R2ActivationConfigurationTest {
 
     @Test
     void environmentCanDisableCloudflareProfileWithoutCredentials() {
-        configuration("cloudflare", Map.of("CLOUDFLARE_R2_ENABLED", "false"), false).run(context -> {
+        configuration("cloudflare", Map.of("CLOUDFLARE_R2_ENABLED","false"), false).run(context -> {
             assertThat(context).hasNotFailed().hasSingleBean(ObjectStorage.class)
                     .doesNotHaveBean(SdkHttpClient.class).doesNotHaveBean(S3Client.class);
             assertThat(context.getEnvironment().getActiveProfiles()).containsExactly("cloudflare");
@@ -82,7 +82,7 @@ class R2ActivationConfigurationTest {
 
     @Test
     void environmentCanEnableDefaultProfileWithoutChangingHttpSettings() {
-        configuration("", Map.of("CLOUDFLARE_R2_ENABLED", "true"), true).run(context -> {
+        configuration("", Map.of("CLOUDFLARE_R2_ENABLED","true"), true).run(context -> {
             assertThat(context).hasNotFailed().hasSingleBean(ObjectStorage.class).hasSingleBean(SdkHttpClient.class);
             assertThat(context.getEnvironment().getActiveProfiles()).isEmpty();
             assertThat(context.getEnvironment().getProperty("cloudflare.r2.enabled", Boolean.class)).isTrue();

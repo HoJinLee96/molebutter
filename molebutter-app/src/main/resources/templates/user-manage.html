@@ -67,17 +67,17 @@
         switch (user.status) {
             case 'PENDING':
                 return `${roleSelect('role-' + user.id, 'VIEWER')}
-                        <button class="btn small primary" data-action="approve" data-id="${user.id}">승인</button>
-                        <button class="btn small" data-action="suspend" data-id="${user.id}">거절(정지)</button>`;
+                        <button type="button" class="btn small primary" data-action="approve" data-id="${user.id}">승인</button>
+                        <button type="button" class="btn small" data-action="suspend" data-id="${user.id}">거절(정지)</button>`;
             case 'ACTIVE':
                 return `${roleSelect('role-' + user.id, user.role)}
-                        <button class="btn small" data-action="role" data-id="${user.id}">역할 변경</button>
-                        <button class="btn small" data-action="suspend" data-id="${user.id}">정지</button>`;
+                        <button type="button" class="btn small" data-action="role" data-id="${user.id}">역할 변경</button>
+                        <button type="button" class="btn small" data-action="suspend" data-id="${user.id}">정지</button>`;
             case 'LOCKED':
-                return `<button class="btn small primary" data-action="unlock" data-id="${user.id}">잠금 해제</button>
-                        <button class="btn small" data-action="suspend" data-id="${user.id}">정지</button>`;
+                return `<button type="button" class="btn small primary" data-action="unlock" data-id="${user.id}">잠금 해제</button>
+                        <button type="button" class="btn small" data-action="suspend" data-id="${user.id}">정지</button>`;
             case 'SUSPENDED':
-                return `<button class="btn small" data-action="unsuspend" data-id="${user.id}">정지 해제</button>`;
+                return `<button type="button" class="btn small" data-action="unsuspend" data-id="${user.id}">정지 해제</button>`;
             default:
                 return '';
         }

@@ -3,8 +3,6 @@ package cc.ataglace.molebutter.identity.api;
 
 import java.time.LocalDateTime;
 
-import cc.ataglace.molebutter.identity.api.UserRole;
-import cc.ataglace.molebutter.identity.api.UserStatus;
 
 /** 직원 관리 목록의 한 행. id는 JS number 정밀도 문제를 피해 문자열로 내린다. */
 public record UserSummaryResponse(

@@ -1,7 +1,5 @@
 package cc.ataglace.molebutter.common.api;
 
-import cc.ataglace.molebutter.common.api.OperationFailure;
-import cc.ataglace.molebutter.common.api.InputValidationFailure;
 public final class BusinessRevision {
     private BusinessRevision() {}
     public static void check(long current, Long requested) {

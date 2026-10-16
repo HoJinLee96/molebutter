@@ -1,7 +1,5 @@
 package cc.ataglace.molebutter.procurement.internal;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
-import cc.ataglace.molebutter.procurement.internal.SupplierBranchText;
-import cc.ataglace.molebutter.procurement.internal.LotteProductPayload;
 
 import java.util.*;
 import tools.jackson.databind.JsonNode;

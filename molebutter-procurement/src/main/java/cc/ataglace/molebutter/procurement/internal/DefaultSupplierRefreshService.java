@@ -1,15 +1,6 @@
 package cc.ataglace.molebutter.procurement.internal;
 import cc.ataglace.molebutter.procurement.api.SupplierDtos.*;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
-import cc.ataglace.molebutter.procurement.internal.ProcurementNotifications;
-import cc.ataglace.molebutter.procurement.internal.SupplierLookupStatusPolicy;
-import cc.ataglace.molebutter.procurement.internal.DefaultProductSupplierService;
-import cc.ataglace.molebutter.procurement.internal.RecommendationLookupService;
-import cc.ataglace.molebutter.procurement.internal.DefaultSupplierPreferenceService;
-import cc.ataglace.molebutter.procurement.internal.ProductStore;
-import cc.ataglace.molebutter.procurement.internal.NaverSearchRecoveryService;
-import cc.ataglace.molebutter.procurement.internal.DefaultProductChangeService;
-import cc.ataglace.molebutter.procurement.internal.DefaultProcurementProductQueries;
 
 import cc.ataglace.molebutter.common.api.OperationFailure;
 import cc.ataglace.molebutter.common.api.InputValidationFailure;

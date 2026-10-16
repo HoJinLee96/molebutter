@@ -1,6 +1,5 @@
 package cc.ataglace.molebutter.attendance.internal;
 import cc.ataglace.molebutter.attendance.api.AttendanceQueryDtos.*;
-import cc.ataglace.molebutter.attendance.internal.AttendanceTime;
 import cc.ataglace.molebutter.identity.api.IdentityAccounts;
 
 import java.io.*;
@@ -20,7 +19,6 @@ import cc.ataglace.molebutter.common.api.PageResponse;
 import cc.ataglace.molebutter.common.api.ErrorCode;
 import cc.ataglace.molebutter.common.api.InputValidationFailure;
 import cc.ataglace.molebutter.common.api.BusinessException;
-import cc.ataglace.molebutter.attendance.internal.AttendanceQueryRepository;
 import lombok.RequiredArgsConstructor;
 
 @Service

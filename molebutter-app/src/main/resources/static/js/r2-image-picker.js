@@ -1,7 +1,7 @@
 /* R2 lookup is read-only. Applying returns verified URLs without changing any product code. */
 (() => {
     'use strict';
-    const e=AppUI.escape,base='/api/marketplaces/r2-images';
+    const e=AppUI.escape,base='/api/coupang/r2-images';
     let dialog,active=null,generation=0,controller=null,items=[],selected=new Map(),cursor=null,code='',folder='',folders=[],working=false;
     const q=selector=>dialog.querySelector(selector);
     async function resolve(url,signal){return apiGet(base+'/resolve?'+new URLSearchParams({url}),{signal});}

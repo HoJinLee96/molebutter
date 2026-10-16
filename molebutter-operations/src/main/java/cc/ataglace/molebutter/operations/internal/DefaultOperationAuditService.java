@@ -7,8 +7,6 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import cc.ataglace.molebutter.identity.api.UserRole;
-import cc.ataglace.molebutter.operations.internal.OperationAuditLog;
-import cc.ataglace.molebutter.operations.internal.OperationAuditLogRepository;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j

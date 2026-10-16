@@ -4,7 +4,6 @@ package cc.ataglace.molebutter.app.internal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import cc.ataglace.molebutter.identity.api.UserPrincipal;
-import cc.ataglace.molebutter.app.internal.ApiResponse;
 import cc.ataglace.molebutter.operations.api.NotificationService;
 import lombok.RequiredArgsConstructor;
 

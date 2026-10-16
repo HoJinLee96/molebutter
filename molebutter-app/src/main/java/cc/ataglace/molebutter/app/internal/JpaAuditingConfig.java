@@ -1,5 +1,4 @@
 package cc.ataglace.molebutter.app.internal;
-import cc.ataglace.molebutter.app.internal.AuditorAwareImpl;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

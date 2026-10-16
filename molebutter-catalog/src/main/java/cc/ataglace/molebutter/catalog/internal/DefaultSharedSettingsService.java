@@ -1,6 +1,5 @@
 package cc.ataglace.molebutter.catalog.internal;
 
-import cc.ataglace.molebutter.catalog.internal.CatalogStore;
 
 import cc.ataglace.molebutter.common.api.OperationFailure;
 import cc.ataglace.molebutter.common.api.InputValidationFailure;

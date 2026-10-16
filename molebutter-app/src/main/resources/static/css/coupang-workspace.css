@@ -1,0 +1,16 @@
+.coupang-tab-list{display:flex;gap:6px;overflow-x:auto;margin:16px 0;border-bottom:1px solid #e2e8f0}
+.coupang-tab-list button{border:0;border-bottom:3px solid transparent;padding:12px 16px;background:#fff;font-weight:700;color:#64748b;white-space:nowrap}
+.coupang-tab-list button[aria-selected=true]{border-bottom-color:#2f6df6;color:#2f6df6}
+.coupang-submission-dialog{width:min(1000px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:24px;border:1px solid #e2e8f0;border-radius:14px;color:#202632}.coupang-submission-dialog::backdrop{background:rgba(15,23,42,.45)}
+.coupang-submission-dialog .coupang-subheading{margin-top:0}.coupang-submission-dialog h2{font-size:20px;margin:0}.coupang-submission-dialog-actions{display:flex;justify-content:flex-end;position:sticky;bottom:-24px;padding:16px 0;background:#fff;border-top:1px solid #e2e8f0}
+.coupang-submission-target{padding:14px 0;border-top:1px solid #e2e8f0}.coupang-submission-target h3{font-size:16px;margin:0 0 12px}.coupang-planned-steps{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.coupang-planned-steps span{font-size:13px;padding:5px 9px;background:#f1f5f9;border-radius:6px}
+.coupang-submission-changes{min-width:500px;width:100%;table-layout:fixed}.coupang-submission-changes th,.coupang-submission-changes td{white-space:pre-wrap;overflow-wrap:anywhere;vertical-align:top}.coupang-submission-changes th:first-child{width:28%}.coupang-preview-summary{color:#475569;font-size:14px}
+.coupang-execution{border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin:14px 0}.coupang-execution-heading{display:flex;justify-content:space-between;align-items:start;gap:12px;flex-wrap:wrap}.coupang-execution-actions{display:flex;gap:8px;flex-wrap:wrap}.coupang-execution-steps{list-style:none;padding:0;margin:0}.coupang-execution-steps li{display:grid;grid-template-columns:minmax(140px,1fr) auto minmax(120px,2fr);gap:12px;align-items:start;margin:12px 0;font-size:14px}.coupang-step-message{overflow-wrap:anywhere;color:#64748b}
+@media(max-width:700px){.coupang-submission-dialog{padding:16px}.coupang-submission-dialog-actions{bottom:-16px}.coupang-execution-steps li{grid-template-columns:minmax(0,1fr) auto}.coupang-step-message{grid-column:1/-1}.coupang-execution-heading>div{max-width:100%;overflow-wrap:anywhere}}
+@media(max-width:700px){.coupang-tab-list{flex-wrap:wrap;overflow-x:visible}.coupang-tab-list button{padding:10px 12px}}
+.coupang-category-dialog{width:min(800px,calc(100vw - 32px));max-height:calc(100dvh - 32px);border:1px solid #ddd;border-radius:12px;padding:20px}.coupang-category-actions,.coupang-subheading{display:flex;align-items:center;justify-content:space-between;gap:12px}.coupang-category-result{display:flex;justify-content:space-between;width:100%;padding:12px;background:white;border:1px solid #ddd}.coupang-category-result[aria-pressed=true]{background:#edf4ff}.coupang-category-results-panel{max-height:60dvh;overflow:auto}.coupang-category-actions{padding-top:16px}
+
+.coupang-heading-actions,.coupang-category-results-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.coupang-empty,.coupang-category-selected{color:var(--text-sub);overflow-wrap:anywhere}
+.coupang-working-copy-table{width:100%}
+.coupang-upload-status{display:block;color:var(--text-sub)}

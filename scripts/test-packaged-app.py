@@ -25,11 +25,20 @@ with zipfile.ZipFile(jar) as artifact:
     assert 'BOOT-INF/classes/static/js/inventory.js' in names
     forbidden = ('application-secret/', 'bootstrap-admin-test.properties', 'test-fixtures/', '/fixture/', '/test-classes/')
     assert not any(any(part in name for part in forbidden) or name.endswith('-tests.jar') for name in names)
+    old_runtime_names=('CoupangDrafts','CoupangDraftFailure','DefaultCoupangDrafts','CoupangProductEditor','CoupangProductRegistrations','CoupangProductSaving','CoupangCommonSettings','ComparisonMedia','TargetComparisons','CoupangComparison','CoupangEditPatch','Marketplace','/marketplace/','/marketplacecoupang/','/marketplacecontracts/','/js/marketplace','/templates/marketplace','/templates/common-coupang-editor.html','/js/common-coupang-editor.js','/js/coupang-editor-save.js','/js/coupang-product-registration.js')
+    assert not any(any(part in name for part in old_runtime_names) for name in names)
     module_jars = [name for name in names if name.startswith('BOOT-INF/lib/molebutter-')]
-    assert len(module_jars) == 7, module_jars
+    expected = {'common','storage','identity','operations','catalog','procurement','inventory','attendance',
+                'media','coupang','imaging'}
+    assert {name.split('/molebutter-',1)[1].removesuffix('-0.0.1-SNAPSHOT.jar') for name in module_jars} == expected, module_jars
+    assert 'BOOT-INF/classes/db/migration/V46__coupang_domain.class' in names
+    assert 'BOOT-INF/classes/db/migration/V47__coupang_working_copies.class' in names
+    assert 'BOOT-INF/classes/db/migration/V48__coupang_intent_and_audit.class' in names
+    assert not any(any(word in name for word in ('coupang-naver','coupang-esm','coupang-lotteon','coupang-elevenst')) for name in names)
     for name in module_jars:
         with zipfile.ZipFile(io.BytesIO(artifact.read(name))) as module:
-            assert not any(any(part in path for part in forbidden) for path in module.namelist())
+            assert not any(any(part in path for part in forbidden+old_runtime_names) for path in module.namelist())
+            assert not any(path.endswith('CoupangProductDocuments$Observation.class') for path in module.namelist())
     assert not any('/archunit-' in name for name in names)
 
 with socket.socket() as probe:
@@ -43,6 +52,9 @@ args = [java, '-jar', str(jar), f'--server.port={port}', '--server.address=127.0
         '--spring.flyway.user=test_migrator', '--spring.flyway.password=isolated-test-migration-password',
         '--spring.data.redis.host=127.0.0.1', f"--spring.data.redis.port={os.environ['MOLEBUTTER_TEST_REDIS_PORT']}",
         '--spring.data.redis.password=', '--product.refresh.worker-enabled=false',
+        '--coupang.submissions.worker-enabled=false', '--coupang.orders.worker-enabled=false',
+        '--coupang.vendor-id=', '--coupang.access-key=', '--coupang.secret-key=',
+        '--cloudflare.r2.enabled=false',
         '--product.changes.initialize-enabled=false',
         '--auth.jwt.secret=isolated-packaged-test-secret-at-least-32-bytes',
         '--resend.api-key=isolated-unused-test-key', '--resend.from=fixture@example.test']
@@ -82,7 +94,7 @@ with tempfile.TemporaryDirectory(prefix='molebutter-jar.') as working:
                 if result.returncode:
                     log.flush()
                     raise AssertionError(f'{command} failed:\n' + log_path.read_text()[-12000:])
-            print('PASS packaged JAR: seven business modules, migrations/resources, no secrets/test data, HTTP boot and repair previews')
+            print('PASS packaged JAR: eleven modules, Coupang-only seller integration, migrations/resources, no secrets/test data, HTTP boot and repair previews')
         finally:
             process.terminate()
             try:

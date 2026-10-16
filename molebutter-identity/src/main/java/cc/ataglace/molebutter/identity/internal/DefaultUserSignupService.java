@@ -1,13 +1,10 @@
 package cc.ataglace.molebutter.identity.internal;
-import cc.ataglace.molebutter.identity.internal.PasswordPolicyValidator;
-import cc.ataglace.molebutter.identity.internal.DefaultEmailVerificationService;
 import cc.ataglace.molebutter.identity.api.EmailVerificationPurpose;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import cc.ataglace.molebutter.identity.internal.User;
 import cc.ataglace.molebutter.identity.api.UserAuthEventType;
 import cc.ataglace.molebutter.identity.api.UserRole;
 import cc.ataglace.molebutter.identity.api.UserStatus;
@@ -15,10 +12,6 @@ import cc.ataglace.molebutter.identity.api.SignupRequest;
 import cc.ataglace.molebutter.common.api.BusinessException;
 import cc.ataglace.molebutter.common.api.ErrorCode;
 import cc.ataglace.molebutter.identity.api.ClientInfo;
-import cc.ataglace.molebutter.identity.internal.UserRepository;
-import cc.ataglace.molebutter.identity.internal.DefaultUserAuthAuditService;
-import cc.ataglace.molebutter.identity.internal.EmailNormalizer;
-import cc.ataglace.molebutter.identity.internal.PhoneNumberNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

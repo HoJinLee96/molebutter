@@ -1,5 +1,4 @@
 package cc.ataglace.molebutter.identity.internal;
-import cc.ataglace.molebutter.identity.internal.JpaPages;
 
 import java.time.LocalDate;
 
@@ -10,10 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import cc.ataglace.molebutter.identity.api.UserAuthEventType;
-import cc.ataglace.molebutter.identity.internal.UserAuthAuditLog;
 import cc.ataglace.molebutter.common.api.PageResponse;
 import cc.ataglace.molebutter.identity.api.AuthLogResponse;
-import cc.ataglace.molebutter.identity.internal.UserAuthAuditLogRepository;
 import lombok.RequiredArgsConstructor;
 
 /** 인증 감사 로그 조회 — 대표 전용 AUTH_LOGS 섹션. */

@@ -33,10 +33,9 @@ const detail=p=>({product:withSelection(p),comparison:comparison(p),suppliers:[]
 function html(page,role){const file=path.resolve(__dirname,`../molebutter-app/target/ui-fixtures/${page}-${role}.html`);if(!fs.existsSync(file))throw Error('LayoutViewTest를 먼저 실행하세요.');return fs.readFileSync(file,'utf8');}
 const server=http.createServer(async(req,res)=>{try{
  const u=new URL(req.url,'http://localhost'),url=u.pathname;res.setHeader('Cache-Control','no-store');
- if(/^\/marketplaces\/products\/(new|[^/]+\/edit)$/.test(url)){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(html('common-marketplace-editor','ADMIN'));}
- if(/^\/marketplaces\/naver\/products\/(new|[0-9]+\/edit)$/.test(url)){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(html('naver-product-editor','ADMIN'));}
- if(/^\/marketplaces\/coupang\/products\/(new|[0-9]+\/edit)$/.test(url)){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(html('marketplace-editor','ADMIN'));}
- if(['/','/products','/product-refresh','/settings','/attendance','/attendance-manage','/marketplaces'].includes(url)){const role=u.searchParams.get('role')||(/fixtureRole=(ADMIN|PRODUCT)/.exec(req.headers.cookie||'')?.[1]??'ADMIN');res.setHeader('Set-Cookie',`fixtureRole=${role}; Path=/; SameSite=Lax`);res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(html(url==='/'?'home':url.slice(1),role));}
+ if(/^\/coupang\/(products|working-copies)\/(new|[^/]+\/edit)$/.test(url)){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(html('coupang-editor','ADMIN'));}
+
+ if(['/','/products','/product-refresh','/settings','/attendance','/attendance-manage','/coupang'].includes(url)){const role=u.searchParams.get('role')||(/fixtureRole=(ADMIN|PRODUCT)/.exec(req.headers.cookie||'')?.[1]??'ADMIN');res.setHeader('Set-Cookie',`fixtureRole=${role}; Path=/; SameSite=Lax`);res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(html(url==='/'?'home':url.slice(1),role));}
  if(/^\/(js|css)\/[a-z0-9.-]+$/.test(url)){res.setHeader('Content-Type',url.endsWith('.js')?'text/javascript':'text/css');return res.end(fs.readFileSync(path.join(root,'static',url)));}
  if(url==='/favicon.ico'){res.statusCode=204;return res.end();}
  const chunks=[];for await(const c of req)chunks.push(c);const body=Buffer.concat(chunks).toString(),input=body&&req.headers['content-type']?.includes('application/json')?JSON.parse(body):{};

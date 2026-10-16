@@ -3,11 +3,8 @@ package cc.ataglace.molebutter.identity.internal;
 
 import org.springframework.stereotype.Service;
 
-import cc.ataglace.molebutter.identity.internal.User;
 import cc.ataglace.molebutter.common.api.BusinessException;
 import cc.ataglace.molebutter.common.api.ErrorCode;
-import cc.ataglace.molebutter.identity.internal.UserRepository;
-import cc.ataglace.molebutter.identity.internal.PhoneNumberNormalizer;
 import lombok.RequiredArgsConstructor;
 
 /** 이메일(로그인 계정) 찾기: 이름+휴대전화로 조회해 마스킹된 이메일을 돌려준다. */

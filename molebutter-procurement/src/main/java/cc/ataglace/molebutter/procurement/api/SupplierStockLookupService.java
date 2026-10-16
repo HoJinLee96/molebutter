@@ -1,7 +1,6 @@
 package cc.ataglace.molebutter.procurement.api;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
 import cc.ataglace.molebutter.procurement.api.SupplierDtos.*;
-import cc.ataglace.molebutter.procurement.api.SupplierRefreshService;
 import java.util.*;
 import org.springframework.transaction.annotation.*;
 

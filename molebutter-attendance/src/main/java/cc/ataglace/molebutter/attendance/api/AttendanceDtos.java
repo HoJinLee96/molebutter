@@ -5,8 +5,6 @@ import java.time.*;
 import java.util.List;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
-import cc.ataglace.molebutter.attendance.api.CorrectionStatus;
-import cc.ataglace.molebutter.attendance.api.AttendanceStatus;
 
 public final class AttendanceDtos {
     private AttendanceDtos() {}

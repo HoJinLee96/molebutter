@@ -1,85 +1,24 @@
 # 프로젝트 에이전트 지침
 
-## 판매 마켓 API 문서
+## 쿠팡 판매 API
 
-판매 마켓의 설계·분석·구현·수정 작업은 항상 프로젝트 안의 최신
-[`marketplace-api-docs/README.md`](marketplace-api-docs/README.md)를 먼저 확인한다.
-기준 경로는 `/Users/lee/workspace/molebutter/marketplace-api-docs`이며,
-이전 Downloads 사본이나 대화에서 기억한 요약을 현재 규격의 근거로 사용하지 않는다.
-사용자가 문서를 업데이트했다고 알리면 관련 안내·색인·대상 문서를 다시 읽는다.
+판매 연동은 쿠팡 전용이다. 설계·분석·구현·수정 전에 프로젝트의 최신 [coupang-api-docs/README.md](coupang-api-docs/README.md)를 먼저 읽는다. OVERVIEW → INDEX → 대상 SOURCE → 관련 FAQ·공지 SOURCE → KNOWN-ISSUES → 필요한 원문 순서로 확인한다. 정확한 필드·필수 조건·enum·제약은 `SOURCE:BEGIN`~`SOURCE:END`에서 확인한다.
 
-### 문서 찾기와 근거 확인
+OVERVIEW·LLM 노트·검수 기록은 길잡이이며 실제 API 성공·계정 권한 검증을 뜻하지 않는다. 문서 수집일과 실제 실행·검증일을 구분한다. 쿠팡 원문과 SOURCE·전용 검수 자료를 임의 수정하거나 빌드·수집 스크립트로 재생성하지 않는다.
 
-1. README의 구조·읽기 규칙·검수 현황을 확인한다.
-2. 해당 마켓의 `OVERVIEW.md`로 인증·식별자·흐름을 파악한다.
-   여러 마켓을 함께 다루면 `cross-market/`의 인증, 상품·가격·재고, 주문·배송·클레임 비교 자료도 읽는다.
-3. 마켓의 `INDEX.md`에서 Method·Path·제목으로 대상 문서를 찾는다.
-   ESM은 별도 Method·Path 열 대신 '엔드포인트' 열과 front matter의 `endpoints`를 사용한다.
-   11번가는 Method·URL 열과 `method`·`url`·`path`를 사용한다. URL의 스킴·호스트·경로 변수 표기를 대상 SOURCE와 대조한다.
-   `referenced_endpoints`는 참조 경로이며 대상 API의 호출 주소로 간주하지 않는다.
-4. 대상 문서 상단의 LLM 노트로 주의점을 파악한 뒤, 정확한 필드·타입·필수 조건·enum·제약은
-   `SOURCE:BEGIN`부터 `SOURCE:END`까지의 공식 원문 변환본에서 확인한다.
-5. 네이버의 `↳ 하위 구조` 참조는 `naver/schemas/`의 해당 구조체를 이어서 확인한다.
-   대상 API를 정한 뒤 INDEX의 같은 주제 FAQ·공지도 찾아 SOURCE를 읽는다.
-   API 노트의 관련 링크나 OVERVIEW만으로 FAQ의 동작 변경·제약을 모두 확인했다고 간주하지 않는다.
-6. 관련 `KNOWN-ISSUES.md`에서 표·예시·문서 간 불일치를 확인하고, 모호한 항목은 `_raw/` 원문과 대조한다.
-   현재 적용 여부가 중요하거나 충돌이 남으면 최신 공식 문서와 필요한 실제 호출로 확인한다.
+2026-10-15 사용자의 명시적 승인으로 타 판매 마켓 구현·SOURCE·원문·비교 및 검수 자료를 제거했다. 이 예외는 쿠팡 원문 수정이나 매입용 네이버 공개 검색 제거를 허용하지 않는다.
 
-### 신뢰 수준과 마켓 구분
+현재 범위는 [판매 연동 안내](docs/coupang-api/README.md), [상품 편집](docs/coupang-api/working-copies.md), [검증](docs/testing.md), [데이터 보존 전환 절차](docs/coupang-intent-migration.md)를 코드와 함께 확인한다.
 
-- `OVERVIEW.md`, `cross-market/`, `_notes/`, `KNOWN-ISSUES.md`는 LLM이 작성한 길잡이다.
-  그 안의 주장과 마켓 간 대응 관계는 연결된 SOURCE에서 확인하며, 추정을 확정 규격으로 바꾸지 않는다.
-- `review: llm-notes-verified`는 노트의 독립 검수를 뜻한다. 실제 API 호출 성공이나 계정 권한 확인을 뜻하지 않는다.
-  `llm-notes-unverified`, `source-only`도 구분한다.
-- 문서 전달·갱신일과 `fetched_at`의 원문 수집일을 구분한다. 문서의 기계 검증·LLM 검수·실계정 검증을 각각 기록한다.
-- 네이버는 `naver/`, 쿠팡은 `coupang/`, G마켓·옥션은 공용 `esm/`, 롯데ON은 `lotteon/`, 11번가는 `11st/`를 참고한다.
-  ESM의 공용 API와 사이트별 필드·계정·상품번호 차이를 구분한다.
-- 롯데ON 자료는 제공된 README 기준 셀러용(SL) 범위이며 V2 등 하위 버전은 별도 문서로 확인한다.
-  운영자용(OP)·계열사 전용 조건이나 다른 마켓의 규격을 일반 셀러 계약에 대신 적용하지 않는다.
-- 공통 입력값이 같아도 마켓별 상품·옵션 ID, 수량 범위, 필수값, 등록·수정 제한과 응답 의미가 같다고 가정하지 않는다.
+`**/application-secret/**` 비밀 파일은 직접 열거나 수정하지 않는다. 자격 증명은 실행 시 기존 설정에서 읽으며 키·서명·Authorization을 로그·응답·테스트에 복사하지 않는다. 내부 저장·검증과 실제 쿠팡 전송을 구분한다.
 
-### 롯데ON 문서 적용 시 주의
+## 쿠팡 업무 구조와 이행
 
-- 호출 Method·전체 URL은 대상 SOURCE에서 확인한다. 상품속성 조회의 별도 호스트와
-  전시 257의 test 호스트 등 예외를 공통 `base_url`로 덮어쓰지 않는다. 운영 주소가 불명확하면 확인 대상으로 남긴다.
-- 필수 표기의 `X`·`Δ`와 판촉 `구분:C|CU|UD|CUD`는 범례가 없는 부분을 임의 해석하지 않는다.
-  필드 설명·관련 FAQ·조건을 함께 확인한다. `ㄴ` 접두어·병합 셀·평면 불릿의 계층은
-  `_raw/lotteon/api_html/`의 원문 표와 대조한다. `_outline/`은 여백이 사라져 계층 판단 근거로 쓰지 않는다.
-- HTTP POST에도 조회 API가 있다. 읽기·쓰기 구분, 성공 코드와 응답 구조는 대상 API별로 판정하고
-  공통 응답 모델을 모든 도메인에 강제하지 않는다. 문서에 남은 중단 API도 현재 사용 가능하다고 가정하지 않는다.
-- 호출 제한 등 가이드·FAQ·표·예시의 충돌은 기록하고 임의로 한쪽을 확정하지 않는다.
-  원문에 남은 비가시 제어문자는 소비용 사본의 파싱·예시에서 처리하며 SOURCE·원문을 수정하지 않는다.
+판매 업무는 `molebutter-coupang` 하나로 관리한다. 공개 계약은 `coupang.api`, 업무·저장은 `coupang.internal`, 쿠팡 HTTP는 `coupang.internal.client`에 둔다. 마켓 선택·마켓별 바인딩 맵·단일 대상 리스트 호환 계층을 다시 도입하지 않는다.
 
-### 11번가 문서 적용 시 주의
+현재 상품·주문·이미지·이력과 식별자는 보존한다. 적용된 V1~V48과 역사적 SalesSchema는 수정하지 않는다. DB 전환 전 앱·워커를 중지하고 전체 DB와 전용 파일 백업의 격리 복원을 확인한다. 현재 전환은 [V48 절차](docs/coupang-intent-migration.md), 작업본 구조는 [V47 전환](docs/coupang-working-copy-migration.md), 역사적 복원은 [V46 전환](docs/coupang-domain-migration.md), 개발은 [구현 안내](docs/coupang-api/README.md)와 [검증](docs/testing.md)을 따른다.
 
-- 현재 패키지는 판매자 로그인 후 수집한 KOR 공통 API 명세 109개와 FAQ·공지 등을 포함한다.
-  `public-api/`의 공개 검색 API를 판매자 상품 관리 계약으로 대신 쓰지 않는다. 물류 API와 공지 첨부파일은 수집 범위 밖이다.
-- 소비용 문서는 `11st/`, 원문 HTML·명세 JSON은 `_raw/st11/`다. `_raw/11st/_outline/`은 최종 원문이 아니다.
-  `필수:O|X`, 반복 `[]`·`multiple`, 빈 필드명·타입은 SOURCE와 원문 JSON으로 확인하고 빈 항목의 의미를 만들어내지 않는다.
-- 상품 등록·수정은 XML body와 `openapikey` 헤더를 사용한다. 카테고리 조회 1001·1617은 키 불필요라고 명시한다.
-  EUC-KR 본문 샘플과 URL 검색어의 UTF-8 안내를 구분한다. `http`·`https` 혼재를 하나의 base URL로 덮어쓰지 않으며 실제 전송 전 안전한 운영 URL을 확인한다.
-- GET 발주확인 1634처럼 상태를 바꾸는 API가 있다. Method만으로 읽기 여부를 판단하거나 자동 재시도하지 않는다.
-  XML 루트와 업무 코드를 API별로 판정한다. `AuthMessage.resultCode=200`은 인증 오류이며 상품 성공 코드와 다르다.
-- 수정 1619는 덮어쓰기 안내와 필드별 생략 규칙을 함께 확인한다. 추가이미지의 요소 생략(유지)과 빈 요소(삭제),
-  `optUpdateYn`·주소 생략의 효과를 구분하고 조회 DTO를 그대로 수정 전문으로 보내지 않는다. 샘플의 POST를 수정 Method로 복사하지 않는다.
-- 이미지 URL·목록이미지 미사용, 셀러재고번호 중복, 브랜드 코드 공지 등은 API SOURCE 외에 관련 FAQ·공지 SOURCE도 확인한다.
-  브랜드 코드 첨부파일은 패키지에 없으며 수집 범위에서 브랜드 검색 API가 확인되지 않았다는 사실을 API 전체의 부재로 단정하지 않는다.
-
-### 프로젝트 적용
-
-- 현재 구현 범위는 [`docs/market-api/README.md`](docs/market-api/README.md),
-  [`common-product-editor.md`](docs/market-api/common-product-editor.md),
-  해당 마켓 안내와 [`docs/testing.md`](docs/testing.md)를 코드와 함께 확인한다.
-  롯데ON의 문서 참조·후속 구현 안내는 [`docs/market-api/lotteon.md`](docs/market-api/lotteon.md)를 따른다.
-  11번가의 문서 참조·미구현 범위·후속 검증은 [`docs/market-api/11st.md`](docs/market-api/11st.md)를 따른다.
-- 문서 갱신만으로 기존 코드·검증 결과를 새 규격에 적합하다고 간주하지 않는다.
-  관련 계약을 대조하고 확인된 차이만 구현·검증 기록에 반영한다.
-- 사용자가 제공한 `marketplace-api-docs`의 SOURCE·원문·검수 자료를 앱 구현 작업 중 임의로 수정하거나 수집·빌드 스크립트로 재생성하지 않는다.
-  프로젝트의 지침·구현 안내는 `AGENTS.md`와 `docs/`에서 관리한다.
-- `**/application-secret/**`의 비밀 파일은 직접 열거나 수정하지 않는다.
-  자격 증명은 애플리케이션 실행 시 기존 설정에서 읽도록 연결하고, 키·서명·Authorization을 로그·응답·테스트 자료에 복사하지 않는다.
-
-지침 갱신: 2026-10-11. API 규격의 날짜는 각 원문 문서에서 확인한다.
+쿠팡 공식 API·SOURCE·원문, 과거 마이그레이션·감사 증거·복구 백업, 기존 비밀 설정을 읽는 경로와 이행 판독기에만 역사적 문자열을 허용한다. 현재 앱 주소의 호환 경로는 제공하지 않는다.
 
 ## 입력창과 Enter 키 공통 규칙
 
@@ -95,3 +34,13 @@
 - 쓰기 폼의 버튼은 `type="button"`과 `bindExplicitSubmit`으로 연결한다.
   기존 입력 검사·처리 중 잠금·실패 시 입력 보존을 유지하며 `submit`에 쓰기 작업을 남기지 않는다.
 - 세부 사용법과 검증 기준은 [`docs/ui-interaction-rules.md`](docs/ui-interaction-rules.md)를 따른다.
+
+## 쿠팡 작업본
+
+판매용 내부 상품·연결·기준값·비교 계층을 다시 도입하지 않는다. [작업본](docs/coupang-api/working-copies.md)과 [V47 보존 전환](docs/coupang-working-copy-migration.md)을 따른다. 임시 저장은 로컬에만 쓰고 쿠팡 반영은 미리보기와 명시적 확인을 거친다. 전송 직전 GET 원문에 사용자 수정 항목만 반영한다. 직접 수정한 값은 최신 외부 값보다 우선하며 계정·revision·외부 식별자·권한·UNKNOWN 보호는 유지한다. V47에서 초기화하지 않으며 감사 자료와 이미지 참조를 자동 삭제하지 않는다.
+
+수정 의도는 schemaVersion 4와 행·필드 식별자를 사용한다. 모호한 과거 목록 수정은 보관하고 재준비를 요구하며 추정하지 않는다. 성공 단계의 의도만 제거하고 새 미저장 입력을 보존한다. 재등록 이력 작성 계층을 다시 도입하지 않으며 `legacy_coupang_*` 이력·이미지 참조는 읽기 전용 감사 자료로 보호한다. 적용된 V48도 변경하지 않는다.
+
+편집 세션은 서버가 확인한 미완료 수정 의도를 함께 보관한다. 전송 완료와 임시 저장의 경합에서도 완료한 의도를 다시 저장하지 않는다. 이전 세션 형식은 입력을 유지한 채 재진입으로 갱신한다. 미디어 URL·설명이 같아도 개별 ID는 구분하고 미수정 원문 행·필드는 재직렬화하지 않는다.
+
+운영·재기동·설정 키·권한·비추적 API 자료 복원은 [운영 기준](docs/operations.md)을 따른다. 쿠팡 원문은 현재 비추적 보관 자료이므로 새 클론에서 복원·해시 확인 없이 다시 생성하지 않는다.

@@ -1,9 +1,0 @@
-package cc.ataglace.molebutter.marketplacelotteon.internal;
-import java.time.Duration;import java.util.concurrent.*;import java.util.concurrent.locks.ReentrantLock;import java.util.function.Supplier;
-/** One account lane shared by brand, metadata, product and promotion requests. */
-public final class LotteonCalls {
- private LotteonCalls(){}private static final ConcurrentMap<String,Lane> LANES=new ConcurrentHashMap<>();private static final class Lane{final ReentrantLock lock=new ReentrantLock(true);long next,blocked;}
- private static Lane lane(String key){try{String hash=java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8)));return LANES.computeIfAbsent(hash,k->new Lane());}catch(Exception e){throw new IllegalStateException(e);}}
- public static <T>T call(String key,Duration spacing,Supplier<T> work){var lane=lane(key);lane.lock.lock();try{if(lane.blocked>System.nanoTime())throw new cc.ataglace.molebutter.marketplace.api.MarketplaceFailure(cc.ataglace.molebutter.marketplace.api.MarketplaceFailure.Kind.RATE_LIMIT,"LOTTEON");long wait=lane.next-System.nanoTime();if(wait>0)try{TimeUnit.NANOSECONDS.sleep(wait);}catch(InterruptedException e){Thread.currentThread().interrupt();throw new cc.ataglace.molebutter.marketplace.api.MarketplaceFailure(cc.ataglace.molebutter.marketplace.api.MarketplaceFailure.Kind.CANCELLED,"LOTTEON");}if(Thread.currentThread().isInterrupted())throw new cc.ataglace.molebutter.marketplace.api.MarketplaceFailure(cc.ataglace.molebutter.marketplace.api.MarketplaceFailure.Kind.CANCELLED,"LOTTEON");try{return work.get();}finally{lane.next=Math.max(lane.next,System.nanoTime()+spacing.toNanos());}}finally{lane.lock.unlock();}}
- public static void block(String key,Duration delay){var lane=lane(key);lane.lock.lock();try{lane.blocked=Math.max(lane.blocked,System.nanoTime()+delay.toNanos());}finally{lane.lock.unlock();}}
-}

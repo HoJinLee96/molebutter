@@ -49,7 +49,7 @@ public final class R2ImageLibrary implements R2Images {
     public void validateDescription(Long actor,String html,String previousHtml){
         access.productActor(actor,true);String value=Objects.requireNonNullElse(html,"");
         if(value.equals(Objects.requireNonNullElse(previousHtml,"")))return;
-        if(value.contains("/api/marketplaces/assets/")||value.contains("/marketplace-images/")||value.contains("blob:"))throw invalid("기존 로컬 설명 이미지를 R2 이미지로 다시 선택해 주세요.");
+        if(value.contains("/api/coupang/assets/")||value.contains("/coupang/images/")||value.contains("blob:"))throw invalid("기존 로컬 설명 이미지를 R2 이미지로 다시 선택해 주세요.");
         Set<String> previous=urls(previousHtml);for(String image:urls(value))if(!previous.contains(image))resolve(actor,image);
     }
     private static Set<String> urls(String html){var result=new HashSet<String>();var matcher=IMAGE.matcher(Objects.requireNonNullElse(html,""));while(matcher.find())result.add((matcher.group(1)==null?matcher.group(2):matcher.group(1)).replace("&amp;","&"));return result;}

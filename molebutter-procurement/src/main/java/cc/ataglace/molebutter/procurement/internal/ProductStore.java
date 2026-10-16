@@ -9,7 +9,6 @@ import java.util.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import cc.ataglace.molebutter.common.api.InputValidationFailure;
 import tools.jackson.databind.ObjectMapper;
 
 @Component

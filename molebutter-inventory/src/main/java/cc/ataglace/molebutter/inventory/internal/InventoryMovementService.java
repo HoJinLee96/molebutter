@@ -1,7 +1,5 @@
 package cc.ataglace.molebutter.inventory.internal;
 import cc.ataglace.molebutter.inventory.api.InventoryDtos.*;
-import cc.ataglace.molebutter.inventory.internal.InventoryQueryService;
-import cc.ataglace.molebutter.inventory.internal.InventorySupport;
 
 import java.util.*;
 import org.springframework.jdbc.core.JdbcTemplate;

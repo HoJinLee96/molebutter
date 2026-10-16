@@ -2,7 +2,6 @@ package cc.ataglace.molebutter.identity.internal;
 
 import cc.ataglace.molebutter.identity.api.IdentityAccounts;
 import cc.ataglace.molebutter.identity.api.UserAccount;
-import cc.ataglace.molebutter.identity.internal.UserRepository;
 import cc.ataglace.molebutter.common.api.ErrorCode;
 import cc.ataglace.molebutter.common.api.BusinessException;
 import org.springframework.stereotype.Service;

@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import cc.ataglace.molebutter.identity.api.UserAccount;
 import cc.ataglace.molebutter.identity.api.UserAuthEventType;
-import cc.ataglace.molebutter.app.internal.ApiResponse;
 import cc.ataglace.molebutter.identity.api.FindEmailRequest;
 import cc.ataglace.molebutter.identity.api.FindEmailResponse;
 import cc.ataglace.molebutter.identity.api.MeResponse;
@@ -32,7 +31,6 @@ import cc.ataglace.molebutter.identity.api.ClientInfo;
 import cc.ataglace.molebutter.identity.api.IdentityAccounts;
 import cc.ataglace.molebutter.identity.api.UserPrincipal;
 import cc.ataglace.molebutter.identity.api.UserAuthAuditService;
-import cc.ataglace.molebutter.app.internal.AuthCookieService;
 import cc.ataglace.molebutter.identity.api.AuthTokenService;
 import cc.ataglace.molebutter.identity.api.AuthTokenService.TokenBundle;
 import cc.ataglace.molebutter.identity.api.UserAuthService;

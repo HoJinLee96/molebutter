@@ -11,8 +11,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
-import cc.ataglace.molebutter.identity.internal.ResendProperties;
-import cc.ataglace.molebutter.identity.internal.ResendEmailSender;
 import cc.ataglace.molebutter.identity.api.EmailSender;
 
 /**

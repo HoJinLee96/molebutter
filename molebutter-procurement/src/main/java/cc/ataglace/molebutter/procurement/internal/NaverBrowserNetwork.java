@@ -1,6 +1,4 @@
 package cc.ataglace.molebutter.procurement.internal;
-import cc.ataglace.molebutter.procurement.internal.NaverSearchPayload;
-import cc.ataglace.molebutter.procurement.internal.NaverPriceSearch;
 
 import java.net.URI;
 import java.util.*;

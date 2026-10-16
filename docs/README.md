@@ -1,13 +1,22 @@
 # 프로젝트 문서
 
-> 문서 유형: 현재 구현 안내. 2026-10-05 로컬 코드와 대조했다. 날짜가 붙은 적용·검증 문단은 당시 기록이며 현재 정책과 구분한다.
+> 문서 유형: 현재 구현 안내. 2026-10-15 쿠팡 전용 판매 범위로 정리했다. 날짜가 붙은 적용·검증 문단은 당시 기록이며 현재 정책과 구분한다.
 
 현재 구현과 다음 연동 준비는 아래 문서를 기준으로 확인한다. 날짜가 붙은 조사 기록은 당시 응답과 가설의 근거이며 최신 업무 정책을 대신하지 않는다.
 
 | 영역 | 현재 기준 |
 |---|---|
-| 판매 마켓 연동 준비와 코드 경계 | [연동 전 기반 정리](market-integration-readiness.md) |
-| 판매 마켓 공식 API 조사 | [마켓 API 목차](market-api/README.md) |
+| 쿠팡 연동과 코드 경계 | [쿠팡 앱과 내부 업무 경계](market-integration-readiness.md) |
+| 쿠팡 공식 API와 판매 업무 | [연동 목차](coupang-api/README.md), [상품 작업본](coupang-api/working-copies.md) |
+| 쿠팡 작업본 V47 보존 전환 | [전환 절차](coupang-working-copy-migration.md), [검증 기록](verification/2026-10-15-coupang-working-copies.md) |
+| 쿠팡 수정 의도·이력 V48 전환 | [전환 절차](coupang-intent-migration.md), [검증 기록](verification/2026-10-15-coupang-intent.md) |
+| 쿠팡 저장·완료 경합 후속 재검토 | [2026-10-16 후속 검증](verification/2026-10-16-coupang-followup.md) |
+| 쿠팡 저장·전송 재검토 | [2026-10-16 검증](verification/2026-10-16-coupang-rereview.md) |
+| 운영·설정·백업·권한 | [운영 기준](operations.md) |
+| 쿠팡 HTTP·복구·주문 | [경로 표](coupang-api/endpoints.md), [구현](coupang-api/coupang-wing.md), [복구](coupang-api/submission-recovery.md), [주문](coupang-api/sales-orders.md) |
+| 역사적 V45·V46 전환 | [V45 초기화](coupang-only-migration.md), [V46 보존](coupang-domain-migration.md) |
+| 입력·이미지·저장소 | [입력 규칙](ui-interaction-rules.md), [정보 도구](product-image-workspace.md), [R2](r2-storage.md) |
+| 정리 계획 이중 검토 | [검토·적용 기록](verification/2026-10-16-coupang-cleanup-review.md) |
 | 실제 보유 재고·매입 | [재고](inventory.md) |
 | 인증·운영 준비 | [인증 준비](authentication-readiness.md) |
 | 근태 | [근태](attendance.md) |

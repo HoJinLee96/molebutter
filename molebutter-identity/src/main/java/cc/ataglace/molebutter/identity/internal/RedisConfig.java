@@ -7,7 +7,6 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
-import cc.ataglace.molebutter.identity.internal.RedisKeyValueStore;
 import cc.ataglace.molebutter.identity.api.KeyValueStore;
 
 @Configuration

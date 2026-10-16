@@ -1,6 +1,5 @@
 package cc.ataglace.molebutter.procurement.internal;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
-import cc.ataglace.molebutter.procurement.internal.ProductStore;
 import java.time.LocalTime;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;

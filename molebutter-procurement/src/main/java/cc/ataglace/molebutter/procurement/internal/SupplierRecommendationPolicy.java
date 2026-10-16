@@ -1,10 +1,8 @@
 package cc.ataglace.molebutter.procurement.internal;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
 import cc.ataglace.molebutter.procurement.api.SupplierDtos.*;
-import cc.ataglace.molebutter.procurement.internal.SupplierStorePolicy;
 
 import java.util.*;
-import cc.ataglace.molebutter.procurement.internal.NaverChannelPolicy;
 
 
 

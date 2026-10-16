@@ -1,10 +1,5 @@
 package cc.ataglace.molebutter.procurement.internal;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
-import cc.ataglace.molebutter.procurement.internal.NaverSearchPayload;
-import cc.ataglace.molebutter.procurement.internal.NaverSearchFailure;
-import cc.ataglace.molebutter.procurement.internal.ProductSearchChrome;
-import cc.ataglace.molebutter.procurement.internal.NaverBrowserNetwork;
-import cc.ataglace.molebutter.procurement.internal.ProductPublicHeaders;
 
 import cc.ataglace.molebutter.common.api.InputValidationFailure;
 import java.net.URI;

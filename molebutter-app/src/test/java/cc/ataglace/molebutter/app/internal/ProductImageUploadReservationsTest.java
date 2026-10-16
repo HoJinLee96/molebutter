@@ -106,7 +106,7 @@ class ProductImageUploadReservationsTest {
         reservations.release(PRODUCT, FIRST, GENERATION);
         var content = ArgumentCaptor.forClass(byte[].class);
         verify(storage).replace(eq(StorageArea.PRIVATE), eq(KEY), eq("own-tag"), content.capture(),
-                eq("application/json"), eq(Map.of("request-id", FIRST, "state", "released", "generation", GENERATION)));
+                eq("application/json"), eq(Map.of("request-id",FIRST,"state","released","generation",GENERATION)));
         assertThat(new String(content.getValue(), StandardCharsets.UTF_8))
                 .contains("\"state\":\"released\"").contains("\"generation\":\"" + GENERATION + "\"");
         verify(storage, never()).delete(any(), any());
@@ -239,7 +239,7 @@ class ProductImageUploadReservationsTest {
     @Test void legacyClaimWithoutGenerationCannotBeOwnedOrAutomaticallyReleased() {
         when(storage.head(StorageArea.PRIVATE, KEY)).thenReturn(Optional.of(
                 new ObjectMetadata(StorageArea.PRIVATE, KEY, 1, "application/json", "legacy-tag", null,
-                        Map.of("request-id", FIRST, "state", "held"))));
+                        Map.of("request-id",FIRST,"state","held"))));
         reservations.release(PRODUCT, FIRST, GENERATION);
         assertThat(reservations.heldBy(PRODUCT, FIRST, GENERATION)).isFalse();
         verify(storage, never()).replace(any(), any(), any(), any(), any(), any());
@@ -306,7 +306,7 @@ class ProductImageUploadReservationsTest {
 
     private static ObjectMetadata claim(String owner, String state, String eTag) {
         return new ObjectMetadata(StorageArea.PRIVATE, KEY, 1, "application/json", eTag, null,
-                Map.of("request-id", owner, "state", state, "generation", GENERATION));
+                Map.of("request-id",owner,"state",state,"generation",GENERATION));
     }
 
     private static boolean validClaimMetadata(Map<String, String> metadata, String owner, String state) {

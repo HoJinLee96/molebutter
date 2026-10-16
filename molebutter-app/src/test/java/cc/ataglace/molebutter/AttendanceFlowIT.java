@@ -135,10 +135,8 @@ class AttendanceFlowIT {
         row = action(b, "break-start", row, 200);
         at("2026-02-11T09:00:00");
         post(b, "/api/attendance/clock-in", Map.of(), 409);
-        post(b, "/api/attendance/clock-in", Map.of("previousRecordId", row.path("id").asText(),
-                "previousRevision", 0, "confirmMissing", true), 409);
-        post(b, "/api/attendance/clock-in", Map.of("previousRecordId", row.path("id").asText(),
-                "previousRevision", row.path("revision").asLong(), "confirmMissing", true), 200);
+        post(b, "/api/attendance/clock-in", Map.of("previousRecordId",row.path("id").asText(),"previousRevision",0,"confirmMissing",true), 409);
+        post(b, "/api/attendance/clock-in", Map.of("previousRecordId",row.path("id").asText(),"previousRevision",row.path("revision").asLong(),"confirmMissing",true), 200);
         JsonNode missing = data(b.get("/api/attendance/" + row.path("id").asText()));
         assertThat(missing.path("record").path("status").asText()).isEqualTo("MISSING");
         assertThat(missing.path("record").path("clockOut").isNull()).isTrue();
@@ -146,9 +144,9 @@ class AttendanceFlowIT {
         assertThat(missing.path("workedSeconds").isNull()).isTrue();
         action(b, "clock-out", missing, 409);
         Map<String, Object> request = correction(missing, "2026-02-10", "2026-02-10T09:00:00", "2026-02-10T18:00:00");
-        request.put("breaks", List.of(Map.of("startedAt", "2026-02-10T12:00:00", "endedAt", "2026-02-10T12:30:00")));
+        request.put("breaks", List.of(Map.of("startedAt","2026-02-10T12:00:00","endedAt","2026-02-10T12:30:00")));
         JsonNode c = post(b, "/api/attendance/corrections", request, 200);
-        post(admin(), "/api/attendance-manage/corrections/" + c.path("id").asText() + "/approve", Map.of("revision", 0), 200);
+        post(admin(), "/api/attendance-manage/corrections/" + c.path("id").asText() + "/approve", Map.of("revision",0), 200);
         JsonNode fixed = data(b.get("/api/attendance/" + row.path("id").asText()));
         assertThat(fixed.path("workedSeconds").asLong()).isEqualTo(8 * 3600 + 1800);
     }
@@ -160,23 +158,23 @@ class AttendanceFlowIT {
         var request = correction(row, "2026-02-10", "2026-02-10T08:00:00", "2026-02-10T17:00:00");
         JsonNode c = post(b, "/api/attendance/corrections", request, 200);
         post(b, "/api/attendance/corrections", request, 409);
-        post(b, "/api/attendance/corrections/" + c.path("id").asText() + "/cancel", Map.of("revision", 0), 200);
+        post(b, "/api/attendance/corrections/" + c.path("id").asText() + "/cancel", Map.of("revision",0), 200);
         c = post(b, "/api/attendance/corrections", request, 200);
         String review = "/api/attendance-manage/corrections/" + c.path("id").asText();
-        post(admin, review + "/reject", Map.of("revision", 0, "comment", " "), 400);
-        post(admin, review + "/reject", Map.of("revision", 0, "comment", "시간을 확인해 주세요"), 200);
+        post(admin, review + "/reject", Map.of("revision",0,"comment"," "), 400);
+        post(admin, review + "/reject", Map.of("revision",0,"comment","시간을 확인해 주세요"), 200);
         c = post(b, "/api/attendance/corrections", request, 200);
         review = "/api/attendance-manage/corrections/" + c.path("id").asText();
-        JsonNode approved = post(admin, review + "/approve", Map.of("revision", 0), 200);
+        JsonNode approved = post(admin, review + "/approve", Map.of("revision",0), 200);
         assertThat(approved.path("before").path("clockIn").asText()).contains("09:00");
         assertThat(approved.path("after").path("clockIn").asText()).contains("08:00");
         assertThat(approved.path("reviewedBy").isString()).isTrue();
-        post(admin, review + "/approve", Map.of("revision", 1), 409);
-        post(b, "/api/attendance/corrections/" + c.path("id").asText() + "/cancel", Map.of("revision", 1), 409);
+        post(admin, review + "/approve", Map.of("revision",1), 409);
+        post(b, "/api/attendance/corrections/" + c.path("id").asText() + "/cancel", Map.of("revision",1), 409);
         row = data(b.get("/api/attendance/" + row.path("id").asText()));
         JsonNode second = post(b, "/api/attendance/corrections",
                 correction(row, "2026-02-10", "2026-02-10T08:30:00", "2026-02-10T17:00:00"), 200);
-        post(admin, "/api/attendance-manage/corrections/" + second.path("id").asText() + "/approve", Map.of("revision", 0), 200);
+        post(admin, "/api/attendance-manage/corrections/" + second.path("id").asText() + "/approve", Map.of("revision",0), 200);
         JsonNode old = data(b.get("/api/attendance/corrections/" + c.path("id").asText()));
         assertThat(old.path("after").path("clockIn").asText()).contains("08:00");
         assertThat(data(b.get("/api/attendance/corrections?month=2026-02")).path("totalElements").asLong()).isEqualTo(4);
@@ -189,7 +187,7 @@ class AttendanceFlowIT {
         JsonNode c = post(admin, "/api/attendance/corrections",
                 correction(null, "2026-01-30", "2026-01-30T09:00:00", "2026-01-30T18:00:00"), 200);
         assertThat(c.path("before").isNull()).isTrue();
-        c = post(admin, "/api/attendance-manage/corrections/" + c.path("id").asText() + "/approve", Map.of("revision", 0), 200);
+        c = post(admin, "/api/attendance-manage/corrections/" + c.path("id").asText() + "/approve", Map.of("revision",0), 200);
         assertThat(c.path("selfReviewed").asBoolean()).isTrue();
         assertThat(data(admin.get("/api/attendance?month=2026-01")).path("totalElements").asLong()).isEqualTo(1);
         assertStatus(admin.get("/attendance-manage"), 200);
@@ -202,13 +200,13 @@ class AttendanceFlowIT {
         JsonNode c = post(b, "/api/attendance/corrections",
                 correction(row, "2026-02-10", "2026-02-10T08:00:00", "2026-02-10T17:00:00"), 200);
         jdbc.update("UPDATE attendance SET revision=revision+1 WHERE id=?", row.path("id").asText());
-        post(admin, "/api/attendance-manage/corrections/" + c.path("id").asText() + "/approve", Map.of("revision", 0), 409);
+        post(admin, "/api/attendance-manage/corrections/" + c.path("id").asText() + "/approve", Map.of("revision",0), 409);
         assertThat(data(b.get("/api/attendance/corrections/" + c.path("id").asText())).path("status").asText()).isEqualTo("PENDING");
         Browser other = staff(UserRole.VIEWER);
         JsonNode absent = post(other, "/api/attendance/corrections",
                 correction(null, "2026-02-10", "2026-02-10T08:00:00", "2026-02-10T17:00:00"), 200);
         post(other, "/api/attendance/clock-in", Map.of(), 200);
-        post(admin, "/api/attendance-manage/corrections/" + absent.path("id").asText() + "/approve", Map.of("revision", 0), 409);
+        post(admin, "/api/attendance-manage/corrections/" + absent.path("id").asText() + "/approve", Map.of("revision",0), 409);
     }
 
     @Test
@@ -218,10 +216,10 @@ class AttendanceFlowIT {
         post(b, "/api/attendance/corrections", correction(row, "2026-02-10", "2026-02-10T09:00:00", "2026-02-11T10:00:00"), 400);
         post(b, "/api/attendance/corrections", correction(row, "2026-02-10", "2026-02-10T09:00:00", "2026-02-10T08:00:00"), 400);
         var request = correction(row, "2026-02-10", "2026-02-10T09:00:00", "2026-02-10T18:00:00");
-        request.put("breaks", List.of(Map.of("startedAt", "2026-02-10T08:00:00", "endedAt", "2026-02-10T10:00:00")));
+        request.put("breaks", List.of(Map.of("startedAt","2026-02-10T08:00:00","endedAt","2026-02-10T10:00:00")));
         post(b, "/api/attendance/corrections", request, 400);
-        request.put("breaks", List.of(Map.of("startedAt", "2026-02-10T12:00:00", "endedAt", "2026-02-10T13:00:00"),
-                Map.of("startedAt", "2026-02-10T12:30:00", "endedAt", "2026-02-10T14:00:00")));
+        request.put("breaks", List.of(Map.of("startedAt","2026-02-10T12:00:00","endedAt","2026-02-10T13:00:00"),
+                Map.of("startedAt","2026-02-10T12:30:00","endedAt","2026-02-10T14:00:00")));
         post(b, "/api/attendance/corrections", request, 400);
         at("2026-02-11T09:00:00");
         JsonNode next = post(b, "/api/attendance/clock-in", Map.of(), 200);
@@ -274,9 +272,9 @@ class AttendanceFlowIT {
         assertStatus(other.get("/api/attendance/" + row.path("id").asText()), 404);
         action(other, "clock-out", row, 404);
         assertStatus(other.get("/api/attendance/corrections/" + c.path("id").asText()), 404);
-        post(other, "/api/attendance/corrections/" + c.path("id").asText() + "/cancel", Map.of("revision", 0), 404);
+        post(other, "/api/attendance/corrections/" + c.path("id").asText() + "/cancel", Map.of("revision",0), 404);
         assertStatus(other.get("/api/attendance-manage/corrections"), 403);
-        post(other, "/api/attendance-manage/corrections/" + c.path("id").asText() + "/approve", Map.of("revision", 0), 403);
+        post(other, "/api/attendance-manage/corrections/" + c.path("id").asText() + "/approve", Map.of("revision",0), 403);
         assertStatus(other.send("POST", "/api/attendance/clock-in", Map.of(), null), 403);
         assertStatus(new Browser().get("/api/attendance/current"), 401);
         Long ownerId = Long.valueOf(data(owner.get("/api/auth/me")).path("id").asText());
@@ -344,7 +342,7 @@ class AttendanceFlowIT {
         String url = "/api/attendance-manage/summary?month=2026-02&userId=" + userId;
         JsonNode c = post(b, "/api/attendance/corrections", correction(row, "2026-02-10", "2026-02-10T08:00:00", "2026-02-10T18:00:00"), 200);
         assertThat(data(admin.get(url)).path("items").get(0).path("workedSeconds").asLong()).isEqualTo(32400);
-        post(admin, "/api/attendance-manage/corrections/" + c.path("id").asText() + "/approve", Map.of("revision", 0), 200);
+        post(admin, "/api/attendance-manage/corrections/" + c.path("id").asText() + "/approve", Map.of("revision",0), 200);
         assertThat(data(admin.get(url)).path("items").get(0).path("workedSeconds").asLong()).isEqualTo(36000);
     }
 
@@ -471,7 +469,7 @@ class AttendanceFlowIT {
         return map;
     }
     private JsonNode action(Browser b, String action, JsonNode row, int expected) throws Exception {
-        return post(b, "/api/attendance/" + action, Map.of("recordId", row.path("id").asText(), "revision", row.path("revision").asLong()), expected);
+        return post(b, "/api/attendance/" + action, Map.of("recordId",row.path("id").asText(),"revision",row.path("revision").asLong()), expected);
     }
     private JsonNode post(Browser b, String path, Object body, int expected) throws Exception {
         var response = b.post(path, body); assertStatus(response, expected);
@@ -486,10 +484,10 @@ class AttendanceFlowIT {
     }
     private Browser staff(UserRole role) throws Exception {
         User user = newUser(role); Browser b = new Browser();
-        post(b, "/api/auth/signin", Map.of("email", user.getEmail(), "password", "Attendance123!"), 200); return b;
+        post(b, "/api/auth/signin", Map.of("email",user.getEmail(),"password","Attendance123!"), 200); return b;
     }
     private Browser admin() throws Exception {
-        Browser b = new Browser(); post(b, "/api/auth/signin", Map.of("email", "admin@example.com", "password", "IntegrationAdmin123!"), 200); return b;
+        Browser b = new Browser(); post(b, "/api/auth/signin", Map.of("email","admin@example.com","password","IntegrationAdmin123!"), 200); return b;
     }
     private List<Integer> concurrent(int count, IntSupplier action) throws Exception {
         try (var executor = Executors.newFixedThreadPool(count)) {

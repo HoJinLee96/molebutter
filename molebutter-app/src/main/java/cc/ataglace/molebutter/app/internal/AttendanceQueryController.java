@@ -8,7 +8,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import cc.ataglace.molebutter.attendance.api.AttendanceStatus;
-import cc.ataglace.molebutter.app.internal.ApiResponse;
 import cc.ataglace.molebutter.common.api.PageResponse;
 
 import cc.ataglace.molebutter.identity.api.UserPrincipal;

@@ -1,11 +1,8 @@
 package cc.ataglace.molebutter.procurement.internal;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
-import cc.ataglace.molebutter.procurement.internal.SupplierBranch;
-import cc.ataglace.molebutter.procurement.internal.SupplierStorePolicy;
 
 import java.util.*;
 
-import cc.ataglace.molebutter.procurement.internal.NaverChannelPolicy;
 
 /** A per-product, per-observation proof. Never a shared inventory cache. */
 public final class SupplierGroupStockPolicy {

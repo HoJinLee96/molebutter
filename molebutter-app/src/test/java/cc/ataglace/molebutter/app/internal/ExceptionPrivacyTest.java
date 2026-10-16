@@ -70,6 +70,15 @@ class ExceptionPrivacyTest {
             assertThat(output.list).isNotEmpty().allSatisfy(e->{assertThat(e.getFormattedMessage()).doesNotContain(secret);assertThat(e.getThrowableProxy()).isNull();});
         } finally { logger.detachAppender(output);output.stop();logger.setLevel(originalLevel); }
     }
+    @Test void unsupportedRequestMediaDoesNotExposeItsMessageOrNotifyAnOutage() {
+        var notifications=mock(FailureNotificationService.class);
+        var handler=new GlobalExceptionHandler(notifications);
+        var response=handler.handleUnsupportedMediaType(
+                new org.springframework.web.HttpMediaTypeNotSupportedException("SYNTHETIC_PRIVATE_INPUT"));
+        assertThat(response.getStatusCode().value()).isEqualTo(415);
+        assertThat(response.getBody().getMessage()).doesNotContain("SYNTHETIC_PRIVATE_INPUT");
+        org.mockito.Mockito.verifyNoInteractions(notifications);
+    }
     @Test void authoredInputAndStateExplanationsKeepTheirBusinessStatus() {
         var handler=new GlobalExceptionHandler(mock(FailureNotificationService.class));
         var input=handler.handleInputValidationFailure(new InputValidationFailure("수량을 확인해 주세요."));

@@ -24,9 +24,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 import cc.ataglace.molebutter.identity.api.AuthProperties;
 import cc.ataglace.molebutter.identity.api.MenuSection;
-import cc.ataglace.molebutter.app.internal.ApiResponse;
 import cc.ataglace.molebutter.common.api.ErrorCode;
-import cc.ataglace.molebutter.app.internal.JwtAuthenticationFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -88,7 +86,7 @@ public class SecurityConfig {
                     auth.requestMatchers(PUBLIC_PAGES).permitAll();
                     auth.requestMatchers(STATIC_RESOURCES).permitAll();
                     auth.requestMatchers(PUBLIC_AUTH_APIS).permitAll();
-                    auth.requestMatchers(HttpMethod.GET, "/marketplace-images/{token}").permitAll();
+                    auth.requestMatchers(HttpMethod.GET, "/coupang/images/{token}").permitAll();
                     // 섹션별 인가: MenuSection 선언(pagePatterns/apiPatterns)에서 자동 생성.
                     // JwtAuthenticationFilter가 role → PERM_<섹션> 권한을 부여하는 것과 짝을 이룬다.
                     for (MenuSection section : MenuSection.values()) {

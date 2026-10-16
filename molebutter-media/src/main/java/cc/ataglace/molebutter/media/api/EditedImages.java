@@ -5,7 +5,7 @@ import java.util.regex.Pattern;
 /** Private asset references stay in drafts; only verified server edits become public wire URLs. */
 public final class EditedImages {
     private EditedImages() {}
-    public static final Pattern ASSET=Pattern.compile("/api/marketplaces/assets/([0-9a-fA-F-]{36})(?![0-9a-fA-F-])");
+    public static final Pattern ASSET=Pattern.compile("/api/coupang/assets/([0-9a-fA-F-]{36})(?![0-9a-fA-F-])");
     public static String description(Long actor,String html,String previous,R2Images r2,ImageAssets assets){
         var matcher=ASSET.matcher(html);var out=new StringBuffer();var preserved=new StringBuilder(previous==null?"":previous);
         while(matcher.find()){

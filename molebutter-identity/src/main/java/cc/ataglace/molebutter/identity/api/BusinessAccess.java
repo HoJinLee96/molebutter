@@ -2,7 +2,6 @@ package cc.ataglace.molebutter.identity.api;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-import cc.ataglace.molebutter.identity.api.UserRole;
 import cc.ataglace.molebutter.common.api.ErrorCode;
 import cc.ataglace.molebutter.common.api.BusinessException;
 import lombok.RequiredArgsConstructor;

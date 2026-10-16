@@ -1,5 +1,4 @@
 package cc.ataglace.molebutter.procurement.internal;
-import cc.ataglace.molebutter.procurement.internal.SupplierMetadataParser;
 
 import java.util.*;
 import tools.jackson.databind.JsonNode;

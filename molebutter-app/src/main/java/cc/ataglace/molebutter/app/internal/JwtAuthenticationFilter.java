@@ -1,6 +1,5 @@
 package cc.ataglace.molebutter.app.internal;
 import cc.ataglace.molebutter.identity.api.UserPrincipal;
-import cc.ataglace.molebutter.app.internal.RequestAuthPolicyResolver;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -18,7 +17,6 @@ import cc.ataglace.molebutter.identity.api.MenuSection;
 import cc.ataglace.molebutter.identity.api.UserRole;
 import cc.ataglace.molebutter.identity.api.UserAccount;
 import cc.ataglace.molebutter.identity.api.IdentityAccounts;
-import cc.ataglace.molebutter.app.internal.AuthCookieService;
 import cc.ataglace.molebutter.identity.api.JwtService;
 import cc.ataglace.molebutter.identity.api.AuthTokenService;
 import io.jsonwebtoken.Claims;

@@ -6,9 +6,6 @@ import java.util.*;
 import org.springframework.stereotype.Service;
 import lombok.RequiredArgsConstructor;
 
-import cc.ataglace.molebutter.procurement.internal.NaverPriceSearch;
-import cc.ataglace.molebutter.procurement.internal.NaverChannelPolicy;
-import cc.ataglace.molebutter.procurement.internal.ProductSourceMetadata;
 
 /** 사용자 선택용 후보만 분류한다. 최신화 작업의 원본 검색 결과와 저장된 스냅샷은 유지한다. */
 @Service

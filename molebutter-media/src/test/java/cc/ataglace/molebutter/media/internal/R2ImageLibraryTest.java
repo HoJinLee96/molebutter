@@ -49,7 +49,7 @@ class R2ImageLibraryTest {
     }
     @Test void unchangedCdnDescriptionsSurviveButLocalAndNewForeignImagesDoNot(){
         String old="<img src='https://old-market.test/image.jpg'>";library.validateDescription(1L,old,old);library.validateDescription(1L,old+"<p>텍스트 변경</p>",old);verify(storage,never()).get(any(),any());
-        assertThatThrownBy(()->library.validateDescription(1L,"<img src='/api/marketplaces/assets/id'>","")).hasMessageContaining("다시 선택");
+        assertThatThrownBy(()->library.validateDescription(1L,"<img src='/api/coupang/assets/id'>","")).hasMessageContaining("다시 선택");
         assertThatThrownBy(()->library.validateDescription(1L,"<img src='https://foreign.test/image.jpg'>",old)).isInstanceOf(InputValidationFailure.class);
     }
 }
