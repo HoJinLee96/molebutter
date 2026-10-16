@@ -6,10 +6,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 import cc.ataglace.molebutter.attendance.api.CorrectionStatus;
-import cc.ataglace.molebutter.app.internal.ApiResponse;
 import cc.ataglace.molebutter.common.api.PageResponse;
 
-import cc.ataglace.molebutter.app.internal.OperationAudit;
 import cc.ataglace.molebutter.identity.api.UserPrincipal;
 import cc.ataglace.molebutter.attendance.api.AttendanceService;
 import lombok.RequiredArgsConstructor;

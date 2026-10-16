@@ -1,5 +1,4 @@
 package cc.ataglace.molebutter.identity.internal;
-import cc.ataglace.molebutter.identity.internal.PasswordPolicyValidator;
 
 import java.time.LocalDateTime;
 
@@ -7,10 +6,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import cc.ataglace.molebutter.identity.internal.User;
 import cc.ataglace.molebutter.common.api.BusinessException;
 import cc.ataglace.molebutter.common.api.ErrorCode;
-import cc.ataglace.molebutter.identity.internal.UserRepository;
 import lombok.RequiredArgsConstructor;
 
 /** 본인 비밀번호 변경. 인증 버전을 올려 변경 이전 access/refresh 토큰을 모두 무효화한다. */

@@ -9,12 +9,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import cc.ataglace.molebutter.identity.internal.User;
 import cc.ataglace.molebutter.identity.api.UserRole;
 import cc.ataglace.molebutter.identity.api.UserStatus;
-import cc.ataglace.molebutter.identity.internal.UserRepository;
-import cc.ataglace.molebutter.identity.internal.PasswordPolicyValidator;
-import cc.ataglace.molebutter.identity.internal.EmailNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

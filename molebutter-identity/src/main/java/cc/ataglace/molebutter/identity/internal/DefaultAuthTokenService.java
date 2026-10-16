@@ -1,5 +1,4 @@
 package cc.ataglace.molebutter.identity.internal;
-import cc.ataglace.molebutter.identity.internal.DefaultJwtService;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -9,7 +8,6 @@ import org.springframework.stereotype.Service;
 import cc.ataglace.molebutter.identity.api.AuthProperties;
 import cc.ataglace.molebutter.common.api.BusinessException;
 import cc.ataglace.molebutter.common.api.ErrorCode;
-import cc.ataglace.molebutter.identity.internal.UserRepository;
 import cc.ataglace.molebutter.identity.api.KeyValueStore;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;

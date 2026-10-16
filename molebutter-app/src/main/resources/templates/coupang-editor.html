@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('쿠팡 상품 편집')}"></head>
+<body class="app-layout">
+<link rel="stylesheet" th:href="@{/css/r2-image-picker.css(v=20261016-cleanup)}"><link rel="stylesheet" th:href="@{/css/image-crop-editor.css(v=20261016-cleanup)}">
+<link rel="stylesheet" th:href="@{/css/coupang-product-editor.css(v=20261016-cleanup)}"><link rel="stylesheet" th:href="@{/css/coupang-workspace.css(v=20261016-cleanup)}">
+<header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
+<main id="main-content" tabindex="-1" class="page coupang-editor coupang-product-form">
+<div class="coupang-editor-heading"><div><p id="editor-mode" class="product-meta"></p><h1 id="editor-title">쿠팡 상품 등록</h1></div><div class="coupang-heading-actions"><a class="btn" href="/coupang" data-editor-exit>목록</a></div></div>
+<nav class="editor-section-nav" aria-label="상품 입력 구역">
+<a href="#editor-basic">상품 정보</a><a href="#editor-option-table-section">옵션 목록</a><a href="#editor-media">이미지</a><a href="#editor-description">상세설명</a><a href="#editor-settings">상품주요정보</a><a href="#editor-documents">구비서류</a><a href="#editor-search-tags">검색어</a><a href="#editor-search-filters">검색필터</a><a href="#editor-notices">상품고시</a><a href="#editor-delivery">배송</a><a href="#editor-returns">반품·교환</a>
+</nav>
+<p id="editor-loading" role="status" hidden>상품과 현재 판매 정보 조회 중…</p>
+<p id="editor-load-error" class="form-error" role="alert" hidden></p><button id="editor-retry" class="btn" type="button" hidden>다시 조회</button>
+<div id="editor-recovery" hidden><button id="editor-recovery-download" type="button" class="btn">보관 입력 내려받기</button><button id="editor-reprepare" type="button" class="btn">최신 값으로 다시 준비</button></div>
+<form id="coupang-editor-form" novalidate hidden>
+<section id="editor-basic" class="panel editor-section coupang-form-section"><h2>상품 정보</h2><div id="editor-basic-fields"></div><div class="editor-category-controls"><button id="editor-category-load" type="button" class="btn">카테고리 규격 조회</button><span id="editor-category-status" role="status"></span></div></section>
+<section id="editor-option-table-section" class="panel editor-section coupang-form-section"><div class="coupang-subheading"><h2>옵션 목록</h2><button id="editor-option-add" type="button" class="btn">옵션 추가</button></div><div id="editor-option-list"></div></section>
+<div class="coupang-option-workspace"><div id="editor-option-tabs" class="coupang-option-tabs" role="tablist" aria-label="옵션별 정보"></div><div id="editor-option-panel" role="tabpanel">
+<section id="editor-media" class="panel editor-section coupang-form-section"><h2>대표 이미지·추가 이미지</h2><div id="editor-media-fields"></div></section>
+<section id="editor-description" class="panel editor-section coupang-form-section"><h2>상세설명</h2><div id="editor-description-fields"></div></section>
+</div></div>
+<section id="editor-settings" class="panel editor-section coupang-form-section"><h2>상품주요정보</h2><div id="editor-settings-fields"></div></section>
+<section id="editor-documents" class="panel editor-section coupang-form-section"><h2>구비서류</h2><div id="editor-document-fields"></div></section>
+<section id="editor-search-tags" class="panel editor-section coupang-form-section"><h2>검색어</h2><div id="editor-search-tags-fields"></div></section>
+<section id="editor-search-filters" class="panel editor-section coupang-form-section"><h2>검색필터</h2><div id="editor-search-filter-fields"></div></section>
+<section id="editor-notices" class="panel editor-section coupang-form-section"><h2>상품정보제공고시</h2><div id="editor-notice-fields"></div></section>
+<section id="editor-delivery" class="panel editor-section coupang-form-section"><h2>배송</h2><div id="editor-delivery-fields"></div></section>
+<section id="editor-returns" class="panel editor-section coupang-form-section"><h2>반품·교환</h2><div id="editor-return-fields"></div></section>
+<div id="editor-validation" role="status" tabindex="-1" hidden></div>
+<div class="editor-actions"><button type="button" class="btn" data-editor-exit>취소</button><button type="button" class="btn" id="editor-save-working-copy" hidden>임시 저장</button><button type="button" class="btn primary" id="editor-validate">입력 검증</button><button type="button" class="btn primary" id="coupang-save">쿠팡에 반영</button></div>
+</form><p id="editor-save-error" class="form-error" role="alert" hidden></p><p id="coupang-submission-error" role="alert" class="form-error" hidden></p>
+<section id="coupang-submissions" class="panel editor-section" hidden><div class="coupang-subheading"><h2>쿠팡 전송 기록</h2><button type="button" class="btn small" id="coupang-submission-refresh">새로고침</button></div><div id="coupang-submission-list" aria-live="polite"></div><div class="pagination"><button type="button" class="btn small" id="coupang-submission-previous">이전</button><span id="coupang-submission-page"></span><button type="button" class="btn small" id="coupang-submission-next">다음</button></div></section>
+<dialog id="coupang-submission-dialog" class="coupang-submission-dialog" aria-labelledby="coupang-submission-title"><div class="coupang-subheading"><h2 id="coupang-submission-title">쿠팡 전송 확인</h2><button type="button" class="btn" id="coupang-submission-dismiss">닫기</button></div><p id="coupang-submission-dialog-error" role="alert" class="form-error" hidden></p><div id="coupang-submission-preview"></div><div class="coupang-submission-dialog-actions"><button type="button" class="btn primary" id="coupang-submission-confirm">확인 후 전송</button></div></dialog>
+</main>
+<dialog id="editor-address-dialog" aria-labelledby="editor-address-title" class="coupang-address-dialog"><div class="toolbar"><h2 id="editor-address-title">판매자 주소록</h2><button type="button" class="btn" data-address-close>닫기</button></div><div id="editor-address-list"></div><div class="toolbar"><button type="button" class="btn" id="editor-address-prev" disabled>이전</button><span id="editor-address-page"></span><button type="button" class="btn" id="editor-address-next" disabled>다음</button><button type="button" class="btn" id="editor-address-retry">다시 조회</button></div></dialog>
+<script defer th:src="@{/js/coupang-state.js(v=20261016-cleanup)}"></script><script defer th:src="@{/js/api.js}"></script><script defer th:src="@{/js/r2-image-picker.js(v=20261016-cleanup)}"></script><script defer th:src="@{/js/coupang-requests.js(v=20261016-cleanup)}"></script><script defer th:src="@{/js/coupang-product-form.js(v=20261016-cleanup)}"></script><script defer th:src="@{/js/coupang-editor-model.js(v=20261016-cleanup)}"></script><script defer th:src="@{/js/coupang-brand-picker.js(v=20261016-cleanup)}"></script><script defer th:src="@{/js/coupang-submissions.js(v=20261016-cleanup)}"></script><script defer th:src="@{/js/coupang-working-copy-model.js(v=20261016-cleanup)}"></script><script defer th:src="@{/js/image-crop-editor.js(v=20261016-cleanup)}"></script><script defer th:src="@{/js/coupang-category-picker.js(v=20261016-cleanup)}"></script><script defer th:src="@{/js/coupang-editor.js(v=20261016-cleanup)}"></script>
+</body></html>

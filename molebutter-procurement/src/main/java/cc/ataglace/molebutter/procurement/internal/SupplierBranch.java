@@ -3,7 +3,6 @@ import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
 
 import java.util.*;
 
-import cc.ataglace.molebutter.procurement.internal.SupplierBranchText;
 
 public final class SupplierBranch {
     private SupplierBranch(){}

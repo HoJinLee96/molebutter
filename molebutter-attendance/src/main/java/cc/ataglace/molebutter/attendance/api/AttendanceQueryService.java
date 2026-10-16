@@ -5,7 +5,6 @@ import java.nio.file.*;
 import java.time.*;
 import java.util.*;
 import org.springframework.transaction.annotation.*;
-import cc.ataglace.molebutter.attendance.api.AttendanceStatus;
 import cc.ataglace.molebutter.common.api.PageResponse;
 
 

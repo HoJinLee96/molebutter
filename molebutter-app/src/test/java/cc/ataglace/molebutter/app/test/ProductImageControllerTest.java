@@ -43,11 +43,8 @@ class ProductImageControllerTest {
         when(uploads.get(42L, id)).thenReturn(job);
         http.perform(post("/api/product-images/products/upload").contentType("application/json")
                 .content("""
-                    {"requestId":"801fed42-3ad7-4db4-bd9c-362e6312c009","productCode":"HIHO6F861W2","brandCode":"HAZZYS",
-                     "uploadProductCode":"HIHO861W2","actorId":999,
-                     "images":[{"generatedImageId":"11111111-1111-1111-1111-111111111111"},
-                               {"imageIndex":2,"sourceImageUrl":"https://nimg.lfmall.co.kr/a.jpg"}]}
-                    """))
+{"requestId": "801fed42-3ad7-4db4-bd9c-362e6312c009", "productCode": "HIHO6F861W2", "brandCode": "HAZZYS", "uploadProductCode": "HIHO861W2", "actorId": 999, "images": [{"generatedImageId": "11111111-1111-1111-1111-111111111111"}, {"imageIndex": 2, "sourceImageUrl": "https://nimg.lfmall.co.kr/a.jpg"}]}
+"""))
                 .andExpect(status().isAccepted()).andExpect(jsonPath("$.data.id").value(id))
                 .andExpect(jsonPath("$.data.result.uploadProductCode").value("HIHO861W2"));
         var request = ArgumentCaptor.forClass(ProductImageUploadRequest.class);
@@ -67,10 +64,8 @@ class ProductImageControllerTest {
                 Instant.now(), null, null, null));
         http.perform(post("/api/product-images/products/download").contentType("application/json")
                 .content("""
-                    {"productCode":"DCBA870W3","brandCode":"DAKS","actorId":999,"downloadProductCode":" wbba162w3 ",
-                     "images":[{"imageIndex":2},{"generatedImageId":"generated-1"},{"imageIndex":0}],
-                     "includeNoticeImage":true,"includeSizeImage":false}
-                    """))
+{"productCode": "DCBA870W3", "brandCode": "DAKS", "actorId": 999, "downloadProductCode": " wbba162w3 ", "images": [{"imageIndex": 2}, {"generatedImageId": "generated-1"}, {"imageIndex": 0}], "includeNoticeImage": true, "includeSizeImage": false}
+"""))
                 .andExpect(status().isAccepted()).andExpect(jsonPath("$.data.id").value("job-1"));
         var input = ArgumentCaptor.forClass(DownloadRequestDto.class);
         verify(workspace).startDownload(eq(42L), input.capture());
@@ -86,8 +81,8 @@ class ProductImageControllerTest {
                 Instant.now(), null, null, null));
         http.perform(post("/api/product-images/products/download").contentType("application/json")
                 .content("""
-                    {"productCode":"BAG1","brandCode":"DAKS","imageIndexes":[0],"includeNoticeImage":null}
-                    """))
+{"productCode": "BAG1", "brandCode": "DAKS", "imageIndexes": [0], "includeNoticeImage": null}
+"""))
                 .andExpect(status().isAccepted());
         var input=ArgumentCaptor.forClass(DownloadRequestDto.class);
         verify(workspace).startDownload(eq(42L),input.capture());
@@ -116,8 +111,8 @@ class ProductImageControllerTest {
         when(workspace.generateNotice(eq(42L), eq("DCBA870W3"), any())).thenReturn(
                 new GeneratedNoticeImageDto("notice-1", "상품정보", "data:image/png;base64,cG5n"));
         String input = """
-            {"brandCode":"DAKS","actorId":999,"fields":{"치수":"첫 줄\\n둘째 줄","상품코드":"0"}}
-            """;
+{"brandCode": "DAKS", "actorId": 999, "fields": {"치수": "첫 줄\\n둘째 줄", "상품코드": "0"}}
+""";
         http.perform(post("/api/product-images/products/DCBA870W3/notice-image/preview")
                 .contentType("application/json").content(input))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.cards[0].fullWidth").value(true));
@@ -127,7 +122,7 @@ class ProductImageControllerTest {
         var request = ArgumentCaptor.forClass(NoticeImageRequestDto.class);
         verify(workspace).generateNotice(eq(42L), eq("DCBA870W3"), request.capture());
         assertThat(request.getValue().fields()).containsExactlyInAnyOrderEntriesOf(
-                Map.of("치수", "첫 줄\n둘째 줄", "상품코드", "0"));
+                Map.of("치수","첫 줄\n둘째 줄","상품코드","0"));
         verify(access, times(2)).productActor(42L, false);
         verify(workspace, never()).startDownload(any(), any());
         verify(workspace, never()).download(any(), any());

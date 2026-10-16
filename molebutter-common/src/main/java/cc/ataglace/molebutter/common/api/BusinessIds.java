@@ -2,7 +2,6 @@ package cc.ataglace.molebutter.common.api;
 
 
 import java.util.List;
-import cc.ataglace.molebutter.common.api.InputValidationFailure;
 
 public final class BusinessIds {
     private BusinessIds() {}

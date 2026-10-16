@@ -5,7 +5,6 @@ import java.time.LocalDate;
 import java.util.*;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.repository.JpaRepository;
-import cc.ataglace.molebutter.attendance.internal.Attendance;
 import cc.ataglace.molebutter.attendance.api.AttendanceStatus;
 
 public interface AttendanceRepository extends JpaRepository<Attendance, Long> {

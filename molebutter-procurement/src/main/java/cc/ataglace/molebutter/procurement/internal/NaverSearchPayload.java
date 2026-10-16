@@ -1,7 +1,5 @@
 package cc.ataglace.molebutter.procurement.internal;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
-import cc.ataglace.molebutter.procurement.internal.ProductSourceMetadata;
-import cc.ataglace.molebutter.procurement.internal.NaverChannelPolicy;
 
 import java.net.URI;
 import java.net.URLDecoder;

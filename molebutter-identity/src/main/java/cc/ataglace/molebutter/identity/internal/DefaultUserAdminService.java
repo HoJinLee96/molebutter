@@ -8,7 +8,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import cc.ataglace.molebutter.identity.internal.User;
 import cc.ataglace.molebutter.identity.api.UserAuthEventType;
 import cc.ataglace.molebutter.identity.api.UserRole;
 import cc.ataglace.molebutter.identity.api.UserStatus;
@@ -16,8 +15,6 @@ import cc.ataglace.molebutter.identity.api.UserSummaryResponse;
 import cc.ataglace.molebutter.common.api.BusinessException;
 import cc.ataglace.molebutter.common.api.ErrorCode;
 import cc.ataglace.molebutter.identity.api.ClientInfo;
-import cc.ataglace.molebutter.identity.internal.UserRepository;
-import cc.ataglace.molebutter.identity.internal.DefaultUserAuthAuditService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

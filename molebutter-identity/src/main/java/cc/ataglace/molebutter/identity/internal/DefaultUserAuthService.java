@@ -1,5 +1,4 @@
 package cc.ataglace.molebutter.identity.internal;
-import cc.ataglace.molebutter.identity.internal.SigninRateLimiter;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -8,15 +7,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import cc.ataglace.molebutter.identity.api.AuthProperties;
-import cc.ataglace.molebutter.identity.internal.User;
 import cc.ataglace.molebutter.identity.api.UserAuthEventType;
 import cc.ataglace.molebutter.common.api.BusinessException;
 import cc.ataglace.molebutter.common.api.ErrorCode;
 import cc.ataglace.molebutter.identity.api.ClientInfo;
-import cc.ataglace.molebutter.identity.internal.UserRepository;
-import cc.ataglace.molebutter.identity.internal.UserMutationService;
-import cc.ataglace.molebutter.identity.internal.DefaultUserAuthAuditService;
-import cc.ataglace.molebutter.identity.internal.EmailNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

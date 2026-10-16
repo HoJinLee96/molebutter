@@ -1,5 +1,4 @@
 package cc.ataglace.molebutter.attendance.internal;
-import cc.ataglace.molebutter.attendance.internal.Attendance;
 import cc.ataglace.molebutter.attendance.api.CorrectionStatus;
 
 import java.time.*;

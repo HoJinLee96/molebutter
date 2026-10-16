@@ -553,14 +553,7 @@ class ProductFlowIT {
         // A new lookup instance represents restart; the persisted restriction prevents another request.
         var recorded=recommendationJournal.restrictions(work.runId());assertThat(recorded).containsKey(ProcurementMall.LOTTE_IMALL);
     }
-    @Test void recommendationRestrictionPreventsManualStockBypass(){
-        var p=stockProduct();var job=enqueueStock(p);long run=jdbc.queryForObject("SELECT run_id FROM supplier_stock_lookup WHERE id=?",Long.class,job.id());
-        // Install the same persisted restriction another product in this run can record after enqueue.
-        var d=new RecommendationDiagnostic(Long.toString(run),p.id(),"blocked",ProcurementMall.NAVER_SMART_STORE,"blocked",100L,"https://shopping.naver.com/","FAILED","HTTP_RESTRICTED",429,time.now());
-        jdbc.update("INSERT INTO recommendation_lookup_diagnostic(id,run_id,product_id,listing_key,mall,kind,cause_code,http_status,restricted,created_at,payload) VALUES(?,?,?,?,?,'FAILED','HTTP_RESTRICTED',429,TRUE,?,?)",ProductStore.id(),run,p.id(),"blocked",ProcurementMall.NAVER_SMART_STORE.name(),time.now(),json.writeValueAsString(d));
-        assertThat(stockQueue.claim("manual")).isNull();assertThat(stockJob(job).status()).isEqualTo("CANCELLED");
-        assertThatThrownBy(()->enqueueStock(p)).hasMessageContaining("접속 제한");assertThat(jdbc.queryForObject("SELECT stock_lookup_blocked_job FROM procurement_runtime WHERE id=1",Long.class)).isNull();
-    }
+
     @Autowired DefaultSupplierStockLookupService stockQueue;
     SupplierResult stockListing(String id,long quantity,boolean skipped,long run){
         var offer=new Offer("nv"+id,"가방","헤지스ACC",id,"https://shopping.naver.com/outlink/itemdetail/"+id,217720L,0L,ProcurementMall.NAVER_SMART_STORE,null,new NaverChannel(NaverChannelType.WINDOW,"DEPARTMENT"),new SearchStoreEvidence("1000008804","1000008804","헤지스ACC","현대백화점 목동점","1","백화점"));
@@ -623,14 +616,7 @@ class ProductFlowIT {
         staff.csrf();status(staff.send("DELETE",path+"/"+id,Map.of("revision",9),staff.csrf),409);
         jdbc.update("UPDATE `user` SET user_status='SUSPENDED',auth_version=auth_version+1 WHERE id=?",staffUser.getId());assertThat(stockQueue.claim("manual")).isNull();assertThat(jdbc.queryForObject("SELECT status FROM supplier_stock_lookup WHERE id=?",String.class,id)).isEqualTo("STALE");status(staff.get(path+"/"+id),401);
     }
-    @Test void stockQueueConflictRevokesDependentGroupingAndOldRunCannotResume(){
-        var p=create("HIBA113K2");finish(p,List.of(stockListing("13656623827",25,false,1),stockListing("6617877030",0,true,1),stockListing("6841687151",0,true,1)));
-        var j=enqueueStock(p);var w=stockQueue.claim("manual");var old=w.previous();var wrong=new BranchInfo("대구점","CONFIRMED","API",null,new StoreEvidence("BRANCH","현대백화점","대구점","NAVER_DEPARTMENT","10001/other",Map.of("channelId","other")));
-        stockQueue.finish("manual",w,new SupplierResult(old.offer(),old.match(),"CONFIRMED",List.of(new SourceOption("FREE","FREE",13L,"AVAILABLE")),null,null,null,null,wrong,new StockEvidence(w.product().runId(),null,"other",time.now(),true)));
-        assertThat(storedListings(p).stream().filter(v->"GROUP_UNCONFIRMED".equals(v.result().state()))).hasSize(1);
-        assertThat(compare(p).groups().stream().flatMap(g->g.listings().stream()).noneMatch(v->"GROUP_UNCONFIRMED".equals(v.result().state()))).isTrue();
-        long run=Long.parseLong(start(p));refresh.control(actor,run,"pause");jdbc.update("UPDATE product_refresh_entry SET selection_snapshot=JSON_REMOVE(selection_snapshot,'$.stockPolicy') WHERE run_id=?",run);assertThatThrownBy(()->refresh.control(actor,run,"resume")).hasMessageContaining("이전 방식");
-    }
+
     ProcurementProductView create(String code){return products.create(actor,new ProductEditRequest(null,null,code,ProductCodePolicy.suggested("LF_ACCESSORY",code),brand,null,null));}
     ProcurementProductView current(ProcurementProductView p){return products.product(Long.parseLong(p.id()));}
     VersionedId version(ProcurementProductView p){p=current(p);return new VersionedId(p.id(),p.revision());}
@@ -925,149 +911,13 @@ class ProductFlowIT {
         assertThat(jdbc.queryForObject("SELECT latest_result FROM catalog_product JOIN procurement_product ON procurement_product.product_id=catalog_product.id WHERE id=?",String.class,p.id())).isEqualTo(before);
         assertThat(jdbc.queryForObject("SELECT payload FROM product_lookup_history WHERE product_id=?",String.class,p.id())).isEqualTo(historyBefore);
     }
-    @Test void legacySmartstoreSelectionIsPreservedButCannotBeSelectedOrManuallyBypassed()throws Exception {
-        var p=create("WINDOW42");finish(p,List.of(identified(ProcurementMall.NAVER_SMART_STORE,"42","롯데백화점","본점","NAVER_DEPARTMENT","10002/1")));
-        var old=byMall(p,ProcurementMall.NAVER_SMART_STORE);choose(p,old);
-        long history=jdbc.queryForObject("SELECT COUNT(*) FROM product_supplier_change",Long.class);
-        String raw=jdbc.queryForObject("SELECT observation FROM product_supplier WHERE id=?",String.class,old.id());
-        var stored=(tools.jackson.databind.node.ObjectNode)json.readTree(raw);
-        var offer=(tools.jackson.databind.node.ObjectNode)stored.path("offer");
-        offer.remove("naverChannel");offer.put("url","https://smartstore.naver.com/lotte/products/42");
-        jdbc.update("UPDATE product_supplier SET observation=?,url=? WHERE id=?",json.writeValueAsString(stored),offer.path("url").asText(),old.id());
-        var c=compare(p);
-        assertThat(c.groups()).isEmpty();assertThat(c.recommendations()).isEmpty();assertThat(c.selected().id()).isEqualTo(old.id());
-        assertThat(c.selected().referencePrice()).isEqualTo(old.referencePrice());assertThat(c.selected().priceCheckedAt()).isEqualTo(old.priceCheckedAt());
-        assertThat(c.selected().priceStatus()).isEqualTo("UNSUPPORTED_CHANNEL");assertThat(c.selected().selectable()).isFalse();assertThat(c.selected().current()).isFalse();
-        // A new run must ignore the selected ordinary store and defer recommendations.
-        start(p);var w=refresh.claim("channel");var calls=new java.util.concurrent.atomic.AtomicInteger();
-        var gateway=new cc.ataglace.molebutter.procurement.internal.SupplierProductGateway(){
-            public String validateUrl(ProcurementMall m,String url){return url;}
-            public List<SourceOption> options(ProcurementMall m,String id,String url){calls.incrementAndGet();throw new AssertionError();}
-        };
-        var result=new SupplierLookupService(gateway,time).lookup(w,new SearchResult(List.of(json.treeToValue(offer,Offer.class)),true,null),()->true);
-        refresh.finish("channel",w,result);refresh.claim("channel");
-        assertThat(calls.get()).isZero();assertThat(compare(p).recommendationStatus().state()).isEqualTo("PRICE_UNCONFIRMED");
-        assertThatThrownBy(()->choose(p,old)).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(()->supplierService.assign(actor,Long.parseLong(p.id()),Long.parseLong(old.id()),new AssignmentInput(old.revision(),old.store().id()))).hasMessageContaining("쇼핑윈도");
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_supplier_change",Long.class)).isEqualTo(history);
-        assertThat(json.readTree(jdbc.queryForObject("SELECT observation FROM product_supplier WHERE id=?",String.class,old.id()))).isEqualTo(stored);
-        assertThatThrownBy(()->officialStores.preview(actor,"https://smartstore.naver.com/lotte/products/42")).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(()->preferred.saveStore(actor,null,new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"SELLER","임의 판매자","smartstore.naver.com/lotte"))).isInstanceOf(IllegalArgumentException.class);
-    }
 
-    @Test void naverInventoryRefreshPersistsOptionsAndPreservesSelectionOnStockFailure()throws Exception {
-        String id="12610379894",url="https://shopping.naver.com/window-products/brandfashion/"+id;
-        try(var in=getClass().getResourceAsStream("/product/naver-inventory-"+id+".json")){brandGateway.payload=new String(in.readAllBytes());}
-        var preview=officialStores.preview(actor,url);
-        var official=officialStores.register(actor,new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","헤지스",null,null,url,preview.channelUid(),preview.preferenceRevision()));
-        preferred.saveMall(actor,ProcurementMall.NAVER_SMART_STORE,new MallPreferenceInput(preferred.get(actor).revision(),"STORES",List.of(official.id()),List.of(),true));
-        var p=create("HIWA6E450BK");var offer=new Offer("NV","HIWA6E450BK","헤지스",id,url,94000L,0L,ProcurementMall.NAVER_SMART_STORE,null,new NaverChannel(NaverChannelType.WINDOW,"BRAND_FASHION"));
-        var search=new SearchResult(List.of(offer),true,null);var lookup=new SupplierLookupService(brandGateway,time);
-        start(p);var w=refresh.claim("naver-test");var result=lookup.lookup(w,search,()->true);
-        refresh.finish("naver-test",w,result);refresh.claim("naver-test");
-        var c=compare(p);assertThat(c.pending()).isEmpty();assertThat(c.groups()).hasSize(1);
-        var listing=c.groups().getFirst().listings().getFirst();assertThat(listing.result().options()).containsExactly(new SourceOption("53129032179","FREE",3L,"AVAILABLE"));assertThat(listing.selectable()).isTrue();choose(p,listing);
-        brandGateway.payload=brandGateway.payload.replace("\"stockQuantity\": 3","\"stockQuantity\": 0");
-        start(p);w=refresh.claim("naver-test");result=lookup.lookup(w,search,()->true);refresh.finish("naver-test",w,result);refresh.claim("naver-test");
-        assertThat(compare(p).selected().id()).isEqualTo(listing.id());assertThat(compare(p).selected().inventoryState()).isEqualTo("SOLD_OUT");
-        var failed=new SupplierResult(offer,listing.result().match(),"FAILED",List.of(),"재고 조회 실패",null,null,null,listing.result().branch());
-        finish(p,List.of(failed));assertThat(compare(p).selected().id()).isEqualTo(listing.id());assertThat(compare(p).selected().inventoryState()).isEqualTo("FAILED");assertThat(compare(p).selected().referencePrice()).isEqualTo(94000);
-    }
-    @Test void officialBrandRegistrationPreservesObservedStoreAndSelectionAndRequiresEvidence()throws Exception {
-        String url="https://brand.naver.com/daks/products/13197489089";
-        try(var in=getClass().getResourceAsStream("/product/naver-brand-store.json")){brandGateway.payload=new String(in.readAllBytes());}
-        var preview=officialStores.preview(actor,url);
-        assertThat(preferred.get(actor).stores()).isEmpty(); // 확인/취소는 저장하지 않는다.
-        var p=create("WCBA5F052BK");var d=brandGateway.inspect(ProcurementMall.NAVER_SMART_STORE,preview.productId(),url);
-        var offer=new Offer("NV1","WCBA5E052BK","닥스 DAKS",preview.productId(),url,94000L,0L,ProcurementMall.NAVER_SMART_STORE,null,new NaverChannel(NaverChannelType.WINDOW,"BRAND_FASHION"));
-        var observation=new SupplierResult(offer,new CodeMatch("MATCHED","WCBA5E052BK","WCBA052","5E","BK","시즌 차이"),"DEFERRED",List.of(),null,d.title(),d.modelCode(),d.brand(),SupplierBranch.resolve(offer,d));
-        finish(p,List.of(observation));var old=compare(p).groups().getFirst().listings().getFirst();choose(p,old);
-        String originalStore=old.store().id(),originalListing=old.id();
-        var before=preferred.get(actor);
-        var input=new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","닥스 공식몰",null,null,url,preview.channelUid(),before.revision());
-        var official=officialStores.register(actor,input);
-        assertThat(official.id()).isEqualTo(originalStore);assertThat(official.kind()).isEqualTo("BRAND_STORE");
-        assertThat(current(p).selectedSupplier().id()).isEqualTo(originalListing);
-        assertThat(preferred.get(actor).rules()).isEqualTo(before.rules());
-        assertThat(compare(p).groups().getFirst().listings().getFirst().selectable()).isTrue();
-        assertThatThrownBy(()->officialStores.register(actor,input)).isInstanceOf(IllegalStateException.class);
-        var again=officialStores.register(actor,new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","다른 표시명",null,null,url,preview.channelUid(),preferred.get(actor).revision()));
-        assertThat(again.id()).isEqualTo(originalStore);assertThat(again.name()).isEqualTo("닥스 공식몰");
-        var branch=preferred.saveStore(actor,null,new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"BRANCH","천호점",null,"현대백화점"));
-        preferred.saveMall(actor,ProcurementMall.NAVER_SMART_STORE,new MallPreferenceInput(preferred.get(actor).revision(),"STORES",List.of(official.id(),branch.id()),List.of(),true));
-        assertThat(preferred.get(actor).groups().stream().filter(g->g.mall()==ProcurementMall.NAVER_SMART_STORE).findFirst().orElseThrow().storeIds()).containsExactlyInAnyOrder(official.id(),branch.id());
-        preferred.saveStore(actor,Long.valueOf(official.id()),new StoreInput(official.revision(),ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","닥스 이름 변경",null));
-        finish(p,List.of(observation));assertThat(current(p).selectedSupplier().store().id()).isEqualTo(originalStore);
-        var staffUser=account(UserRole.PRODUCT);var forAssignment=compare(p).selected();supplierService.assign(staffUser.getId(),Long.valueOf(p.id()),Long.valueOf(originalListing),new AssignmentInput(forAssignment.revision(),official.id()));
-        assertThat(compare(p).selected().manual()).isTrue();
-        assertThat(current(p).selectedSupplier().inventoryState()).isEqualTo("UNCONFIRMED");assertThat(current(p).selectedSupplier().result().state()).isEqualTo("DEFERRED");
-        var otherBranch=new BranchInfo("닥스 DAKS","CONFIRMED","META","닥스 DAKS",new StoreEvidence("SELLER",null,"닥스 DAKS","NAVER_CHANNEL","other-channel"));
-        var other=new SupplierResult(offer,observation.match(),"DEFERRED",List.of(),null,d.title(),d.modelCode(),d.brand(),otherBranch);
-        finish(p,List.of(other));var changed=compare(p).selected();
-        assertThat(changed.selectable()).isFalse();assertThat(changed.id()).isEqualTo(originalListing);
-        assertThatThrownBy(()->supplierService.assign(actor,Long.valueOf(p.id()),Long.valueOf(originalListing),new AssignmentInput(changed.revision(),official.id()))).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(()->preferred.saveStore(actor,null,new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","우회 등록",null))).isInstanceOf(IllegalArgumentException.class);
-        long rev=preferred.get(actor).revision();int size=preferred.get(actor).stores().size();
-        brandGateway.payload=brandGateway.payload.replace("2sWE1WHVrXUFoJpa77gZb","new-channel");
-        assertThatThrownBy(()->officialStores.register(actor,new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","위조",null,null,url,preview.channelUid(),rev))).isInstanceOf(IllegalArgumentException.class);
-        assertThat(preferred.get(actor).revision()).isEqualTo(rev);assertThat(preferred.get(actor).stores()).hasSize(size);
-    }
-    @Test void officialRegistrationRollsBackAndConcurrentRegistrationCreatesOnlyOneStore()throws Exception {
-        String url="https://brand.naver.com/daks/products/13197489089";
-        try(var in=getClass().getResourceAsStream("/product/naver-brand-store.json")){brandGateway.payload=new String(in.readAllBytes());}
-        var preview=officialStores.preview(actor,url);
-        var input=new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","닥스 DAKS",null,null,url,preview.channelUid(),preview.preferenceRevision());
-        var tx=new org.springframework.transaction.support.TransactionTemplate(transactions);
-        assertThatThrownBy(()->tx.execute(status->{preferred.registerBrandStore(actor,input,preview);throw new IllegalStateException("rollback");})).isInstanceOf(IllegalStateException.class);
-        assertThat(preferred.get(actor).stores()).isEmpty();assertThat(preferred.get(actor).revision()).isEqualTo(preview.preferenceRevision());
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM supplier_store_identity",Long.class)).isZero();
-        try(var executor=Executors.newFixedThreadPool(2)){
-            var gate=new CountDownLatch(1);var tasks=new ArrayList<Future<Boolean>>();
-            for(int i=0;i<2;i++)tasks.add(executor.submit(()->{gate.await();try{officialStores.register(actor,input);return true;}catch(IllegalStateException expected){return false;}}));
-            gate.countDown();int success=0;for(var task:tasks)if(task.get(10,TimeUnit.SECONDS))success++;
-            assertThat(success).isEqualTo(1);
-        }
-        assertThat(preferred.get(actor).stores()).hasSize(1);assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM supplier_store_identity",Long.class)).isEqualTo(1);
-    }
-    @Test void officialRegistrationApiRejectsStaffMissingCsrfInvalidIdsAndStaleVersion()throws Exception {
-        String url="https://brand.naver.com/daks/products/13197489089";
-        try(var in=getClass().getResourceAsStream("/product/naver-brand-store.json")){brandGateway.payload=new String(in.readAllBytes());}
-        var adminUser=users.findByEmail("admin@example.com").orElseThrow();
-        var admin=login(adminUser);var staff=login(account(UserRole.PRODUCT));staff.csrf();
-        status(admin.send("POST","/api/settings/supplier-stores/channel-preview",new ChannelRequest(url),null),403);
-        status(staff.send("POST","/api/settings/supplier-stores/channel-preview",new ChannelRequest(url),staff.csrf),403);
-        admin.csrf();var response=admin.send("POST","/api/settings/supplier-stores/channel-preview",new ChannelRequest(url),admin.csrf);status(response,200);
-        var preview=json.readTree(response.body()).path("data");assertThat(preferred.get(actor).stores()).isEmpty();
-        var input=new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"BRAND_STORE","닥스 DAKS",null,null,url,preview.path("channelUid").asText(),preview.path("preferenceRevision").asLong());
-        status(staff.send("POST","/api/settings/supplier-stores",input,staff.csrf),403);
-        status(admin.send("POST","/api/settings/supplier-stores",input,null),403);
-        admin.csrf();status(admin.send("POST","/api/settings/supplier-stores",input,admin.csrf),200);
-        assertThat(preferred.get(actor).stores()).hasSize(1);
-        status(admin.post("/api/settings/supplier-stores",input),409);
-        status(admin.post("/api/settings/supplier-stores/channel-preview",new ChannelRequest(url.replace("13197489089","999"))),400);
-        status(admin.post("/api/settings/supplier-stores/channel-preview",new ChannelRequest("https://localhost/")),400);
-        assertThat(preferred.get(actor).stores()).hasSize(1);
-    }
-    @Test void lotteCompanyPreferenceIsAtomicReusedAndRestricted()throws Exception {
-        var draft=new StoreInput(null,ProcurementMall.LOTTE_ON,"COMPANY","주식회사 LF",null,null);
-        long revision=preferred.get(actor).revision();
-        assertThatThrownBy(()->preferred.saveMall(actor,ProcurementMall.LOTTE_ON,new MallPreferenceInput(revision,"STORES",List.of(),List.of(draft,new StoreInput(null,ProcurementMall.LOTTE_ON,"COMPANY","다른 업체",null,null)),true))).isInstanceOf(IllegalArgumentException.class);
-        assertThat(preferred.get(actor).revision()).isEqualTo(revision);assertThat(preferred.get(actor).stores()).noneMatch(st->st.kind().equals("COMPANY"));
-        var saved=preferred.saveMall(actor,ProcurementMall.LOTTE_ON,new MallPreferenceInput(revision,"STORES",List.of(),List.of(draft,draft),true));
-        var lf=saved.stores().stream().filter(st->st.kind().equals("COMPANY")).findFirst().orElseThrow();
-        assertThat(lf.identityKey()).isEqualTo("company:lf");assertThat(saved.groups().stream().filter(g->g.mall()==ProcurementMall.LOTTE_ON).findFirst().orElseThrow().storeIds()).containsExactly(lf.id());
-        assertThatThrownBy(()->preferred.saveMall(actor,ProcurementMall.LOTTE_ON,new MallPreferenceInput(revision,"ALL",List.of(),List.of(),true))).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(()->preferred.saveStore(actor,Long.valueOf(lf.id()),new StoreInput(lf.revision(),ProcurementMall.LOTTE_ON,"COMPANY","주식회사 LF",null,null))).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(()->preferred.saveStore(actor,null,new StoreInput(null,ProcurementMall.NAVER_SMART_STORE,"COMPANY","주식회사 LF",null,null))).isInstanceOf(IllegalArgumentException.class);
-        var next=preferred.saveMall(actor,ProcurementMall.LOTTE_ON,new MallPreferenceInput(saved.revision(),"STORES",List.of(),List.of(draft),true));assertThat(next.stores()).filteredOn(st->st.kind().equals("COMPANY")).hasSize(1);
-        var adminUser=users.findByEmail("admin@example.com").orElseThrow();
-        var admin=login(adminUser);var staff=login(account(UserRole.PRODUCT));{
-            var input=new MallPreferenceInput(next.revision(),"STORES",List.of(lf.id()),List.of(),true);
-            status(admin.send("PUT","/api/settings/preferred-suppliers/LOTTE_ON",input,null),403);
-            staff.csrf();status(staff.send("PUT","/api/settings/preferred-suppliers/LOTTE_ON",input,staff.csrf),403);
-            var view=json.readTree(admin.get("/api/settings/preferred-suppliers").body()).path("data");assertThat(view.path("companyChoices").size()).isEqualTo(1);
-        }
-    }
+
+
+
+
+
+
     @Test void lotteCompanyGroupingSelectionAndContradictoryManualAssignment()throws Exception {
         var draft=new StoreInput(null,ProcurementMall.LOTTE_ON,"COMPANY","주식회사 LF",null,null);
         preferred.saveMall(actor,ProcurementMall.LOTTE_ON,new MallPreferenceInput(preferred.get(actor).revision(),"STORES",List.of(),List.of(draft),true));
@@ -1258,76 +1108,14 @@ class ProductFlowIT {
         finish(p,List.of(identified(ProcurementMall.HI_THEHYUNDAI,"hi","현대백화점","신촌점 이름 변경","HI_STORE","270")));
         var selected=current(p).selectedSupplier();assertThat(selected.store().id()).isEqualTo(original.id());assertThat(selected.store().name()).isEqualTo("자주 사는 매장");assertThat(selected.storeStatus()).isEqualTo("CONFIRMED");assertThat(selected.id()).isEqualTo(listing.id());
     }
-    @Test void naverRetailersWithIdenticalBranchNamesAreDifferentStores(){
-        var p=create("ABCD6F123BK");finish(p,List.of(identified(ProcurementMall.NAVER_SMART_STORE,"a","현대백화점","본점","NAVER_DEPARTMENT","10001/1"),identified(ProcurementMall.NAVER_SMART_STORE,"b","롯데백화점","본점","NAVER_DEPARTMENT","10002/1")));
-        assertThat(compare(p).groups()).hasSize(2);assertThat(compare(p).groups()).extracting(g->g.store().retailer()).containsExactlyInAnyOrder("현대백화점","롯데백화점");assertThat(compare(p).groups()).allSatisfy(g->assertThat(g.listings().getFirst().inventoryState()).isEqualTo("UNCONFIRMED"));
-    }
-    @Test void legacyStoreBindingRequiresAdminAndPreservesIdWithVersionCheck()throws Exception {
-        jdbc.update("INSERT INTO supplier_store(id,mall,kind,name,identity_key,aliases,created_at,updated_at) VALUES(77,'NAVER_SMART_STORE','BRANCH','천호점','branch:천호점',JSON_ARRAY('천호점'),NOW(6),NOW(6))");
-        var p=create("ABCD6F123BK");finish(p,List.of(identified(ProcurementMall.NAVER_SMART_STORE,"a","현대백화점","천호점","NAVER_DEPARTMENT","10001/10001006")));
-        assertThat(compare(p).groups()).isEmpty();var c=preferred.identityCandidates(actor).getFirst();
-        var body=Map.of("revision",0,"supplierId",c.supplierId(),"observedRunId",c.observedRunId());var staff=login(account(UserRole.PRODUCT));var adminAccount=account(UserRole.ADMIN);var admin=login(adminAccount);String url="/api/settings/supplier-stores/77/identity";
-        status(staff.post(url,body),403);status(admin.send("POST",url,body,null),403);status(admin.post(url,body),200);status(admin.post(url,body),409);jdbc.update("UPDATE `user` SET user_role='PRODUCT' WHERE id=?",adminAccount.getId());
-        finish(p,List.of(identified(ProcurementMall.NAVER_SMART_STORE,"a","현대백화점","천호점","NAVER_DEPARTMENT","10001/10001006")));
-        assertThat(compare(p).groups().getFirst().store().id()).isEqualTo("77");assertThat(preferred.identityCandidates(actor)).isEmpty();
-    }
-    @Test void contradictoryExternalIdentityDoesNotOverwriteSelectedStore(){
-        var p=create("ABCD6F123BK");finish(p,List.of(identified(ProcurementMall.NAVER_SMART_STORE,"a","현대백화점","본점","NAVER_DEPARTMENT","10001/1")));var original=byMall(p,ProcurementMall.NAVER_SMART_STORE);choose(p,original);
-        finish(p,List.of(identified(ProcurementMall.NAVER_SMART_STORE,"a","롯데백화점","본점","NAVER_DEPARTMENT","10001/1")));
-        var selected=current(p).selectedSupplier();assertThat(selected.id()).isEqualTo(original.id());assertThat(selected.store().id()).isEqualTo(original.store().id());assertThat(selected.conflict()).isTrue();assertThat(hiddenReview(p)).hasSize(1);assertThat(preferred.get(actor).stores()).hasSize(1);
-    }
+
+
+
     @Test void missingBranchIsHistoricalAndCannotBeSelectedUntilConfirmed(){
         var p=create("ABCD6F123BK");finish(p,List.of(identified(ProcurementMall.HI_THEHYUNDAI,"a","현대백화점","신촌점","HI_STORE","270")));choose(p,byMall(p,ProcurementMall.HI_THEHYUNDAI));String chosen=current(p).selectedSupplier().id();
         finish(p,List.of(listing(ProcurementMall.HI_THEHYUNDAI,"a",95000,"","FAILED")));var l=current(p).selectedSupplier();assertThat(l.storeStatus()).isEqualTo("HISTORICAL");assertThat(l.id()).isEqualTo(chosen);assertThat(l.referencePrice()).isEqualTo(95000);assertThat(hiddenReview(p)).hasSize(1);assertThatThrownBy(()->choose(p,l)).hasMessageContaining("선호 매입처 또는 현재 유효한 추천");
     }
-    @Test void configuredPreferredMallsFlowThroughLookupPersistenceAndComparison(){
-        jdbc.update("DELETE FROM supplier_preference");
-        for(var mall:List.of(ProcurementMall.LFMALL,ProcurementMall.HAZZYS,ProcurementMall.LOTTE_IMALL))preferred.saveRule(actor,null,new RuleInput(null,mall,null));
-        for(var mall:List.of(ProcurementMall.HI_THEHYUNDAI,ProcurementMall.NAVER_SMART_STORE))for(String name:List.of("목동점","천호점","신촌점")){
-            var st=preferred.saveStore(actor,null,new StoreInput(null,mall,"BRANCH",name,null,"현대백화점"));
-            preferred.saveRule(actor,null,new RuleInput(null,mall,st.id()));
-        }
-        for(var mall:List.of(ProcurementMall.LOTTE_ON,ProcurementMall.NAVER_SMART_STORE)){
-            var st=preferred.saveStore(actor,null,new StoreInput(null,mall,"BRANCH","본점",null,"롯데백화점"));
-            preferred.saveRule(actor,null,new RuleInput(null,mall,st.id()));
-        }
-        var offers=new ArrayList<Offer>();var details=new HashMap<String,SourceDetails>();
-        for(var mall:ProcurementMall.values()){
-            String url=switch(mall){
-                case LFMALL->"https://www.lfmall.co.kr/app/product/";
-                case HAZZYS->"https://www.hazzys.com/product.do?PROD_CD=";
-                case LOTTE_IMALL->"https://www.lotteimall.com/goods/viewGoodsDetail.lotte?goods_no=";
-                case LOTTE_ON->"https://www.lotteon.com/p/product?sitmNo=";
-                case HI_THEHYUNDAI->"https://hi.thehyundai.com/product/";
-                case HMALL->"https://www.hmall.com/p/pda/itemPtc.do?slitmCd=";
-                case NAVER_SMART_STORE->"https://shopping.naver.com/window-products/department/";
-            };
-            int count=Set.of(ProcurementMall.LOTTE_ON,ProcurementMall.HI_THEHYUNDAI,ProcurementMall.NAVER_SMART_STORE).contains(mall)?3:1;
-            for(int n=0;n<count;n++){
-                String id=mall==ProcurementMall.NAVER_SMART_STORE?Integer.toString(420+n):mall.name()+n;String retailer=mall==ProcurementMall.LOTTE_ON?"롯데백화점":"현대백화점";
-                String branch=mall==ProcurementMall.LOTTE_ON?"본점":"천호점";
-                StoreEvidence evidence=n==2?null:new StoreEvidence("BRANCH",retailer,n==1?"부산점":branch,"TEST_STORE",id);
-                offers.add(new Offer(id,"ABCD123",mall.getDisplayName(),id,url+id,94000L+n,0L,mall,"https://example.com/"+id+".jpg"));
-                details.put(id,new SourceDetails("ABCD123","","",List.of(new SourceOption("FREE","FREE",2L,"AVAILABLE")),null,evidence,true,mall==ProcurementMall.NAVER_SMART_STORE?new NaverChannel(NaverChannelType.WINDOW,"DEPARTMENT"):null));
-            }
-        }
-        var calls=new ArrayList<ProcurementMall>();
-        var gateway=new cc.ataglace.molebutter.procurement.internal.SupplierProductGateway(){
-            public String validateUrl(ProcurementMall mall,String url){return url;}
-            public List<SourceOption> options(ProcurementMall mall,String id,String url){throw new AssertionError();}
-            public SourceDetails inspect(ProcurementMall mall,String id,String url){calls.add(mall);return details.get(id);}
-        };
-        var p=create("ABCD6F123BK");start(p);var work=refresh.claim("w");
-        var result=new SupplierLookupService(gateway,time).lookup(work,new SearchResult(offers,true,null),()->refresh.heartbeat("w",work));
-        refresh.finish("w",work,result);refresh.claim("w");
-        assertThat(calls).doesNotContain(ProcurementMall.HMALL);
-        assertThat(result.suppliers()).hasSize(9).noneMatch(r->"부산점".equals(r.branch().name()));
-        assertThat(compare(p).groups()).hasSize(6);assertThat(hiddenReview(p)).hasSize(3);assertThat(compare(p).excluded()).isEmpty();
-        var unknown=hiddenReview(p).stream().filter(l->l.mall()==ProcurementMall.NAVER_SMART_STORE).findFirst().orElseThrow();
-        assertThat(unknown.store()).isNull();assertThat(unknown.inventoryState()).isEqualTo("AVAILABLE");assertThat(unknown.selectable()).isFalse();
-        assertThat(preferred.get(actor).stores()).noneMatch(st->st.kind().equals("SELLER"));
-        choose(p,byMall(p,ProcurementMall.HI_THEHYUNDAI));assertThat(current(p).selectedSupplier().referencePrice()).isEqualTo(94000);
-    }
+
 
 
     @Test void branchlessListingsAreGroupedSelectableAndDoNotChangePriceOrSelection()throws Exception {

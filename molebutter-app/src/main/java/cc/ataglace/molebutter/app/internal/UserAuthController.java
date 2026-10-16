@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import cc.ataglace.molebutter.identity.api.UserAccount;
 import cc.ataglace.molebutter.identity.api.UserAuthEventType;
-import cc.ataglace.molebutter.app.internal.ApiResponse;
 import cc.ataglace.molebutter.identity.api.FindEmailRequest;
 import cc.ataglace.molebutter.identity.api.FindEmailResponse;
 import cc.ataglace.molebutter.identity.api.MeResponse;
@@ -32,7 +31,6 @@ import cc.ataglace.molebutter.identity.api.ClientInfo;
 import cc.ataglace.molebutter.identity.api.IdentityAccounts;
 import cc.ataglace.molebutter.identity.api.UserPrincipal;
 import cc.ataglace.molebutter.identity.api.UserAuthAuditService;
-import cc.ataglace.molebutter.app.internal.AuthCookieService;
 import cc.ataglace.molebutter.identity.api.AuthTokenService;
 import cc.ataglace.molebutter.identity.api.AuthTokenService.TokenBundle;
 import cc.ataglace.molebutter.identity.api.UserAuthService;
@@ -54,6 +52,7 @@ public class UserAuthController {
     private final UserAuthService userAuthService;
     private final AuthTokenService authTokenService;
     private final AuthCookieService authCookieService;
+    private final org.springframework.security.web.csrf.CsrfTokenRepository csrfTokenRepository;
     private final UserPasswordChangeService passwordChangeService;
     private final UserPasswordResetService passwordResetService;
     private final UserEmailFindService emailFindService;
@@ -75,6 +74,7 @@ public class UserAuthController {
         UserAccount user = userAuthService.signin(request.email(), request.password(), client);
         TokenBundle tokens = authTokenService.issueOnSignin(user);
         authCookieService.writeTokens(httpResponse, tokens.accessToken(), tokens.refreshToken());
+        csrfTokenRepository.saveToken(null, httpRequest, httpResponse);
         return ResponseEntity.ok(ApiResponse.success());
     }
 
@@ -108,6 +108,7 @@ public class UserAuthController {
         String refreshToken = authCookieService.readRefreshCookie(httpRequest);
         authTokenService.revokeOnLogout(accessToken, refreshToken);
         authCookieService.clearTokens(httpResponse);
+        csrfTokenRepository.saveToken(null, httpRequest, httpResponse);
         auditService.register(
                 principal == null ? null : principal.userRole(),
                 principal == null ? null : principal.userId(),
@@ -143,6 +144,7 @@ public class UserAuthController {
         authTokenService.blacklistAccess(authCookieService.resolveAccessToken(httpRequest));
         TokenBundle tokens = authTokenService.issueOnSignin(user);
         authCookieService.writeTokens(httpResponse, tokens.accessToken(), tokens.refreshToken());
+        csrfTokenRepository.saveToken(null, httpRequest, httpResponse);
         auditService.register(user.getRole(), user.getId(), user.getEmail(),
                 UserAuthEventType.PASSWORD_CHANGED, cc.ataglace.molebutter.app.internal.RequestClientInfo.from(httpRequest), true, null);
         return ResponseEntity.ok(ApiResponse.success());

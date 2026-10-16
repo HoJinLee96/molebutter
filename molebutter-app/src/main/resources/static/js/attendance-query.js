@@ -47,6 +47,7 @@
         return `<tr><td>${employee(r.employee)}</td><td>${e(accountLabels[r.employee.status] ?? r.employee.status)}</td><td>${e(r.recordedDays)}</td><td>${e(r.completedDays)}</td><td>${duration(r.workedSeconds)}</td><td>${duration(r.breakSeconds)}</td><td>${e(r.workingCount)}</td><td>${e(r.onBreakCount)}</td><td>${e(r.missingCount)}</td><td>${e(r.unconfirmedCount)}</td></tr>`;
     }
     for (const kind of ['records', 'summary']) {
+        FormActions.bindEnterSubmit($(`${kind}-filter`), $(`${kind}-search`));
         $(`${kind}-filter`).addEventListener('submit', event => { event.preventDefault(); load(kind, true); });
         $(`${kind}-download`).addEventListener('click', async () => {
             const button = $(`${kind}-download`); if (button.disabled || !validate(kind)) return;

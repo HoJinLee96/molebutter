@@ -1,6 +1,4 @@
 package cc.ataglace.molebutter.procurement.internal;
-import cc.ataglace.molebutter.procurement.internal.ProductStore;
-import cc.ataglace.molebutter.procurement.internal.ProductStatusRepair;
 import cc.ataglace.molebutter.common.api.BusinessTime;
 
 import cc.ataglace.molebutter.common.api.InputValidationFailure;

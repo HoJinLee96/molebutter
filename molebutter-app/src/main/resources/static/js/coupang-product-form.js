@@ -1,0 +1,213 @@
+"use strict";
+
+/* Coupang working-copy form markup; the editor owns input and event bindings. */
+(() => {
+  'use strict';
+
+  const e = value => String(value ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[c]);
+  const grid = body => `<div class="coupang-field-grid">${body}</div>`;
+  const row = (label, body) => `<div class="coupang-form-row"><div class="coupang-row-label">${e(label)}</div><div class="coupang-row-body">${body}</div></div>`;
+  const field = ({
+    caption,
+    control,
+    wide = false,
+    compact = false
+  }) => compact ? `<span class="coupang-table-field">${control}</span>` : `<label class="field coupang-form-row ${wide ? 'editor-wide' : ''}"><span class="coupang-row-label">${caption}</span><span class="coupang-row-body">${control}</span></label>`;
+  function choices({
+    label,
+    pairs,
+    value,
+    disabled = false,
+    attrs,
+    mixed = false,
+    error = ''
+  }) {
+    const current = mixed ? '' : String(value ?? ''),
+      all = [...pairs];
+    if (current && !all.some(([v]) => v === current)) all.push([current, current]);
+    return `<div class="coupang-choice-row" role="group" aria-label="${e(label)}"><div class="coupang-row-label">${e(label)}</div><div class="coupang-row-body"><div class="coupang-radio-options">${all.map(([v, text, unavailable], n) => `<label><input type="radio" ${attrs(v, n)} value="${e(v)}" ${v === current ? 'checked' : ''} ${disabled || unavailable ? 'disabled' : ''}><span>${e(text)}</span></label>`).join('')}</div>${mixed ? '<small class="product-meta">옵션별 값 다름 · 선택하면 모든 옵션에 적용됩니다.</small>' : ''}${error}</div></div>`;
+  }
+  const certificationMode = entries => !entries.length ? '' : entries.every(c => c.type === 'NOT_REQUIRED') ? 'NOT_REQUIRED' : entries.every(c => c.type === 'PRESENTED_IN_DETAIL_PAGE') ? 'PRESENTED_IN_DETAIL_PAGE' : 'TARGET';
+  function certification({
+    types,
+    entries,
+    prefix,
+    entryType = '',
+    entryCode = '',
+    entryField
+  }) {
+    const fields = entries.filter(c => !['NOT_REQUIRED', 'PRESENTED_IN_DETAIL_PAGE'].includes(c.type)).map(c => {
+      const n = entries.indexOf(c),
+        r = types.find(v => v.type === c.type);
+      return `<div class="coupang-certification-entry"><div class="product-meta">${e(r?.name || c.type || '인증 유형')}${r?.required === 'MANDATORY' ? ' · 필수' : ''}</div>${entryField(c, n, r)}<button class="btn small" type="button" data-remove-cert="${e(c.type)}" ${r?.required === 'MANDATORY' ? 'disabled' : ''}>삭제</button><small class="product-meta">${e(c.type || '')}${c.attachments?.length ? ' · 첨부 ' + c.attachments.length + '개' : ''}</small></div>`;
+    }).join('');
+    const controls = `<div class="coupang-certification-add"><label class="field"><span>인증 유형</span><select id="${e(prefix)}-cert-type" data-cert-entry="type" aria-label="추가할 인증 유형"><option value="">선택</option>${types.filter(c => !['NOT_REQUIRED', 'PRESENTED_IN_DETAIL_PAGE'].includes(c.type)).map(c => `<option value="${e(c.type)}" ${c.type === entryType ? 'selected' : ''}>${e(c.name)}</option>`).join('')}</select></label><label class="field"><span>인증번호</span><input id="${e(prefix)}-cert-code" data-cert-entry="code" aria-label="추가할 인증번호" value="${e(entryCode)}" placeholder="인증기관에서 발급받은 번호"></label><button type="button" class="btn" data-add-cert>추가</button></div><p id="${e(prefix)}-cert-error" class="form-error" role="alert" hidden></p><p class="product-meta">유형과 번호를 입력해 하나씩 추가하세요. 번호의 진위를 확인하는 기능은 제공하지 않습니다.</p>`;
+    return {
+      fields,
+      controls
+    };
+  }
+  function settings(o) {
+    const {
+        choice,
+        configured,
+        registrationChoice,
+        types,
+        certMode,
+        certMixed = false,
+        certification: c
+      } = o,
+      mandatory = types.some(c => c.required === 'MANDATORY');
+    return configured('settings', ['manufacture']) + choice('settings.bundleInfo.bundleType', '상품 구성', [['SINGLE', '동일한 상품으로 구성됨'], ['AB', '다양한 상품이 혼합되어 구성됨', o.mode === 'new']], o.bundle, o.mode === 'edit') + choice(null, '인증정보', [['TARGET', '인증·신고 대상', !types.some(c => !['NOT_REQUIRED', 'PRESENTED_IN_DETAIL_PAGE'].includes(c.type))], ['PRESENTED_IN_DETAIL_PAGE', '상세페이지 별도표기', mandatory || !types.some(c => c.type === 'PRESENTED_IN_DETAIL_PAGE')], ['NOT_REQUIRED', '인증·신고 대상 아님', mandatory || !types.some(c => c.type === 'NOT_REQUIRED')]], certMixed ? '' : certMode, false, 'certification') + (certMixed ? '<p class="product-meta">옵션별 인증정보가 다릅니다. 선택하면 모든 옵션에 적용됩니다.</p>' : '') + (certMode === 'TARGET' ? row('인증 상세', c.controls + c.fields) : c.fields ? row('인증 상세', grid(c.fields)) : '') + registrationChoice('parallelImported', '병행수입', [['PARALLEL_IMPORTED', '병행수입'], ['NOT_PARALLEL_IMPORTED', '병행수입 아님']]) + registrationChoice('adultOnly', '구매 연령', [['EVERYONE', '전체 연령'], ['ADULT_ONLY', '성인 전용 (19세 이상)']]) + choice(null, '인당 최대구매수량', [['ON', '설정함'], ['OFF', '설정안함']], o.limit, false, 'purchase-limit') + (o.limit === 'OFF' ? '' : row('구매 제한 설정', grid(configured('registration', ['maximumBuyForPerson', 'maximumBuyForPersonPeriod'])))) + `<label class="coupang-notice-reference"><input type="checkbox" data-coupang-long-period ${o.saleEndedAt === window.CoupangEditorModel.longSalePeriod().saleEndedAt ? 'checked' : ''}>현재부터 2099년 12월 31일 23:59까지 설정</label>` + choice(null, '판매기간', [['ON', '설정함'], ['OFF', '설정안함']], o.period, false, 'sale-period') + (o.period === 'OFF' ? '<p class="product-meta">기간 제한 없음 · API 판매 종료일은 2099년으로 설정합니다.</p>' : row('판매 일시', grid(configured('settings', ['saleStartedAt', 'saleEndedAt'])))) + registrationChoice('taxType', '부가세', [['TAX', '과세'], ['FREE', '면세']]) + `<details id="${e(o.extraId)}" class="coupang-additional"><summary>추가 등록 설정</summary>${grid(o.extra)}</details>`;
+  }
+  function documents({
+    items,
+    rules,
+    prefix,
+    field,
+    required,
+    url
+  }) {
+    const controls = rules.length ? `<div class="coupang-document-controls"><label for="${e(prefix)}-document-type">서류 유형</label><select id="${e(prefix)}-document-type" aria-label="서류 유형"><option value="">서류 유형 선택</option>${rules.map(d => `<option value="${e(d.name)}">${e(d.name)}</option>`).join('')}</select><button type="button" class="btn" data-add-document>서류 추가</button></div>` : '<p class="product-meta">추가 가능한 서류 유형은 카테고리 규격 조회 후 표시됩니다.</p>';
+    return '<div class="coupang-document-fields">' + controls + `<div class="coupang-document-list">${items.map((d, n) => `<div class="coupang-document-entry">${field(d, n, required(d))}<button type="button" class="btn small" data-view-document="${n}" ${url(d.path || d.vendorPath) ? '' : 'disabled'}>보기</button><button type="button" class="btn small" data-remove-document="${n}" aria-label="${e(d.templateName || '서류')} 삭제">×</button></div>`).join('') || '<p class="empty">추가한 구비서류가 없습니다.</p>'}</div></div>`;
+  }
+  function address({
+    returns,
+    title,
+    text,
+    code,
+    phone,
+    buttonAttrs
+  }) {
+    return row(returns ? '반품/교환지 *' : '출고지 *', `<div class="coupang-address-summary"><div><strong>${e(title)}</strong><p>${e(text)}</p><small class="product-meta">${e(code ? '코드 ' + code : '주소록에서 선택해 주세요.')}${returns && phone ? ' · ' + e(phone) : ''}</small></div><button type="button" class="btn" ${buttonAttrs}>판매자 주소록</button></div>`);
+  }
+  function shippingTimes({
+    mode,
+    options,
+    selectionMode,
+    choice,
+    field
+  }) {
+    const vals = options.map(o => String(o.days ?? '')),
+      same = vals.every(v => v === vals[0]),
+      selected = selectionMode || (same ? 'COMMON' : 'OPTIONS');
+    if (mode === 'new' && options.length === 1) return field(0, '출고 소요일 (일)', vals[0], true);
+    return choice(null, '출고 소요일', [['COMMON', '기본 입력'], ['OPTIONS', '구매 옵션별로 입력']], selected, false, 'shipping-time') + `<div class="coupang-shipping-times">${selected === 'COMMON' ? field(0, '출고 소요일 (일)', same ? vals[0] : '', true) + (!same ? '<small class="product-meta">옵션별 값이 다릅니다. 입력하면 모든 옵션에 적용됩니다.</small>' : '') : options.map((o, n) => field(n, (o.name || '옵션 ' + (n + 1)) + ' · 출고 소요일 (일)', vals[n], false)).join('')}</div>`;
+  }
+  function shipping({
+    address,
+    choice,
+    configured,
+    values: d,
+    shippingTimes
+  }) {
+    return address + choice('delivery.remoteAreaDeliverable', '제주/도서산간 배송여부 *', [['Y', '가능'], ['N', '불가능']], d.remoteAreaDeliverable) + configured(['deliveryCompanyCode', 'deliveryMethod']) + choice('delivery.unionDeliveryType', '묶음배송 *', [['UNION_DELIVERY', '가능'], ['NOT_UNION_DELIVERY', '불가능']], d.unionDeliveryType) + configured(['deliveryChargeType']) + `<div data-coupang-delivery-charge ${d.deliveryChargeType === 'FREE' && String(d.deliveryCharge) === '0' ? 'hidden' : ''}>${configured(['deliveryCharge'])}</div><div data-coupang-free-over ${d.deliveryChargeType === 'CONDITIONAL_FREE' || !d.deliveryChargeType || !!d.freeShipOverAmount && Number(d.freeShipOverAmount) !== 0 ? '' : 'hidden'}>${configured(['freeShipOverAmount'])}</div>` + shippingTimes;
+  }
+  function returns({
+    address,
+    field,
+    values: d,
+    prefix
+  }) {
+    return address + field('deliveryChargeOnReturn', '초도배송비(편도, 원)', d.deliveryChargeOnReturn) + field('returnCharge', '반품배송비(편도, 원)', d.returnCharge) + `<p id="${e(prefix)}-return-total" class="coupang-return-total" aria-live="polite"></p>`;
+  }
+  function notices({
+    referenceAttrs,
+    checked,
+    disabled = false,
+    selector,
+    fields
+  }) {
+    return `<label class="coupang-notice-reference"><input type="checkbox" ${referenceAttrs} ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>전체 상품 상세페이지 참조</label>` + selector + grid(fields || '<p class="empty">카테고리 규격을 조회해 주세요.</p>');
+  }
+  function basic({
+    field,
+    mode
+  }) {
+    return grid(['brand', 'displayProductName', 'sellerProductName', 'displayCategoryCode'].map(field).join('')) + `<details class="coupang-additional"><summary>추가 상품 정보</summary>${grid(['generalProductName', 'productGroup', ...(mode === 'edit' ? ['sellerProductId', 'productId'] : [])].map(field).join(''))}</details>`;
+  }
+  function optionTable({
+    headers,
+    rows,
+    widths
+  }) {
+    const size = widths?.reduce((a, b) => a + b, 0);
+    return `<div class="coupang-table-scroll" ${size ? `style="--coupang-options-width:${size + 2}px"` : ''}><table class="coupang-option-table" role="table" aria-label="옵션 목록">${size ? `<colgroup>${widths.map(w => `<col style="width:${w / size * 100}%">`).join('')}</colgroup>` : ''}<thead role="rowgroup"><tr role="row">${headers.map(label => `<th role="columnheader" scope="col">${e(label)}</th>`).join('')}</tr></thead><tbody role="rowgroup">${rows}</tbody></table></div>`;
+  }
+  function imageGroups({
+    images,
+    count
+  }) {
+    const group = (label, type, kind, empty) => row(label, `<div class="coupang-image-group" data-image-group="${kind}" data-image-type="${type}"><div class="editor-image-grid">${images(type) || `<p class="empty">${empty}</p>`}</div></div>`);
+    return group('대표 이미지', 'REPRESENTATION', 'representative', '대표 이미지를 추가해 주세요.') + group('추가 이미지 (' + count('DETAIL') + '/9)', 'DETAIL', 'additional', '추가 이미지가 없습니다.') + (count('USED_PRODUCT') ? group('중고 상태 이미지', 'USED_PRODUCT', 'used', '') : '');
+  }
+  function imageControls({
+    prefix,
+    state = ''
+  }) {
+    return `<div class="editor-image-controls"><label class="field"><span>R2 이미지 주소</span><input id="${e(prefix)}-image-url" type="url" placeholder="https://"></label><button class="btn" type="button" data-add-image>주소 추가</button><button class="btn" type="button" data-r2-images>R2 이미지 조회</button></div><p class="product-meta">R2에 저장된 이미지를 선택해 주세요.</p><p id="${e(prefix)}-image-error" class="form-error" role="alert" hidden></p><p id="${e(prefix)}-upload-state" class="coupang-upload-status" role="status" ${state ? '' : 'hidden'}>${e(state)}</p>`;
+  }
+  function imageCard({
+    attrs = '',
+    preview,
+    caption,
+    actions,
+    note = ''
+  }) {
+    return `<figure ${attrs}><div class="editor-image-preview">${preview}</div><figcaption>${caption}</figcaption>${note ? `<small class="product-meta">${e(note)}</small>` : ''}${actions ? `<div class="editor-image-actions">${actions}</div>` : ''}</figure>`;
+  }
+  function contentCard({
+    label,
+    index,
+    field,
+    preview,
+    remove,
+    note = ''
+  }) {
+    return `<div class="editor-content"><h3>${e(label)} ${index + 1}</h3>${note ? `<small class="product-meta">${e(note)}</small>` : ''}${field}${preview}${remove}</div>`;
+  }
+  function tagState(value) {
+    const tags = String(value || '').split(',').map(v => v.trim()).filter(Boolean);
+    return {
+      html: tags.map((tag, n) => `<span class="coupang-tag">${e(tag)}<button type="button" data-remove-tag="${n}" aria-label="${e(tag)} 검색어 삭제">×</button></span>`).join(''),
+      count: tags.length + ' / 20개 · 검색어당 최대 20자',
+      invalid: tags.length > 20 || tags.some(v => Array.from(v).length > 20)
+    };
+  }
+  function description({
+    cards,
+    error = ''
+  }) {
+    return cards + error + '<div class="toolbar"><button type="button" class="btn" data-add-content="HTML">HTML 설명 추가</button><button type="button" class="btn" data-add-content="IMAGE">설명 이미지 추가</button></div>';
+  }
+  const form = {
+    imageCard,
+    contentCard,
+    tagState,
+    shippingTimes,
+    basic,
+    optionTable,
+    imageGroups,
+    imageControls,
+    description,
+    address,
+    shipping,
+    returns,
+    notices,
+    grid,
+    row,
+    field,
+    choices,
+    settings,
+    certification,
+    certificationMode,
+    documents
+  };
+  if (typeof module !== 'undefined') module.exports = form;else window.CoupangProductForm = form;
+})();

@@ -1,8 +1,6 @@
 package cc.ataglace.molebutter.procurement.internal;
 import cc.ataglace.molebutter.procurement.api.SupplierDtos.*;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
-import cc.ataglace.molebutter.procurement.internal.DefaultSupplierPreferenceService;
-import cc.ataglace.molebutter.procurement.internal.ProductStore;
 
 import cc.ataglace.molebutter.common.api.InputValidationFailure;
 import java.net.URI;
@@ -10,8 +8,6 @@ import java.util.Objects;
 import org.springframework.stereotype.Service;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.ProcurementMall;
 
-import cc.ataglace.molebutter.procurement.internal.SupplierProductGateway;
-import cc.ataglace.molebutter.procurement.internal.NaverChannelPolicy;
 
 import lombok.RequiredArgsConstructor;
 

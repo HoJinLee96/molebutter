@@ -1,4 +1,4 @@
-// Actual Thymeleaf fixtures + local synthetic APIs. No live LFmall or marketplace calls.
+// Actual Thymeleaf fixtures + local synthetic APIs. No live LFmall or coupang calls.
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const fs = require('node:fs');

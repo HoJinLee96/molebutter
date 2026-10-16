@@ -5,7 +5,6 @@ import java.time.LocalDate;
 import java.util.Optional;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.repository.*;
-import cc.ataglace.molebutter.attendance.internal.AttendanceCorrection;
 import cc.ataglace.molebutter.attendance.api.CorrectionStatus;
 
 public interface AttendanceCorrectionRepository extends JpaRepository<AttendanceCorrection, Long> {

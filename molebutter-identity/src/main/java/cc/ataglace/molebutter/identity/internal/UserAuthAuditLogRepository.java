@@ -10,7 +10,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import cc.ataglace.molebutter.identity.api.UserAuthEventType;
-import cc.ataglace.molebutter.identity.internal.UserAuthAuditLog;
 
 public interface UserAuthAuditLogRepository extends JpaRepository<UserAuthAuditLog, Long> {
 

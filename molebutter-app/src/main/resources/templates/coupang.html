@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/head :: common('쿠팡 상품')}"></head>
+<body class="app-layout">
+<link rel="stylesheet" th:href="@{/css/coupang-workspace.css(v=20261016-cleanup)}">
+<header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
+<main id="main-content" tabindex="-1" class="page coupang-page">
+<h1>쿠팡 상품</h1>
+<div class="coupang-tab-list" role="tablist" aria-label="판매 상품 목록"><button id="coupang-coupang-tab" type="button" role="tab" aria-selected="true" aria-controls="coupang-coupang-panel">쿠팡 등록상품</button><button id="coupang-working-tab" type="button" role="tab" aria-selected="false" aria-controls="coupang-working-panel">임시 저장</button></div>
+
+<section id="coupang-coupang-panel" class="panel" role="tabpanel" aria-labelledby="coupang-coupang-tab">
+<div class="coupang-heading">
+<div><h2>쿠팡 등록상품</h2></div><a class="btn primary" href="/coupang/products/new" data-coupang-editor-link>상품 등록</a>
+</div>
+<form id="coupang-query" class="coupang-search">
+<div class="coupang-search-basic">
+<label class="field"><span>등록상품 ID</span><input id="filter-sellerProductId" inputmode="numeric" pattern="[0-9]{1,30}"></label>
+<label class="field"><span>등록상품명</span><input id="filter-sellerProductName" maxlength="20"></label>
+<label class="field"><span>등록상태</span><select id="filter-status"><option value="">전체</option><option value="IN_REVIEW">심사중</option><option value="SAVED">임시저장</option><option value="APPROVING">승인대기중</option><option value="APPROVED">승인완료</option><option value="PARTIAL_APPROVED">부분승인완료</option><option value="DENIED">승인반려</option><option value="DELETED">상품삭제</option></select></label>
+<label class="field"><span>등록일</span><input id="filter-createdAt" type="date"></label>
+<label class="field coupang-size"><span>페이지당 보기</span><select id="coupang-size"><option value="10">10개</option><option value="50">50개</option><option value="100">100개</option></select></label>
+<button class="btn primary" type="submit">검색</button><button id="coupang-reset" class="btn" type="button">초기화</button>
+</div>
+
+</form>
+<p id="coupang-error" class="form-error" role="alert" hidden></p>
+<p id="coupang-summary" class="list-summary" role="status">조회 버튼을 눌러 상품을 확인하세요.</p>
+<div class="table-wrap"><table class="data coupang-table"><colgroup><col class="coupang-col-id"><col class="coupang-col-id"><col class="coupang-col-brand"><col><col class="coupang-col-status"><col class="coupang-col-date"><col class="coupang-col-action"></colgroup><thead><tr><th scope="col">등록상품 ID</th><th scope="col">노출상품 ID</th><th scope="col">브랜드</th><th scope="col">등록상품명</th><th scope="col">등록상태</th><th scope="col">등록일시</th><th scope="col">작업</th></tr></thead><tbody id="coupang-rows"><tr><td colspan="7" class="empty">조회 버튼을 눌러 상품을 불러오세요.</td></tr></tbody></table></div>
+<nav class="toolbar coupang-pagination" aria-label="쿠팡 상품 페이지"><button id="coupang-first" class="btn small" type="button" disabled>처음</button><button id="coupang-prev" class="btn small" type="button" disabled>이전</button><span id="coupang-page" class="product-meta"></span><button id="coupang-next" class="btn small" type="button" disabled>다음</button></nav>
+</section>
+<section id="coupang-working-panel" class="panel" role="tabpanel" aria-labelledby="coupang-working-tab" hidden>
+<div class="coupang-heading"><h2>임시 저장</h2><a class="btn primary" href="/coupang/products/new" data-working-copy-link>상품 등록</a></div>
+<form id="coupang-working-copies-query" class="toolbar"><label class="field"><span>상품명</span><input id="coupang-working-copies-search" maxlength="100"></label><button type="submit" class="btn primary">검색</button><button id="coupang-working-copies-reset" type="button" class="btn">초기화</button></form>
+<p id="coupang-working-copies-error" class="form-error" role="alert" hidden></p><p id="coupang-working-copies-summary" role="status" class="list-summary"></p>
+<div class="table-wrap"><table class="data coupang-working-copy-table"><thead><tr><th scope="col">등록상품 ID</th><th scope="col">상품명</th><th scope="col">종류</th><th scope="col">상태</th><th scope="col">수정일시</th><th scope="col">작업</th></tr></thead><tbody id="coupang-working-copies-rows"></tbody></table></div>
+<nav class="toolbar coupang-pagination" aria-label="임시 저장 페이지"><button id="coupang-working-copies-prev" type="button" class="btn small" disabled>이전</button><span id="coupang-working-copies-page" class="product-meta"></span><button id="coupang-working-copies-next" type="button" class="btn small" disabled>다음</button></nav>
+</section>
+
+</main>
+<dialog id="coupang-detail" class="attendance-dialog product-dialog coupang-detail" aria-labelledby="coupang-detail-title">
+<div class="product-dialog-head"><div><h2 id="coupang-detail-title">쿠팡 등록상품 상세</h2><p id="coupang-detail-meta" class="coupang-detail-meta"></p></div><div class="coupang-detail-actions"><a id="coupang-detail-edit" class="btn primary" href="#" data-coupang-editor-link hidden>수정</a><button id="coupang-detail-close" type="button" class="btn">닫기</button></div></div>
+<p id="coupang-detail-loading" role="status" hidden>상품 상세와 현재 가격·재고 조회 중…</p>
+<p id="coupang-detail-error" class="form-error" role="alert" hidden></p>
+<button id="coupang-detail-retry" type="button" class="btn" hidden>다시 조회</button>
+<div id="coupang-detail-content"></div>
+</dialog>
+<script defer th:src="@{/js/coupang-state.js(v=20261016-cleanup)}"></script><script defer th:src="@{/js/api.js}"></script><script defer th:src="@{/js/coupang-requests.js(v=20261016-cleanup)}"></script><script defer th:src="@{/js/coupang-working-copies.js(v=20261016-cleanup)}"></script><script defer th:src="@{/js/coupang.js(v=20261016-cleanup)}"></script>
+
+</body></html>

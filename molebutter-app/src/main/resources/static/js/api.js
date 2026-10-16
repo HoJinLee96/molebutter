@@ -20,11 +20,12 @@ let refreshPromise;
 
 function csrfToken() {
     if (!csrfPromise) {
-        csrfPromise = fetch('/api/auth/csrf', { cache: 'no-store', credentials: 'same-origin' })
+        const pending = fetch('/api/auth/csrf', { cache: 'no-store', credentials: 'same-origin' })
             .then(async res => {
                 if (!res.ok) throw new ApiError('보안 토큰을 가져오지 못했습니다.', 'CSRF_FETCH_FAILED', res.status);
                 return (await res.json()).data;
-            }).catch(error => { csrfPromise = null; throw error; });
+            }).catch(error => { if (csrfPromise === pending) csrfPromise = null; throw error; });
+        csrfPromise = pending;
     }
     return csrfPromise;
 }
@@ -32,15 +33,18 @@ function csrfToken() {
 async function securedFetch(url, options, retryCsrf = true) {
     const request = { ...options, credentials: 'same-origin', headers: new Headers(options?.headers) };
     const unsafe = !['GET', 'HEAD', 'OPTIONS'].includes((request.method ?? 'GET').toUpperCase());
+    let usedCsrf;
     if (unsafe) {
-        const csrf = await csrfToken();
+        usedCsrf = csrfToken();
+        const csrf = await usedCsrf;
         request.headers.set(csrf.headerName, csrf.token);
     }
     const response = await fetch(url, request);
     if (unsafe && retryCsrf && response.status === 403) {
         const error = await response.clone().json().catch(() => null);
         if (error?.code === 'INVALID_CSRF_TOKEN') {
-            csrfPromise = null;
+            // 늦게 도착한 이전 요청의 실패가 새 토큰까지 폐기하지 않도록 한다.
+            if (csrfPromise === usedCsrf) csrfPromise = null;
             return securedFetch(url, options, false);
         }
     }

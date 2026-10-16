@@ -10,7 +10,6 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import jakarta.persistence.LockModeType;
 
-import cc.ataglace.molebutter.identity.internal.User;
 import cc.ataglace.molebutter.identity.api.UserRole;
 import cc.ataglace.molebutter.identity.api.UserStatus;
 

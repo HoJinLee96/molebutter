@@ -17,18 +17,16 @@ class ModuleArchitectureTest {
         Map.entry("procurement",Set.of("common","identity","operations","catalog")),
         Map.entry("inventory",Set.of("common","identity","operations","catalog")),
         Map.entry("attendance",Set.of("common","identity","operations")),
-        Map.entry("media",Set.of("common","identity")),
-        Map.entry("marketplace",Set.of("common","identity","media")),
-        Map.entry("marketplacecoupang",Set.of("common","identity","marketplace","media")),
-        Map.entry("marketplacenaver",Set.of("common","identity","marketplace","media")),
+        Map.entry("media",Set.of("common","identity","storage")),
+        Map.entry("coupang",Set.of("common","identity","media")),
         Map.entry("imaging",Set.of("common")),
         Map.entry("storage",Set.of("common")),
-        Map.entry("app",Set.of("common","identity","operations","catalog","procurement","inventory","attendance","marketplace","marketplacecoupang","marketplacenaver","media","imaging","storage")));
+        Map.entry("app",Set.of("common","identity","operations","catalog","procurement","inventory","attendance","coupang","media","imaging","storage")));
     private static String owner(String name) { return name.startsWith(ROOT) ? name.substring(ROOT.length()).split("\\.")[0] : ""; }
     private static boolean api(String name, String owner) { return name.equals(ROOT+owner+".api") || name.startsWith(ROOT+owner+".api."); }
     private static boolean sourceMatches(URI source, String owner) {
         String location = source.toString();
-        String module = switch(owner) { case "marketplacecoupang" -> "marketplace-coupang"; case "marketplacenaver" -> "marketplace-naver"; default -> owner; };
+        String module = owner;
         return location.contains("/molebutter-"+module+"/") || location.matches(".*[/!]molebutter-"+module+"-[^/!]+\\.jar.*");
     }
     private static void exposed(Type type, Set<Type> visited, Set<String> violations, String contract) {
@@ -99,6 +97,25 @@ class ModuleArchitectureTest {
                 .importPackages("cc.ataglace.molebutter","db.migration");
         assertThat(violations(classes)).as("Module, package and public signature boundaries").isEmpty();
         slices().matching("cc.ataglace.molebutter.(*)..").should().beFreeOfCycles().check(classes);
+    }
+    @Test void coupangContractsContainNoExecutionOrPersistenceDependencies() {
+        var contracts = new ClassFileImporter().withImportOption(location ->
+                !location.toString().contains("/test-classes/")).importPackages(ROOT + "coupang.api");
+        assertThat(contracts).isNotEmpty();
+        var forbidden = new TreeSet<String>();
+        for (var type : contracts) for (var dependency : type.getDirectDependenciesFromSelf()) {
+            String target = dependency.getTargetClass().getName();
+            if (target.startsWith("org.springframework.") || target.startsWith("java.sql.")
+                    || target.startsWith("javax.sql.") || target.startsWith("java.net.http.")
+                    || target.startsWith("jakarta.persistence.") || target.contains(".internal."))
+                forbidden.add(dependency.getDescription());
+        }
+        assertThat(forbidden).as("계약 모듈은 실행·저장 구현을 참조하지 않는다").isEmpty();
+    }
+    @Test void coupangOwnsItsContractsBusinessAndHttpClient() throws Exception {
+        var root=java.nio.file.Path.of(System.getProperty("user.dir")).toAbsolutePath();while(root!=null&&!java.nio.file.Files.isDirectory(root.resolve("molebutter-coupang")))root=root.getParent();assertThat(root).isNotNull();
+        var pom=java.nio.file.Files.readString(root.resolve("pom.xml"));assertThat(pom).contains("<module>molebutter-coupang</module>").doesNotContain("<module>molebutter-marketplace");
+        var source=root.resolve("molebutter-coupang/src/main/java/cc/ataglace/molebutter/coupang");assertThat(java.nio.file.Files.isDirectory(source.resolve("api"))).isTrue();assertThat(java.nio.file.Files.isDirectory(source.resolve("internal/client"))).isTrue();
     }
     @Test void violationsCannotEscapeThroughUnknownPackagesMisplacedModulesOrGenericSignatures() throws Exception {
         var classes=new ClassFileImporter().importClasses(

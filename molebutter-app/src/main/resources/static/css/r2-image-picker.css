@@ -1,0 +1,16 @@
+.r2-image-dialog{width:min(960px,calc(100vw - 24px));max-height:calc(100dvh - 32px);box-sizing:border-box;border:1px solid #dce3ed;border-radius:14px;padding:20px;overflow:auto}.r2-image-dialog::backdrop{background:#15213766}.r2-image-heading,.r2-image-query,.r2-image-folders,.r2-image-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.r2-image-heading{justify-content:space-between}.r2-image-query .field{flex:1;min-width:180px}.r2-image-folders{margin:12px 0}.r2-image-folders [aria-pressed=true]{color:#2563eb;border-color:#2563eb}.r2-image-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:12px;max-height:48dvh;overflow:auto;padding:4px}.r2-image-card{display:flex;flex-direction:column;gap:6px;border:1px solid #dce3ed;border-radius:8px;padding:10px;min-width:0;cursor:pointer}.r2-image-card img{width:100%;height:130px;object-fit:contain;background:#f6f7f9}.r2-image-card span{overflow-wrap:anywhere;font-size:13px}.r2-image-actions{justify-content:flex-end;padding-top:16px}.r2-image-actions [data-count]{margin-right:auto}@media(max-width:540px){.r2-image-dialog{padding:14px}.r2-image-list{grid-template-columns:repeat(2,minmax(0,1fr))}.r2-image-card img{height:110px}.r2-image-actions{align-items:stretch}.r2-image-actions button{flex:1}}
+
+.r2-image-folders{display:block}.r2-image-breadcrumbs,.r2-image-subfolders{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}.r2-image-folders button{max-width:100%;overflow-wrap:anywhere;white-space:normal}
+
+/* Keep the picker and actions stable while only the image list scrolls. */
+.r2-image-dialog{height:min(820px,calc(100dvh - 32px));overflow:hidden}
+.r2-image-dialog[open]{display:flex;flex-direction:column}
+.r2-image-dialog>*{flex-shrink:0}
+.r2-image-list{flex:1;min-height:0;max-height:none;grid-template-columns:repeat(5,minmax(0,1fr));grid-auto-rows:calc((100% - 12px)/2);align-content:start;box-sizing:border-box;overflow-y:auto;overflow-x:hidden}
+.r2-image-card{box-sizing:border-box;overflow:hidden}
+.r2-image-card input{flex-shrink:0;align-self:flex-start}
+.r2-image-card img{flex:1;min-height:0;height:0}
+.r2-image-card span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.r2-image-card small{flex-shrink:0}
+.r2-image-dialog [data-status],.r2-image-dialog [data-error]{margin:8px 0}
+@media(max-width:700px){.r2-image-list{grid-template-columns:repeat(2,minmax(0,1fr))}.r2-image-dialog{padding:14px}.r2-image-heading h2{font-size:20px;margin:8px 0}}

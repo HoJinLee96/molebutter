@@ -3,7 +3,6 @@ package cc.ataglace.molebutter.identity.internal;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-import cc.ataglace.molebutter.identity.internal.ResendMailConfig;
 
 /**
  * Resend 메일 발송 설정. api-key는 application-secret/mail.properties에 입력하고(비밀),

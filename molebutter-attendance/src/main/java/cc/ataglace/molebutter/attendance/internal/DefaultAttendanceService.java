@@ -1,7 +1,5 @@
 package cc.ataglace.molebutter.attendance.internal;
 import cc.ataglace.molebutter.attendance.api.AttendanceDtos.*;
-import cc.ataglace.molebutter.attendance.internal.JpaPages;
-import cc.ataglace.molebutter.attendance.internal.AttendanceTime;
 import cc.ataglace.molebutter.identity.api.UserAccount;
 import cc.ataglace.molebutter.identity.api.IdentityAccounts;
 
@@ -11,10 +9,7 @@ import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import cc.ataglace.molebutter.identity.api.UserRole;
-import cc.ataglace.molebutter.attendance.internal.AttendanceCorrection;
-import cc.ataglace.molebutter.attendance.internal.Attendance;
 import cc.ataglace.molebutter.attendance.api.CorrectionStatus;
-import cc.ataglace.molebutter.attendance.internal.AttendanceBreak;
 import cc.ataglace.molebutter.attendance.api.AttendanceStatus;
 import cc.ataglace.molebutter.common.api.PageResponse;
 
@@ -22,8 +17,6 @@ import cc.ataglace.molebutter.common.api.ErrorCode;
 import cc.ataglace.molebutter.common.api.OperationFailure;
 import cc.ataglace.molebutter.common.api.InputValidationFailure;
 import cc.ataglace.molebutter.common.api.BusinessException;
-import cc.ataglace.molebutter.attendance.internal.AttendanceRepository;
-import cc.ataglace.molebutter.attendance.internal.AttendanceCorrectionRepository;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.ObjectMapper;
 

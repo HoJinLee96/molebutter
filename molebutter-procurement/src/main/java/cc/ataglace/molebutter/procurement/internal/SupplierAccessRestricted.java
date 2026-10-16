@@ -1,5 +1,4 @@
 package cc.ataglace.molebutter.procurement.internal;
-import cc.ataglace.molebutter.procurement.internal.NaverPriceSearch;
 
 import cc.ataglace.molebutter.procurement.api.ProductDtos.ProcurementMall;
 

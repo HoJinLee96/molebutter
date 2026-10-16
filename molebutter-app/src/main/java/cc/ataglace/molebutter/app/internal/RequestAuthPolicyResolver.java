@@ -1,5 +1,4 @@
 package cc.ataglace.molebutter.app.internal;
-import cc.ataglace.molebutter.app.internal.RequestAuthPolicy;
 
 import java.util.List;
 

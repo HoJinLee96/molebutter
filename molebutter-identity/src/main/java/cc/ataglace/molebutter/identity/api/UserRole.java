@@ -1,5 +1,4 @@
 package cc.ataglace.molebutter.identity.api;
-import cc.ataglace.molebutter.identity.api.MenuSection;
 
 import java.util.Collections;
 import java.util.EnumSet;

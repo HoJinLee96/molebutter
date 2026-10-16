@@ -11,7 +11,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import cc.ataglace.molebutter.identity.api.UserAuthEventType;
-import cc.ataglace.molebutter.app.internal.ApiResponse;
 import cc.ataglace.molebutter.common.api.PageResponse;
 import cc.ataglace.molebutter.identity.api.AuthLogResponse;
 import cc.ataglace.molebutter.identity.api.AuthLogQueryService;

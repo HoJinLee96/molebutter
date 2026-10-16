@@ -268,7 +268,7 @@ class ProductImageUploadServiceTest {
         String id = id();
         when(storage.create(eq(StorageArea.PUBLIC), any(), any(), any(), any())).thenThrow(new StorageException(StorageException.Code.CONFLICT));
         when(storage.head(eq(StorageArea.PUBLIC), any())).thenThrow(new IllegalStateException("provider secret"))
-                .thenReturn(Optional.of(new ObjectMetadata(StorageArea.PUBLIC, key(id, 1, ".jpg"), 3, "image/jpeg", "etag", null, Map.of("sha256", "different"))));
+                .thenReturn(Optional.of(new ObjectMetadata(StorageArea.PUBLIC, key(id, 1, ".jpg"), 3, "image/jpeg", "etag", null, Map.of("sha256","different"))));
         uploads.start(42L, request(id, 2)); queue.getFirst().run();
         assertThat(uploads.get(42L, id).status()).isEqualTo("UNKNOWN");
         assertThat(uploads.get(42L, id).status()).isEqualTo("UNKNOWN");
@@ -405,12 +405,12 @@ class ProductImageUploadServiceTest {
         assertDuplicate(() -> uploads.start(43L, request(id(), 2)));
         when(storage.head(StorageArea.PRIVATE, claimKey)).thenReturn(Optional.of(
                 new ObjectMetadata(StorageArea.PRIVATE, claimKey, 1, "application/json", "other-generation-etag", null,
-                        Map.of("request-id", first, "state", "held", "generation", id()))));
+                        Map.of("request-id",first,"state","held","generation",id()))));
         assertThat(uploads.get(42L, first).status()).isEqualTo("UNKNOWN");
         verify(storage, never()).replace(eq(StorageArea.PRIVATE), any(), any(), any(), any(), any());
         when(storage.head(StorageArea.PRIVATE, claimKey)).thenReturn(Optional.of(
                 new ObjectMetadata(StorageArea.PRIVATE, claimKey, 1, "application/json", "own-etag", null,
-                        Map.of("request-id", first, "state", "held", "generation", generation.get()))));
+                        Map.of("request-id",first,"state","held","generation",generation.get()))));
         var result = uploads.get(42L, first);
         assertThat(result.status()).isEqualTo("FAILED");
         assertThat(result.error()).contains("예약을 해제");
@@ -425,7 +425,7 @@ class ProductImageUploadServiceTest {
         String first = id(), claimKey = "product-image-upload-reservations/HIHO861W2.json";
         when(storage.head(StorageArea.PRIVATE, claimKey)).thenReturn(Optional.of(
                 new ObjectMetadata(StorageArea.PRIVATE, claimKey, 1, "application/json", "held-etag", null,
-                        Map.of("request-id", first, "state", "held"))));
+                        Map.of("request-id",first,"state","held"))));
         var restarted = new ProductImageUploadService(workspace, storage, queue::add, 32 * 1024 * 1024L, clock);
         String next = id();
         restarted.start(43L, request(next, 2)); queue.getFirst().run();
@@ -449,7 +449,7 @@ class ProductImageUploadServiceTest {
     private static ObjectMetadata confirmed(String id, int sequence) throws Exception {
         ExportImageDto image = images(sequence).getLast();
         String sha = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(image.bytes()));
-        return new ObjectMetadata(StorageArea.PUBLIC, key(id, sequence, image.fileExtension()), image.byteSize(), image.contentType(), "etag", Instant.now(), Map.of("sha256", sha, "request-id", id));
+        return new ObjectMetadata(StorageArea.PUBLIC, key(id, sequence, image.fileExtension()), image.byteSize(), image.contentType(), "etag", Instant.now(), Map.of("sha256",sha,"request-id",id));
     }
     private static final class MutableClock extends Clock {
         private Instant now = Instant.parse("2026-10-08T00:00:00Z");

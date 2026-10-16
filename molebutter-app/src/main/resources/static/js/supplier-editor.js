@@ -34,7 +34,7 @@
           <div id="supplier-editor-preference" ${assignment&&admin?'':'hidden'}><label><input type="checkbox" id="supplier-editor-add-preferred"> 선호 매입처에도 추가</label><p id="supplier-editor-preferred-hint" class="field-hint"></p></div>
           <div id="supplier-editor-identities"></div>
           <p id="supplier-editor-error" class="form-error" role="alert" hidden></p>
-          <div id="supplier-editor-actions" class="attendance-actions"><button type="button" class="btn" id="supplier-editor-cancel">취소</button><button class="btn primary" id="supplier-editor-save">${assignment?'매장 지정 저장':'선호 매입처 저장'}</button></div>
+          <div id="supplier-editor-actions" class="attendance-actions"><button type="button" class="btn" id="supplier-editor-cancel">취소</button><button type="button" class="btn primary" id="supplier-editor-save">${assignment?'매장 지정 저장':'선호 매입처 저장'}</button></div>
           </fieldset></form>`;
         document.body.append(dialog);
         const $=id=>dialog.querySelector('#supplier-editor-'+id),error=message=>{ $('error').textContent=message||'';$('error').hidden=!message;};
@@ -112,6 +112,7 @@
         $('new')?.addEventListener('click',()=>editDraft());
         $('official-new')?.addEventListener('click',()=>editDraft(null,true));
         $('product-url').addEventListener('input',()=>{channelPreview=null;$('channel-result').textContent='';$('draft-add').disabled=true;});
+        FormActions.bindEnter($('product-url'),$('channel-check'));
         $('channel-check').addEventListener('click',()=>perform(async()=>{
             channelPreview=null;$('draft-add').disabled=true;$('channel-result').textContent='판매채널 확인 중…';
             try{
@@ -120,7 +121,7 @@
                 $('name').value=preview.channelName;$('draft-add').disabled=false;focusAfterAction=$('name');
             }catch(err){$('channel-result').textContent='';invalid(err.message,'product-url');}
         }));$('draft-cancel').addEventListener('click',backToStores);
-        $('draft-add').addEventListener('click',()=>perform(async()=>{
+        FormActions.bindExplicitSubmit(dialog.querySelector('form'),$('draft-add'),()=>{if($('draft').hidden)return;return perform(async()=>{
             const wasEditing=!!editing;
             const kind=editing?.kind||(officialDraft?'BRAND_STORE':'BRANCH');
             const input={mall,kind,name:$('name').value.trim(),retailer:kind==='BRANCH'?$('retailer').value.trim():'',sellerKey:null};
@@ -132,7 +133,7 @@
             draftView(false);render();$('added').textContent=wasEditing?'매장 이름을 변경했습니다.':`${name(saved)} 매장을 등록했습니다. 목록에서 눌러 선택한 뒤 ‘${assignment?'매장 지정 저장':'선호 매입처 저장'}’을 눌러 주세요.`;$('added').hidden=false;
             focusAfterAction=[...dialog.querySelectorAll('[data-choose-store]')].find(el=>el.dataset.chooseStore===saved.id)||$('results');
 
-        }));
+        });});
         dialog.addEventListener('click',ev=>{const b=ev.target.closest('button');if(!b||busy)return;
             if(b.dataset.chooseStore){const id=b.dataset.chooseStore;if(assignment){selected=[id];}else selected=selected.includes(id)?selected.filter(v=>v!==id):[...selected,id];render();[...dialog.querySelectorAll('[data-choose-store]')].find(el=>el.dataset.chooseStore===id)?.focus();}
             if(b.dataset.removeStore){const key=b.dataset.removeStore;selected=selected.filter(id=>id!==key);render();$('tags').focus();}
@@ -145,7 +146,7 @@
         dialog.addEventListener('keydown',ev=>{if(ev.key==='Escape'){ev.preventDefault();ev.stopPropagation();if(!busy){if(!$('draft').hidden)backToStores();else dialog.close();}}},true);
         dialog.addEventListener('click',ev=>{if(ev.target===dialog&&!busy){const r=dialog.getBoundingClientRect();if(ev.clientX<r.left||ev.clientX>r.right||ev.clientY<r.top||ev.clientY>r.bottom)dialog.close();}});
         dialog.addEventListener('close',()=>{active=false;dialog.remove();options.onClosed?.();},{once:true});
-        dialog.querySelector('form').addEventListener('submit',ev=>{ev.preventDefault();if(!$('draft').hidden){$('draft-add').click();return;}perform(async()=>{
+        FormActions.bindExplicitSubmit(dialog.querySelector('form'),$('save'),ev=>{ev.preventDefault();if(!$('draft').hidden)return;return perform(async()=>{
             if(assignment){if(selected.length!==1)throw Error('지정할 매장을 한 곳 선택해 주세요.');
                 await apiPost(`/api/products/${options.productId}/suppliers/${options.listing.id}/store`,{revision:options.listing.revision,storeId:selectedStores()[0].draft?null:selected[0],newStore:selectedStores()[0].draft?{mall,kind:'COMPANY',name:selectedStores()[0].name}:null,addPreferred:admin&&$('add-preferred').checked,preferenceRevision:data.revision});
             }else{if(scope==='STORES'&&!selected.length)throw Error('매장을 한 곳 이상 선택해 주세요.');await request('PUT','/api/settings/preferred-suppliers/'+mall,{revision:data.revision,scope,storeIds:scope==='ALL'?[]:selectedStores().filter(s=>!s.draft).map(s=>s.id),newStores:scope==='ALL'?[]:selectedStores().filter(s=>s.draft).map(({mall,kind,name})=>({mall,kind,name})),branchRequired});}

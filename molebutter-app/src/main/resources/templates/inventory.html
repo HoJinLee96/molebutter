@@ -16,7 +16,7 @@
             <div class="field inventory-search-field"><label id="inventory-query-label" for="inventory-q">상품코드·브랜드·검색어</label><input id="inventory-q" type="search" maxlength="255"></div>
 
             <div class="field inventory-brand-field"><label for="inventory-brand">브랜드</label><select id="inventory-brand" disabled><option value="">전체 브랜드</option><option value="UNASSIGNED">미지정</option></select></div>
-            <div class="field inventory-size-field"><label for="inventory-size">페이지당 보기</label><select id="inventory-size"><option value="20">20개</option><option value="50">50개</option><option value="100" selected>100개</option></select></div><button class="btn primary">조회</button><button id="inventory-clear-product" class="btn" type="button" hidden>전체 상품 보기</button>
+            <div class="field inventory-size-field"><label for="inventory-size">페이지당 보기</label><select id="inventory-size"><option value="20">20개</option><option value="50">50개</option><option value="100" selected>100개</option></select></div><button id="inventory-query" type="submit" class="btn primary">조회</button><button id="inventory-clear-product" class="btn" type="button" hidden>전체 상품 보기</button>
         </form>
         <p id="inventory-context" class="field-hint" role="status"></p>
         <div class="inventory-total list-summary" aria-live="polite"><span>총 보유 수량 <span id="inventory-total-quantity">—</span></span><span id="inventory-filtered-total" hidden></span></div>

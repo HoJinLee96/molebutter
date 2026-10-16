@@ -1,7 +1,4 @@
 package cc.ataglace.molebutter.procurement.internal;
-import cc.ataglace.molebutter.procurement.internal.ProcurementNotifications;
-import cc.ataglace.molebutter.procurement.internal.ProductStore;
-import cc.ataglace.molebutter.procurement.internal.DefaultSupplierRefreshService;
 
 import cc.ataglace.molebutter.common.api.InputValidationFailure;
 import java.time.*;
@@ -12,8 +9,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import cc.ataglace.molebutter.common.api.PageResponse;
 import cc.ataglace.molebutter.common.api.OperationFailure;
-import cc.ataglace.molebutter.procurement.internal.NaverSearchFailure;
-import cc.ataglace.molebutter.procurement.internal.NaverPriceSearch;
 
 /** All transitions share the product worker lock; no browser/network operation occurs here. */
 @Service @RequiredArgsConstructor @Slf4j

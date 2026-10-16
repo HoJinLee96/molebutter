@@ -1,6 +1,5 @@
 package cc.ataglace.molebutter.app.internal;
 
-
 import java.util.EnumSet;
 import java.util.Set;
 import java.util.List;
@@ -25,102 +24,116 @@ import lombok.RequiredArgsConstructor;
 public class ViewController {
 
     /** 페이지가 구현된 섹션 — 홈 카드·좌측 메뉴에서 실링크로 노출된다. 챕터가 진행되며 하나씩 추가한다. */
-    private static final Set<MenuSection> READY_SECTIONS = EnumSet.of(
-            MenuSection.MARKETPLACES, MenuSection.MARKETPLACE_ORDERS, MenuSection.PRODUCTS, MenuSection.PRODUCT_IMAGES, MenuSection.PRODUCT_REFRESH, MenuSection.INVENTORY, MenuSection.USER_MANAGE, MenuSection.AUTH_LOGS, MenuSection.ATTENDANCE, MenuSection.ATTENDANCE_MANAGE, MenuSection.SETTINGS);
+    private static final Set<MenuSection> READY_SECTIONS = EnumSet.of(MenuSection.COUPANG, MenuSection.COUPANG_ORDERS,
+            MenuSection.PRODUCTS, MenuSection.PRODUCT_IMAGES, MenuSection.PRODUCT_REFRESH, MenuSection.INVENTORY,
+            MenuSection.USER_MANAGE, MenuSection.AUTH_LOGS, MenuSection.ATTENDANCE, MenuSection.ATTENDANCE_MANAGE,
+            MenuSection.SETTINGS);
 
-    public record MenuGroup(String label, List<MenuSection> items) {}
+    public record MenuGroup(String label, List<MenuSection> items) {
+    }
     private static final List<MenuGroup> GROUPS = List.of(
-        new MenuGroup("상품 업무",List.of(MenuSection.PRODUCTS,MenuSection.PRODUCT_REFRESH,MenuSection.INVENTORY,MenuSection.PRODUCT_IMAGES)),
-        new MenuGroup("판매 업무",List.of(MenuSection.MARKETPLACES,MenuSection.MARKETPLACE_ORDERS)),
-        new MenuGroup("근태",List.of(MenuSection.ATTENDANCE,MenuSection.ATTENDANCE_MANAGE)),
-        new MenuGroup("운영 관리",List.of(MenuSection.USER_MANAGE,MenuSection.AUTH_LOGS)),
-        new MenuGroup("설정",List.of(MenuSection.SETTINGS)));
+            new MenuGroup("상품 업무",
+                    List.of(MenuSection.PRODUCTS, MenuSection.PRODUCT_REFRESH, MenuSection.INVENTORY,
+                            MenuSection.PRODUCT_IMAGES)),
+            new MenuGroup("판매 업무", List.of(MenuSection.COUPANG, MenuSection.COUPANG_ORDERS)),
+            new MenuGroup("근태", List.of(MenuSection.ATTENDANCE, MenuSection.ATTENDANCE_MANAGE)),
+            new MenuGroup("운영 관리", List.of(MenuSection.USER_MANAGE, MenuSection.AUTH_LOGS)),
+            new MenuGroup("설정", List.of(MenuSection.SETTINGS)));
 
     public static List<MenuGroup> navigationGroups(cc.ataglace.molebutter.identity.api.UserRole role) {
-        return GROUPS.stream().map(g->new MenuGroup(g.label(),g.items().stream()
-            .filter(role.getSections()::contains).filter(READY_SECTIONS::contains).toList()))
-            .filter(g->!g.items().isEmpty()).toList();
+        return GROUPS.stream().map(g -> new MenuGroup(g.label(),
+                g.items().stream().filter(role.getSections()::contains).filter(READY_SECTIONS::contains).toList()))
+                .filter(g -> !g.items().isEmpty()).toList();
     }
 
     private final IdentityAccounts userRepository;
 
     @GetMapping("/product-images")
     public String productImages(@AuthenticationPrincipal UserPrincipal principal, Model model) {
-        if (addLayoutModel(principal, model) == null) return "redirect:/signin";
+        if (addLayoutModel(principal, model) == null)
+            return "redirect:/signin";
         return "product-images";
     }
 
     @GetMapping("/settings")
     public String settings(@AuthenticationPrincipal UserPrincipal principal, Model model) {
-        if(addLayoutModel(principal,model)==null) return "redirect:/signin";
-        model.addAttribute("settingsAdmin",principal.userRole()==cc.ataglace.molebutter.identity.api.UserRole.ADMIN);
+        if (addLayoutModel(principal, model) == null)
+            return "redirect:/signin";
+        model.addAttribute("settingsAdmin", principal.userRole() == cc.ataglace.molebutter.identity.api.UserRole.ADMIN);
         return "settings";
     }
 
     @GetMapping({"/products", "/product-refresh"})
-    public String products(@AuthenticationPrincipal UserPrincipal principal, Model model, jakarta.servlet.http.HttpServletRequest request) {
-        if (addLayoutModel(principal, model) == null) return "redirect:/signin";
+    public String products(@AuthenticationPrincipal UserPrincipal principal, Model model,
+            jakarta.servlet.http.HttpServletRequest request) {
+        if (addLayoutModel(principal, model) == null)
+            return "redirect:/signin";
         model.addAttribute("productPage", request.getRequestURI().substring(1));
         model.addAttribute("productAdmin", principal.userRole() == cc.ataglace.molebutter.identity.api.UserRole.ADMIN);
         return "products";
     }
 
-    @GetMapping("/marketplace-orders")
-    public String marketplaceOrders(@AuthenticationPrincipal UserPrincipal principal, Model model) {
-        if(addLayoutModel(principal,model)==null)return "redirect:/signin";
-        return "marketplace-orders";
+    @GetMapping("/coupang/orders")
+    public String coupangOrders(@AuthenticationPrincipal UserPrincipal principal, Model model) {
+        if (addLayoutModel(principal, model) == null)
+            return "redirect:/signin";
+        return "coupang-orders";
     }
 
-    @GetMapping("/marketplaces")
-    public String marketplaces(@AuthenticationPrincipal UserPrincipal principal, Model model) {
-        if(addLayoutModel(principal,model)==null)return "redirect:/signin";
-        return "marketplaces";
+    @GetMapping("/coupang")
+    public String coupang(@AuthenticationPrincipal UserPrincipal principal, Model model) {
+        if (addLayoutModel(principal, model) == null)
+            return "redirect:/signin";
+        return "coupang";
     }
 
-    @GetMapping("/marketplaces/coupang/products/{sellerProductId}/edit")
-    public String marketplaceEditor(@AuthenticationPrincipal UserPrincipal principal,Model model) {
-        if(addLayoutModel(principal,model)==null)return "redirect:/signin";
-        return "marketplace-editor";
+    @GetMapping("/coupang/products/{sellerProductId}/edit")
+    public String coupangEditor(@AuthenticationPrincipal UserPrincipal principal, Model model) {
+        if (addLayoutModel(principal, model) == null)
+            return "redirect:/signin";
+        return "coupang-editor";
     }
 
-    @GetMapping("/marketplaces/coupang/products/new")
-    public String legacyMarketplaceRegistration(@AuthenticationPrincipal UserPrincipal principal,Model model){
-        if(addLayoutModel(principal,model)==null)return "redirect:/signin";
-        return "marketplace-editor";
+    @GetMapping("/coupang/products/new")
+    public String coupangRegistration(@AuthenticationPrincipal UserPrincipal principal, Model model) {
+        if (addLayoutModel(principal, model) == null)
+            return "redirect:/signin";
+        return "coupang-editor";
     }
-    @GetMapping({"/marketplaces/naver/products/new","/marketplaces/naver/products/{originProductNo}/edit"})
-    public String naverProductEditor(@AuthenticationPrincipal UserPrincipal principal, Model model) {
-        if(addLayoutModel(principal,model)==null)return "redirect:/signin";
-        return "naver-product-editor";
-    }
-    @GetMapping({"/marketplaces/products/new","/marketplaces/products/{draftId}/edit"})
-    public String commonMarketplaceEditor(@AuthenticationPrincipal UserPrincipal principal,Model model){
-        if(addLayoutModel(principal,model)==null)return "redirect:/signin";
-        return "common-marketplace-editor";
+
+    @GetMapping("/coupang/working-copies/{id}/edit")
+    public String coupangWorkingCopyEditor(@AuthenticationPrincipal UserPrincipal principal, Model model) {
+        if (addLayoutModel(principal, model) == null)
+            return "redirect:/signin";
+        return "coupang-editor";
     }
 
     @GetMapping("/inventory")
     public String inventory(@AuthenticationPrincipal UserPrincipal principal, Model model) {
-        if(addLayoutModel(principal,model)==null)return "redirect:/signin";
-        model.addAttribute("inventoryAdmin",principal.userRole()==cc.ataglace.molebutter.identity.api.UserRole.ADMIN);
+        if (addLayoutModel(principal, model) == null)
+            return "redirect:/signin";
+        model.addAttribute("inventoryAdmin",
+                principal.userRole() == cc.ataglace.molebutter.identity.api.UserRole.ADMIN);
         return "inventory";
     }
 
     @GetMapping("/attendance")
     public String attendance(@AuthenticationPrincipal UserPrincipal principal, Model model) {
-        if (addLayoutModel(principal, model) == null) return "redirect:/signin";
+        if (addLayoutModel(principal, model) == null)
+            return "redirect:/signin";
         return "attendance";
     }
 
     @GetMapping("/attendance-manage")
     public String attendanceManage(@AuthenticationPrincipal UserPrincipal principal, Model model) {
-        if (addLayoutModel(principal, model) == null) return "redirect:/signin";
+        if (addLayoutModel(principal, model) == null)
+            return "redirect:/signin";
         return "attendance-manage";
     }
 
     /**
-     * 로그인 후 홈으로 이동하는 기존 흐름을 유지한다.
-     * 미인증이면 SecurityConfig의 entry point가 오기 전 안전망으로 /signin으로 보낸다.
+     * 로그인 후 홈으로 이동하는 기존 흐름을 유지한다. 미인증이면 SecurityConfig의 entry point가 오기 전 안전망으로
+     * /signin으로 보낸다.
      */
     @GetMapping("/")
     public String home(@AuthenticationPrincipal UserPrincipal principal, Model model) {
@@ -184,8 +197,8 @@ public class ViewController {
     }
 
     /**
-     * 공통 레이아웃(사이드바) 모델을 채우고 현재 사용자를 돌려준다.
-     * principal이 없거나 계정이 사라진 경우 null — 호출부는 /signin으로 리다이렉트한다.
+     * 공통 레이아웃(사이드바) 모델을 채우고 현재 사용자를 돌려준다. principal이 없거나 계정이 사라진 경우 null — 호출부는
+     * /signin으로 리다이렉트한다.
      */
     private UserAccount addLayoutModel(UserPrincipal principal, Model model) {
         if (principal == null) {
@@ -195,13 +208,11 @@ public class ViewController {
         if (user == null) {
             return null;
         }
-        model.addAttribute("marketplaceChannels", cc.ataglace.molebutter.marketplace.api.MarketplaceChannels.all());
         model.addAttribute("userName", user.getName());
         model.addAttribute("menuItems", principal.userRole().getSections());
-        model.addAttribute("readySections", READY_SECTIONS);
         model.addAttribute("navigationGroups", navigationGroups(principal.userRole()));
-        var request=(ServletRequestAttributes)RequestContextHolder.getRequestAttributes();
-        model.addAttribute("currentPath",request==null?"/":request.getRequest().getRequestURI());
+        var request = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        model.addAttribute("currentPath", request == null ? "/" : request.getRequest().getRequestURI());
         return user;
     }
 }

@@ -43,6 +43,18 @@ CREATE USER 'test_migrator'@'localhost' IDENTIFIED BY 'isolated-test-migration-p
 GRANT SELECT, INSERT, UPDATE, DELETE ON molebutter_test.* TO 'test_app'@'localhost';
 GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES ON molebutter_test.* TO 'test_migrator'@'localhost';
 CREATE DATABASE molebutter_upgrade_test CHARACTER SET utf8mb4;
+CREATE DATABASE molebutter_sales_reset_test CHARACTER SET utf8mb4;
+CREATE DATABASE molebutter_domain_test CHARACTER SET utf8mb4;
+CREATE DATABASE molebutter_working_copy_test CHARACTER SET utf8mb4;
+CREATE DATABASE molebutter_v47_preparation_test CHARACTER SET utf8mb4;
+CREATE DATABASE molebutter_v47_commit_test CHARACTER SET utf8mb4;
+CREATE DATABASE molebutter_intent_test CHARACTER SET utf8mb4;
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES ON molebutter_intent_test.* TO 'test_migrator'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES ON molebutter_working_copy_test.* TO 'test_migrator'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES ON molebutter_v47_preparation_test.* TO 'test_migrator'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES ON molebutter_v47_commit_test.* TO 'test_migrator'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES ON molebutter_domain_test.* TO 'test_migrator'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES ON molebutter_sales_reset_test.* TO 'test_migrator'@'localhost';
 GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES ON molebutter_upgrade_test.* TO 'test_migrator'@'localhost';
 SQL
 export MOLEBUTTER_TEST_DB_URL="jdbc:mysql://127.0.0.1:$mysql_port/molebutter_test?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul"

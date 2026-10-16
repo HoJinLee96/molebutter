@@ -1,7 +1,5 @@
 package cc.ataglace.molebutter.identity.api;
 
-import cc.ataglace.molebutter.identity.api.UserRole;
-import cc.ataglace.molebutter.identity.api.UserStatus;
 import java.time.LocalDateTime;
 /** Read-only account contract; no entity or repository crosses a business boundary. */
 public interface UserAccount {

@@ -1,27 +1,29 @@
 # 업무 모듈과 DB 책임
 
-> 문서 유형: 현재 구현 안내. 2026-10-09 로컬 코드와 대조했다. 날짜가 붙은 적용·검증 문단은 당시 기록이며 현재 정책과 구분한다.
+> 문서 유형: 현재 구현 안내. 2026-10-16 쿠팡 작업본 경계로 정리했다. 날짜가 붙은 적용·검증 문단은 당시 기록이며 현재 정책과 구분한다.
 
-하나의 Spring Boot 앱·DataSource·트랜잭션 관리자·MySQL·Redis를 유지한다. 루트 Maven 프로젝트는 부모와 집계 역할을 하며, 배포할 실행 JAR은 `molebutter-app/target/molebutter-0.0.1-SNAPSHOT.jar` 하나다. 쿠팡 등록상품 목록 수동 조회를 포함하며 내부 상품·재고 저장과 자동 동기화는 하지 않는다.
+하나의 Spring Boot 앱·DataSource·트랜잭션 관리자·MySQL·Redis를 유지한다. 루트 Maven 프로젝트는 부모와 집계 역할을 하며, 배포할 실행 JAR은 `molebutter-app/target/molebutter-0.0.1-SNAPSHOT.jar` 하나다. 쿠팡 등록상품은 명시적으로 조회하며 쿠팡 판매값을 내부 상품·보유 재고에 자동 동기화하지 않는다.
 
 ## 모듈 경계
 
-| 모듈 | 책임 | 참조 가능한 업무 모듈 |
+루트 `molebutter`는 집계용 POM이고 다음 12개가 실제 Maven 모듈이다. 쿠팡만 판매하더라도 내부 관리·매입·이미지 기능의 책임은 각각 유지한다.
+
+| 모듈 | 현재 책임 | 유지 이유 |
 |---|---|---|
-| common | ID, 한국 시간, 업무 오류, 페이징, 공통 영속성 기반 | 없음 |
-| storage | 공개·비공개 R2 객체 CRUD, 목록·메타데이터, 저장소 설정·오류 | common |
-| identity | 계정, 인증, 직원, 인증 감사, 메일, 인증 Redis | common |
-| operations | 업무 감사, 알림 저장·접근 | common, identity |
-| catalog | 상품 기준, 브랜드, 수정 버전, 일관성 가드 | common, identity, operations |
-| procurement | 검색 기준, 매입처, 선정, 최신화, 추천, 변동·복구 | common, identity, operations, catalog |
-| inventory | 매입 주문, 재고, 수량 이력, 환불, 결제 수단 | common, identity, operations, catalog |
-| attendance | 근태, 정정·승인, 조회 | common, identity, operations |
-| media | 원본 이미지·소유권·공개 발행·참조·실행 핀 | common, identity |
-| marketplace | 공통 판매 초안·편집 세션·검증·실행·주문 이력 | common, identity, media |
-| marketplace-coupang | 쿠팡 인증·조회·전송·규격·응답 해석 | common, identity, marketplace, media |
-| marketplace-naver | 스마트스토어 인증·조회·전송·네이버 이미지 전달 | common, identity, marketplace, media |
-| imaging | LF몰 이미지 조회·정렬 산출물·사이즈 및 고시 렌더·임시 다운로드 | common |
-| app | HTTP·화면, 설정, 업무 간 연결, Flyway, 실행 | 모든 모듈 |
+| app | HTTP·화면·보안·설정·Flyway·업무 조립 | 배포 실행 JAR의 진입점 |
+| common | 공통 값·응답 계약·검증·기반 엔티티 | 여러 업무가 공유하는 작은 계약 |
+| identity | 회원·권한·인증·계정 잠금 | 보존 대상인 사용자·접근 제어 |
+| operations | 감사·알림·운영 작업 | 업무 변경 추적과 작업 관리 |
+| catalog | 내부 기준 상품·브랜드·버전·일관성 잠금 | 상품업무의 상품 원장과 브랜드 |
+| procurement | 매입처·공개 검색·가격 조회·수집 | 유지하기로 한 매입·가격 계산 업무 |
+| inventory | 보유 재고·입출고·이동 이력 | 쿠팡 판매 가능 수량과 별도인 실물 재고 |
+| attendance | 근태 기록·사용자 잠금 | 보존 대상인 근태 업무 |
+| coupang | 쿠팡 상품·작업본·옵션·주문·클레임·편집·전송 | 유일한 판매 연동 업무 |
+| media | 쿠팡 이미지 원본·발행·참조·실행 핀·감사 보호 | 판매 이미지의 수명과 전송 증거 관리 |
+| imaging | 내부 상품 이미지 조회·가공·ZIP·작업 공간 | 이미지 가공 도구와 사용자별 임시 작업 |
+| storage | R2 객체 저장 인프라 | media·이미지 도구와 분리된 객체 저장 구현 |
+
+media의 DB 참조·발행 수명과 imaging의 이미지 가공 작업은 다르다. 이름이 비슷하다는 이유로 병합하거나 삭제하지 않는다. procurement의 네이버·매입 쇼핑몰 코드는 쿠팡 외 판매자 연동 코드와 구분한다.
 
 다른 업무의 Java 코드는 `.api` 계약으로만 사용한다. 구현과 저장소는 `.internal`에 둔다. `common.persistence`는 공통 엔티티 기반을 위한 명시적 예외이며 JPA 의존성을 선택적으로 선언한다. 사용하는 업무가 JPA 라이브러리를 직접 선언한다. HTTP 응답·예외 매핑은 app에 두며 `PageResponse`에는 Spring Data 변환이 없다.
 
@@ -41,19 +43,20 @@
 
 상품 HTTP 전용 요청·결과는 app의 `ProductHttpDtos`에 둔다. procurement 조회 조합은 `ProcurementProductView`로 이름을 명확히 하되 기존 JSON 필드는 유지한다. 공통 문자열 길이·필수값 검증은 `BusinessText`를 사용하며 각 호출부의 오류 문구와 업무별 의미는 유지한다.
 
-`ModuleArchitectureTest`는 알려지지 않은 업무 패키지, 실제 Maven 모듈과 패키지 소유자의 불일치, 공개 계약의 제네릭·배열·레코드 등에 노출된 내부 타입까지 검사한다. 잘못된 테스트 전용 계약으로 규칙이 실제로 실패하는지도 확인한다. SQL 쓰기 소유권 검토는 여전히 별도로 수행한다.
+`ModuleArchitectureTest`는 알려지지 않은 업무 패키지, 실제 Maven 모듈과 패키지 소유자의 불일치, 공개 계약의 제네릭·배열·레코드 등에 노출된 내부 타입까지 검사한다. 잘못된 테스트 전용 계약으로 규칙이 실제로 실패하는지도 확인한다. SQL 쓰기 소유권 검토는 여전히 별도로 수행한다. 적용된 `db.migration.*`는 역사적 internal 의존을 보존하기 위해 검사 예외이며 새 업무 코드의 예외가 아니다.
 
 ## 저장 책임과 SQL 쓰기 검토 목록
 
 | 소유자 | 변경 가능한 테이블 |
 |---|---|
-| catalog | catalog_product, product_brand, sales_channel, catalog_merge_history, catalog_consistency_guard |
+| catalog | catalog_product, product_brand, catalog_merge_history, catalog_consistency_guard |
 | procurement | procurement_product, procurement_settings, procurement_runtime, product_supplier·선정·매장·선호·조회·변동 관련 기존 테이블, product_refresh_*, supplier_stock_lookup, 검색 시도·게이트 이력 |
 | inventory | inventory_purchase, inventory_item, inventory_movement, inventory_request_lock, inventory_payment_method 등 기존 재고 저장 구조 |
 | identity | user 및 인증 관련 저장소·Redis 키 |
 | attendance | attendance, attendance_break, attendance_correction |
 | operations | operation_audit_log, notification_event, user_notification |
-| marketplace | marketplace_draft, marketplace_asset, marketplace_draft_asset |
+| coupang | coupang_product_working_copy, coupang_listing_state, coupang_edit_session, coupang_submission_preview·account, coupang_execution·step·attempt·target, coupang_order* |
+| media | coupang_asset, coupang_asset_publication, coupang_working_copy_asset, coupang_execution_asset, coupang_image_edit; legacy_coupang_asset_pin·legacy_coupang_listing_history_asset는 읽기·보호만 수행 |
 | app/Flyway | 신규·기존 마이그레이션 실행만 담당 |
 
 실제 테이블명은 Flyway를 기준으로 한다. 코드 검토 시 `INSERT / UPDATE / DELETE`의 소유자를 대조한다. 다른 업무 테이블과 조회용 JOIN은 허용하지만 다른 업무의 컬럼 변경은 공개 변경 기능으로 요청한다. app 연결 어댑터는 조회만 수행한다. ArchUnit은 허용 의존성·내부 접근·업무 패키지 순환을 검사하며 SQL 쓰기까지 자동 판정하지 않는다.
@@ -85,7 +88,7 @@ Flyway·템플릿·정적 파일·일반 설정은 app 자원에 있다. 로컬 
 
 복구 명령은 `cc.ataglace.molebutter.procurement.internal.ProductStatusRepairCommand`와 `SearchStatusRepairCommand`다. 전체 모듈과 외부 의존성이 포함된 classpath 또는 실행 JAR의 Boot `PropertiesLauncher`를 이용한다. 자동 기동에서 실행하지 않는다. 자세한 명령은 상태 판정 문서를 따른다.
 
-## V28 → V30 적용과 복구
+## 과거 적용 기록: V28 → V30 적용과 복구
 
 운영에서 구버전·신버전을 동시에 실행하지 않는다. 이중 저장도 지원하지 않는다.
 
@@ -98,11 +101,9 @@ Flyway·템플릿·정적 파일·일반 설정은 app 자원에 있다. 로컬 
 MySQL DDL 전체를 하나의 트랜잭션으로 되돌릴 수 있다고 가정하지 않는다. 이전 실패 후 운영 DB에서 무조건 `repair`하거나 기존 앱을 재기동하지 않는다. 적용 중 실패하면 백업 DB와 이전 앱을 함께 복구한다. 트래픽 재개 후 생긴 매입·입고 등은 백업에 없으므로 단순 복원하지 않고 후속 변경까지 대조해 복구하거나 수정 배포한다. 테스트의 `Flyway.repair()`는 의도적으로 실패를 만든 격리 DB에서 원인을 고친 뒤 검증하기 위한 용도다.
 
 
-## 판매 마켓 조회 모듈
+## 쿠팡 판매 업무와 이미지 자산
 
-`molebutter-marketplace`는 common·identity·media 공개 계약에 의존하고 app이 조립한다. 공통 초안·편집 세션·실행·주문 이력은 marketplace, 쿠팡과 스마트스토어 인증·외부 요청·규격·응답 해석은 각각 marketplace-coupang과 marketplace-naver, 관리자 HTTP·화면·비밀 설정 연결은 app 소유다. catalog·procurement·inventory 테이블을 읽거나 수정하지 않는다. ArchUnit이 허용 의존성과 다른 모듈 internal 접근 금지를 검사한다. [쿠팡 구현 범위](market-api/coupang-wing.md)를 참고한다.
-
-판매용 공통 초안은 marketplace, 원본 이미지·공개 발행·참조·실행 핀은 media가 소유한다. 기존 기준 상품·매입처·보유 재고 테이블을 연결하거나 변경하지 않는다. 편집 DTO·외부 쓰기 전문·현재 판매값을 구분하고 초안 수정은 버전 검사와 이미지 참조 잠금을 사용한다. [공통 편집 구현](market-api/common-product-editor.md)을 참고한다.
+쿠팡 상품 작업본은 coupang, 원본 이미지·공개 발행·참조·실행 핀은 media가 소유한다. 기존 기준 상품·매입처·보유 재고 테이블을 연결하거나 변경하지 않는다. 편집 DTO·외부 쓰기 전문·현재 판매값을 구분하고 작업본 저장은 revision 검사와 이미지 참조 잠금을 사용한다. [쿠팡 작업본](coupang-api/working-copies.md)을 참고한다.
 
 ## 상품 이미지 도구
 
@@ -114,26 +115,12 @@ MySQL DDL 전체를 하나의 트랜잭션으로 되돌릴 수 있다고 가정�
 
 기존 media의 로컬 원본·발행 이미지와 imaging의 임시 PNG·ZIP은 자동 이전하지 않는다. 공개 버킷에는 공개용 파일만 저장하고 비공개 객체에는 공개 URL을 제공하지 않는다. 신규 R2 설정은 기본 비활성으로 유지한다. [구성 및 CRUD 계약](r2-storage.md)을 참고한다.
 
-## 판매 마켓 경계 확장 (2026-10-09)
+## 쿠팡 계약과 내부 역할
 
-단일 Spring Boot 앱을 유지하며 다음 모듈을 분리한다. 기존 브라우저 API와 전문 JSON의 필드 이름은 유지한다.
+`molebutter-coupang` 하나가 `coupang.api` 계약, `coupang.internal` 업무·저장과 `coupang.internal.client` 서명·HTTP를 소유한다. API 패키지는 Spring·JDBC·HTTP 실행 코드에 의존하지 않는다. app은 공개 계약을 사용해 컨트롤러와 화면을 조립한다. 공급자 선택·마켓별 레지스트리·확장용 단일 구현 추상화는 없다.
 
-| 모듈 | 책임 | 공개 계약 의존 |
-|---|---|---|
-| marketplace | 공통 초안·revision·관찰/편집 세션·순차 실행·재시도·주문 수집 이력 | common, identity, media |
-| marketplace-coupang | HMAC·조회·상품 생성/수정·가격/재고/배송·주문 응답 해석 | common, identity, marketplace, media |
-| marketplace-naver | OAuth·상품/카테고리 조회·원상품/채널상품 저장·네이버 이미지 업로드 | common, identity, marketplace, media |
-| media | 원본 자산·소유권·공개 토큰·초안 참조·실행 핀·정리 | common, identity |
-| imaging | LF몰 이미지 조회·치수/상품정보 렌더·편집·임시 ZIP | common |
-| storage | 공개/비공개 R2 객체 CRUD | common |
-| app | HTTP·화면·설정 주입·모듈 조립 | 각 모듈의 공개 API |
+작업본은 쿠팡 `document`와 명시적인 `changes`를 저장한다. 편집 세션은 서버 조회 원본과 확인한 미완료 의도를 보관하며 완료 직후의 저장이 과거 의도를 되살리지 않도록 한다. 승인 단계는 전송 준비에 한 번 포함한다. 저장된 전문의 버전 검사와 옵션 UUID·외부 ID 연결·계정·revision·연결 세대 보호를 유지한다. 상품 식별자 연결 검사는 `SubmissionMappingPolicy`, 실행 임대·하트비트·외부 호출·결과 기록은 `SubmissionWorker`, 주문 체크포인트·취소·재개는 `coupang.internal.orders`가 담당한다.
 
-공통 실행기는 `MarketplaceWriteGateway`, `MarketplaceProductAdapter`, `MarketplaceOrderGateway`를 사용하며 공급자 구현에 의존하지 않는다. 기존 전용 화면 DTO 및 신규/수정 워크플로 계약은 호환을 위해 marketplace.api에 남는다. 변환·검증·외부 전문 구성은 공급자 포트로 위임한다. 주문 수집의 DB 체크포인트·취소·재개는 공통 모듈에 남는다.
+적용된 V1~V48과 감사 증거는 보존한다. 현재 판매 테이블은 24개, 감사 테이블은 11개다. [V48 보존 전환](coupang-intent-migration.md)과 [V47 작업본 구조](coupang-working-copy-migration.md)를 따른다. 공용 R2와 매입용 브라우저 프로필은 보존한다.
 
-저장된 Prepared JSON은 schemaVersion을 포함한다. 없는 기존 버전은 1로 읽고, 지원하지 않는 미래 버전은 쓰기 실행/재시도를 거부한다. 기존 마켓·상품·옵션 매핑 키와 CREATE 결과 확인 필요, 승인 대기, 부분 성공의 의미는 바꾸지 않는다.
-
-`MarketplaceChannels`는 여섯 채널의 식별자·표시명·공급자·기능별 구현 여부를 한 곳에서 관리한다. 계정 자격 증명 구성이나 실계정 성공을 뜻하지 않는다. G마켓·옥션은 ESM 공급자를 공유하되 채널 ID는 분리한다. 롯데ON·11번가는 준비 상태이며 비어 있는 어댑터나 외부 호출을 생성하지 않는다. 스마트스토어 주문 수집은 미구현이다. 공통 편집기의 네이버·ESM 준비 입력과 전용 화면 전송 가능 여부도 구분한다.
-
-`ImageAssets` 추출은 기존 자산 테이블·저장 경로·설정·HTTP URL을 그대로 사용한다. 기존 공개 R2 객체나 로컬 원본을 옮기지 않는다. 상품 이미지 도구의 R2 업로드 작업 registry는 현재 메모리 수명 정책을 유지하며, 영구 작업 기록·중단 복구와 자산 통합은 별도 마이그레이션 과제다. 기존 R2 prefix 중복 검사와 예약 CAS를 유지한다.
-
-ArchUnit은 새 패키지의 실제 모듈 위치, 공개 API만 사용하는 의존 방향과 순환 금지를 검사한다. 모듈 이동은 API 규격 변경이나 실제 판매 마켓 호출 성공을 의미하지 않는다.
+`coupang_listing_state`는 과거 연결 세대의 보호 행을 읽고 기존 행의 상태만 갱신한다. 재등록·재연결 업무가 없는 신규 작업본은 행을 생성하지 않으며 세대 1을 사용한다. 기존 세대 값과 미리보기의 세대 대조는 계속 보존한다.

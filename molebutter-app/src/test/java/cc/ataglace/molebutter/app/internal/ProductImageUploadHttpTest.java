@@ -61,11 +61,8 @@ class ProductImageUploadHttpTest {
                 Instant.parse("2026-10-09T00:00:00Z"), Instant.parse("2026-10-09T00:00:01Z"),
                 new ProductImageUploadJob.Result("HIHO861W2", files, 2), null));
         String mixedInput = """
-            {"requestId":"801fed42-3ad7-4db4-bd9c-362e6312c009","productCode":"HIHO6F861W2","brandCode":"HAZZYS",
-             "uploadProductCode":"HIHO861W2","images":[
-               {"imageIndex":0,"sourceImageUrl":"https://nimg.lfmall.co.kr/0.jpg"},
-               {"generatedImageId":"11111111-1111-1111-1111-111111111111"}]}
-            """;
+{"requestId": "801fed42-3ad7-4db4-bd9c-362e6312c009", "productCode": "HIHO6F861W2", "brandCode": "HAZZYS", "uploadProductCode": "HIHO861W2", "images": [{"imageIndex": 0, "sourceImageUrl": "https://nimg.lfmall.co.kr/0.jpg"}, {"generatedImageId": "11111111-1111-1111-1111-111111111111"}]}
+""";
         http.perform(post("/api/product-images/products/upload").contentType("application/json").content(mixedInput))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.data.result.uploadProductCode").value("HIHO861W2"))
@@ -79,8 +76,7 @@ class ProductImageUploadHttpTest {
 
     private static String input() {
         return """
-            {"requestId":"801fed42-3ad7-4db4-bd9c-362e6312c009","productCode":"HIHO6F861W2","brandCode":"HAZZYS",
-             "uploadProductCode":"HIHO861W2","images":[{"generatedImageId":"11111111-1111-1111-1111-111111111111"}]}
-            """;
+{"requestId": "801fed42-3ad7-4db4-bd9c-362e6312c009", "productCode": "HIHO6F861W2", "brandCode": "HAZZYS", "uploadProductCode": "HIHO861W2", "images": [{"generatedImageId": "11111111-1111-1111-1111-111111111111"}]}
+""";
     }
 }

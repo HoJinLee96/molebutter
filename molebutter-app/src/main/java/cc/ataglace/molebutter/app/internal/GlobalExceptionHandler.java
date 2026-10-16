@@ -22,7 +22,6 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
-import cc.ataglace.molebutter.app.internal.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
@@ -32,32 +31,73 @@ import lombok.extern.slf4j.Slf4j;
 @lombok.RequiredArgsConstructor
 public class GlobalExceptionHandler {
     private final cc.ataglace.molebutter.app.internal.FailureNotificationService notifications;
-    private void notifyFailure(HttpServletRequest request,String message) {
-        try { notifications.record(request,message); }
-        catch(Exception failure) { log.error("알림 저장 실패 type={}", failure.getClass().getSimpleName()); }
+    private void notifyFailure(HttpServletRequest request, String message) {
+        try {
+            notifications.record(request, message);
+        } catch (Exception failure) {
+            log.error("알림 저장 실패 type={}", failure.getClass().getSimpleName());
+        }
     }
 
+    @ExceptionHandler(cc.ataglace.molebutter.coupang.api.CoupangFailure.class)
+    protected ResponseEntity<ApiResponse<Void>> coupangFailure(
+            cc.ataglace.molebutter.coupang.api.CoupangFailure failure, HttpServletRequest request) {
+        var status = switch (failure.kind()) {
+            case CONFIGURATION -> HttpStatus.SERVICE_UNAVAILABLE;
+            case BUSY, CANCELLED -> HttpStatus.CONFLICT;
+            case RATE_LIMIT -> HttpStatus.TOO_MANY_REQUESTS;
+            case TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
+            default -> HttpStatus.BAD_GATEWAY;
+        };
+        String prefix = request.getRequestURI().startsWith("/api/coupang/orders") ? "COUPANG_ORDER_" : "COUPANG_";
+        return coupangResponse(request, status, prefix + failure.kind(), failure.getMessage());
+    }
+    @ExceptionHandler(cc.ataglace.molebutter.coupang.api.CoupangEditingFailure.class)
+    protected ResponseEntity<ApiResponse<Void>> coupangEditingFailure(
+            cc.ataglace.molebutter.coupang.api.CoupangEditingFailure failure, HttpServletRequest request) {
+        var status = failure.kind() == cc.ataglace.molebutter.coupang.api.CoupangEditingFailure.Kind.NOT_FOUND
+                ? HttpStatus.NOT_FOUND
+                : HttpStatus.CONFLICT;
+        String prefix = request.getRequestURI().startsWith("/api/coupang/submissions")
+                ? "COUPANG_EDITING_"
+                : "COUPANG_WORKING_COPY_";
+        return coupangResponse(request, status, prefix + failure.kind(), failure.getMessage());
+    }
+    @ExceptionHandler(cc.ataglace.molebutter.coupang.api.CoupangSubmissionFailure.class)
+    protected ResponseEntity<ApiResponse<Void>> coupangSubmissionFailure(
+            cc.ataglace.molebutter.coupang.api.CoupangSubmissionFailure failure, HttpServletRequest request) {
+        var status = switch (failure.kind()) {
+            case NOT_FOUND -> HttpStatus.NOT_FOUND;
+            case INVALID -> HttpStatus.UNPROCESSABLE_CONTENT;
+            default -> HttpStatus.CONFLICT;
+        };
+        return coupangResponse(request, status, "COUPANG_SUBMISSION_" + failure.kind(), failure.getMessage());
+    }
+    private ResponseEntity<ApiResponse<Void>> coupangResponse(HttpServletRequest request, HttpStatus status,
+            String code, String message) {
+        if (java.util.Set.of("POST", "PUT", "PATCH", "DELETE").contains(request.getMethod()))
+            notifyFailure(request, message);
+        return ResponseEntity.status(status).cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(ApiResponse.error(status, code, message));
+    }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     protected ResponseEntity<ApiResponse<Void>> handleArgumentTypeMismatch(MethodArgumentTypeMismatchException e) {
-        return ResponseEntity.badRequest().body(ApiResponse.error(HttpStatus.BAD_REQUEST,
-                "검색 조건의 형식이 올바르지 않습니다: " + e.getName()));
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(HttpStatus.BAD_REQUEST, "검색 조건의 형식이 올바르지 않습니다: " + e.getName()));
     }
 
     /**
-     * 비즈니스 로직 실행 중 발생하는 예상된 예외 처리.
-     * 예상된 사용자 실수(4xx)는 INFO로 남긴다 — WARN 이상(molebutter-error.log)은
-     * 운영자가 봐야 할 이상 신호만 남기기 위해서다. 발생 이력은 INFO 파일과 DB 감사 로그로 추적한다.
+     * 비즈니스 로직 실행 중 발생하는 예상된 예외 처리. 예상된 사용자 실수(4xx)는 INFO로 남긴다 — WARN
+     * 이상(molebutter-error.log)은 운영자가 봐야 할 이상 신호만 남기기 위해서다. 발생 이력은 INFO 파일과 DB 감사
+     * 로그로 추적한다.
      */
     @ExceptionHandler(BusinessException.class)
-    protected ResponseEntity<ApiResponse<Void>> handleBusinessException(
-            final BusinessException e,
+    protected ResponseEntity<ApiResponse<Void>> handleBusinessException(final BusinessException e,
             HttpServletRequest request) {
         log.info("BusinessException request={} message={}", requestDescription(request), e.getMessage());
         ErrorCode errorCode = e.getErrorCode();
-        return ResponseEntity
-                .status(HttpErrorStatus.of(errorCode))
-                .body(ApiResponse.error(errorCode));
+        return ResponseEntity.status(HttpErrorStatus.of(errorCode)).body(ApiResponse.error(errorCode));
     }
 
     /**
@@ -66,18 +106,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BindException.class)
     protected ResponseEntity<ApiResponse<Void>> handleBindException(BindException e) {
         log.info("BindException: invalid input");
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.error(ErrorCode.INVALID_INPUT_VALUE));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(ErrorCode.INVALID_INPUT_VALUE));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     protected ResponseEntity<ApiResponse<Void>> handleMethodArgumentNotValidException(
             MethodArgumentNotValidException e) {
         log.info("MethodArgumentNotValidException: invalid input");
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.error(ErrorCode.INVALID_INPUT_VALUE));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(ErrorCode.INVALID_INPUT_VALUE));
     }
 
     /**
@@ -87,26 +123,21 @@ public class GlobalExceptionHandler {
     protected ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadableException(
             HttpMessageNotReadableException e) {
         log.info("HttpMessageNotReadableException: invalid input");
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.error(ErrorCode.INVALID_INPUT_VALUE));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(ErrorCode.INVALID_INPUT_VALUE));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
     protected ResponseEntity<ApiResponse<Void>> handleConstraintViolationException(ConstraintViolationException e) {
         log.info("ConstraintViolationException: invalid input");
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.error(ErrorCode.INVALID_INPUT_VALUE));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(ErrorCode.INVALID_INPUT_VALUE));
     }
 
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     protected ResponseEntity<ApiResponse<Void>> handleOptimisticLockingFailureException(
             ObjectOptimisticLockingFailureException e, HttpServletRequest request) {
-        notifyFailure(request,"다른 작업에서 변경되었습니다. 다시 확인해 주세요.");
+        notifyFailure(request, "다른 작업에서 변경되었습니다. 다시 확인해 주세요.");
         log.warn("ObjectOptimisticLockingFailureException");
-        return ResponseEntity
-                .status(HttpErrorStatus.of(ErrorCode.OPTIMISTIC_LOCKING_FAILURE))
+        return ResponseEntity.status(HttpErrorStatus.of(ErrorCode.OPTIMISTIC_LOCKING_FAILURE))
                 .body(ApiResponse.error(ErrorCode.OPTIMISTIC_LOCKING_FAILURE));
     }
 
@@ -117,20 +148,22 @@ public class GlobalExceptionHandler {
     protected ResponseEntity<ApiResponse<Void>> handleHttpRequestMethodNotSupportedException(
             HttpRequestMethodNotSupportedException e) {
         log.warn("HttpRequestMethodNotSupportedException");
-        return ResponseEntity
-                .status(HttpStatus.METHOD_NOT_ALLOWED)
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
                 .body(ApiResponse.error(ErrorCode.METHOD_NOT_ALLOWED));
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     protected ResponseEntity<ApiResponse<Void>> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException e) {
         log.warn("MaxUploadSizeExceededException");
-        return ResponseEntity
-                .status(HttpStatus.TOO_MANY_REQUESTS)
-                .body(ApiResponse.error(
-                        HttpStatus.TOO_MANY_REQUESTS,
-                        "IMAGE_UPLOAD_SIZE_EXCEEDED",
-                        "10MB 이하 파일만 업로드할 수 있습니다."));
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(ApiResponse.error(HttpStatus.TOO_MANY_REQUESTS,
+                "IMAGE_UPLOAD_SIZE_EXCEEDED", "10MB 이하 파일만 업로드할 수 있습니다."));
+    }
+
+    @ExceptionHandler(org.springframework.web.HttpMediaTypeNotSupportedException.class)
+    protected ResponseEntity<ApiResponse<Void>> handleUnsupportedMediaType(
+            org.springframework.web.HttpMediaTypeNotSupportedException e) {
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .body(ApiResponse.error(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "지원하지 않는 요청 형식입니다."));
     }
 
     /** Only application-owned explanations may be returned verbatim. */
@@ -152,7 +185,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(IllegalStateException.class)
-    protected ResponseEntity<ApiResponse<Void>> handleIllegalStateException(IllegalStateException e, HttpServletRequest request) {
+    protected ResponseEntity<ApiResponse<Void>> handleIllegalStateException(IllegalStateException e,
+            HttpServletRequest request) {
         return handleException(e, request);
     }
 
@@ -161,8 +195,7 @@ public class GlobalExceptionHandler {
         log.warn("ResponseStatusException status={}", e.getStatusCode().value());
         HttpStatus status = HttpStatus.resolve(e.getStatusCode().value());
         HttpStatus responseStatus = status == null ? HttpStatus.INTERNAL_SERVER_ERROR : status;
-        return ResponseEntity
-                .status(responseStatus)
+        return ResponseEntity.status(responseStatus)
                 .body(ApiResponse.error(responseStatus, responseStatus.getReasonPhrase()));
     }
 
@@ -172,15 +205,13 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 매핑되지 않은 URL. 스프링이 정적 리소스 미발견(NoResourceFoundException)이나
-     * 핸들러 미발견(NoHandlerFoundException)으로 올리는데, catch-all에 흘러가면 500으로 오인되므로 404로 명시한다.
+     * 매핑되지 않은 URL. 스프링이 정적 리소스 미발견(NoResourceFoundException)이나 핸들러
+     * 미발견(NoHandlerFoundException)으로 올리는데, catch-all에 흘러가면 500으로 오인되므로 404로 명시한다.
      */
     @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
     protected ResponseEntity<ApiResponse<Void>> handleNotFound(Exception e, HttpServletRequest request) {
         log.debug("Not Found: {}", requestDescription(request));
-        return ResponseEntity
-                .status(HttpStatus.NOT_FOUND)
-                .body(ApiResponse.error(ErrorCode.NOT_FOUND));
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(ErrorCode.NOT_FOUND));
     }
 
     /**
@@ -192,14 +223,14 @@ public class GlobalExceptionHandler {
             log.debug("Client aborted response before it could be written");
             return ResponseEntity.noContent().build();
         }
-        log.error("Unhandled Exception type={} request={} frames={}", e.getClass().getName(), requestDescription(request), java.util.Arrays.toString(e.getStackTrace()));
-        notifyFailure(request,"처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
-        return ResponseEntity
-                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+        log.error("Unhandled Exception type={} request={} frames={}", e.getClass().getName(),
+                requestDescription(request), java.util.Arrays.toString(e.getStackTrace()));
+        notifyFailure(request, "처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error(ErrorCode.INTERNAL_SERVER_ERROR));
     }
 
-        private String requestDescription(HttpServletRequest request) {
+    private String requestDescription(HttpServletRequest request) {
         if (request == null) {
             return "-";
         }
@@ -215,7 +246,7 @@ public class GlobalExceptionHandler {
             String message = current.getMessage();
             if (message != null) {
                 String normalized = message.toLowerCase(Locale.ROOT);
-                // "connection reset"은 다운스트림(외부몰/DB) 호출 실패에서도 나타나므로 제외한다.
+                // "connection reset"은 다운스트림(외부 서비스/DB) 호출 실패에서도 나타나므로 제외한다.
                 // 이를 client abort로 오인하면 실제 서버 오류가 204로 응답되어 묻힌다(F-WEB1).
                 // "broken pipe"/"response not usable"은 응답 쓰기 단계의 클라이언트 중단 신호로 한정한다.
                 if (normalized.contains("broken pipe")

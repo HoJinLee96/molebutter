@@ -1,8 +1,5 @@
 package cc.ataglace.molebutter.procurement.internal;
 import cc.ataglace.molebutter.procurement.api.ProductDtos.*;
-import cc.ataglace.molebutter.procurement.internal.SupplierLookupService;
-import cc.ataglace.molebutter.procurement.internal.SupplierLookupStatusPolicy;
-import cc.ataglace.molebutter.procurement.internal.SupplierRecommendationPolicy;
 
 import java.time.LocalDateTime;
 import java.util.*;

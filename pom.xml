@@ -26,9 +26,7 @@
         <module>molebutter-inventory</module>
         <module>molebutter-attendance</module>
         <module>molebutter-media</module>
-        <module>molebutter-marketplace</module>
-        <module>molebutter-marketplace-coupang</module>
-        <module>molebutter-marketplace-naver</module>
+        <module>molebutter-coupang</module>
         <module>molebutter-imaging</module>
         <module>molebutter-app</module>
     </modules>
@@ -108,7 +106,7 @@
             </dependency>
             <dependency>
                 <groupId>cc.ataglace</groupId>
-                <artifactId>molebutter-marketplace</artifactId>
+                <artifactId>molebutter-coupang</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -122,14 +120,19 @@
                 <version>${project.version}</version>
             </dependency>
             <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-media</artifactId><version>${project.version}</version></dependency>
-            <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-marketplace-coupang</artifactId><version>${project.version}</version></dependency>
-            <dependency><groupId>cc.ataglace</groupId><artifactId>molebutter-marketplace-naver</artifactId><version>${project.version}</version></dependency>
         </dependencies>
     </dependencyManagement>
     <build>
         <directory>${molebutter.build-directory}</directory>
         <pluginManagement>
             <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <configuration>
+                        <argLine>-javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
+                    </configuration>
+                </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-jar-plugin</artifactId>

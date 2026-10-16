@@ -7,6 +7,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfException;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
+import org.springframework.security.web.authentication.session.NullAuthenticatedSessionStrategy;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
@@ -22,9 +24,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 import cc.ataglace.molebutter.identity.api.AuthProperties;
 import cc.ataglace.molebutter.identity.api.MenuSection;
-import cc.ataglace.molebutter.app.internal.ApiResponse;
 import cc.ataglace.molebutter.common.api.ErrorCode;
-import cc.ataglace.molebutter.app.internal.JwtAuthenticationFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -61,13 +61,20 @@ public class SecurityConfig {
     private boolean requireHttps;
 
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    CsrfTokenRepository csrfTokenRepository() {
         CookieCsrfTokenRepository csrfRepository = new CookieCsrfTokenRepository();
         csrfRepository.setCookieCustomizer(cookie -> cookie
                 .secure(authProperties.cookie().secure()).sameSite("Lax").path("/"));
+        return csrfRepository;
+    }
+
+    @Bean
+    SecurityFilterChain filterChain(HttpSecurity http, CsrfTokenRepository csrfRepository) throws Exception {
         if (requireHttps) http.redirectToHttps(Customizer.withDefaults());
         http
-                .csrf(csrf -> csrf.csrfTokenRepository(csrfRepository))
+                // JWT 인증은 매 요청 복원된다. CSRF 초기화는 실제 로그인·로그아웃에서만 수행한다.
+                .csrf(csrf -> csrf.csrfTokenRepository(csrfRepository)
+                        .sessionAuthenticationStrategy(new NullAuthenticatedSessionStrategy()))
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable) // 로그아웃은 /api/auth/signout에서 직접 처리
@@ -79,7 +86,7 @@ public class SecurityConfig {
                     auth.requestMatchers(PUBLIC_PAGES).permitAll();
                     auth.requestMatchers(STATIC_RESOURCES).permitAll();
                     auth.requestMatchers(PUBLIC_AUTH_APIS).permitAll();
-                    auth.requestMatchers(HttpMethod.GET, "/marketplace-images/{token}").permitAll();
+                    auth.requestMatchers(HttpMethod.GET, "/coupang/images/{token}").permitAll();
                     // 섹션별 인가: MenuSection 선언(pagePatterns/apiPatterns)에서 자동 생성.
                     // JwtAuthenticationFilter가 role → PERM_<섹션> 권한을 부여하는 것과 짝을 이룬다.
                     for (MenuSection section : MenuSection.values()) {

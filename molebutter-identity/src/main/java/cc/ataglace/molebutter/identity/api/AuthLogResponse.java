@@ -3,8 +3,6 @@ package cc.ataglace.molebutter.identity.api;
 
 import java.time.LocalDateTime;
 
-import cc.ataglace.molebutter.identity.api.UserAuthEventType;
-import cc.ataglace.molebutter.identity.api.UserRole;
 
 /** 인증 감사 로그의 한 행. */
 public record AuthLogResponse(

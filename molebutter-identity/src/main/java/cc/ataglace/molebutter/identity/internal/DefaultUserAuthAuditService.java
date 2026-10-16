@@ -8,9 +8,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import cc.ataglace.molebutter.identity.api.UserAuthEventType;
 import cc.ataglace.molebutter.identity.api.UserRole;
-import cc.ataglace.molebutter.identity.internal.UserAuthAuditLog;
 import cc.ataglace.molebutter.identity.api.ClientInfo;
-import cc.ataglace.molebutter.identity.internal.UserAuthAuditLogRepository;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j

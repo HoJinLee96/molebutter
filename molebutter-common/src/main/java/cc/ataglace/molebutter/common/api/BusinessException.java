@@ -1,5 +1,4 @@
 package cc.ataglace.molebutter.common.api;
-import cc.ataglace.molebutter.common.api.ErrorCode;
 
 
 import lombok.Getter;

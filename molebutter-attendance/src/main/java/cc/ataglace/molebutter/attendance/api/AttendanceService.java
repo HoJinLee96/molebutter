@@ -4,7 +4,6 @@ import java.time.*;
 import java.util.*;
 import org.springframework.data.domain.*;
 
-import cc.ataglace.molebutter.attendance.api.CorrectionStatus;
 import cc.ataglace.molebutter.common.api.PageResponse;
 
 

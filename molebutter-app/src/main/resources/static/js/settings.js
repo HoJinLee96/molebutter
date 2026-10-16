@@ -62,8 +62,8 @@
             return false;
         } finally {saving=false;controls();}
     }
-    $('brand-create-form')?.addEventListener('submit',async event=>{event.preventDefault();if(await save(()=>apiPost('/api/settings/brands',{name:$('brand-name').value}),loadBrands,'브랜드를 추가했습니다.'))$('brand-name').value='';});
-    $('payment-create-form')?.addEventListener('submit',async event=>{event.preventDefault();if(await save(()=>apiPost('/api/settings/payment-methods',{name:$('payment-name').value}),loadPayments,'결제 수단을 추가했습니다.'))$('payment-name').value='';});
+    FormActions.bindExplicitSubmit($('brand-create-form'),$('brand-create-save'),async event=>{event.preventDefault();if(await save(()=>apiPost('/api/settings/brands',{name:$('brand-name').value}),loadBrands,'브랜드를 추가했습니다.'))$('brand-name').value='';});
+    FormActions.bindExplicitSubmit($('payment-create-form'),$('payment-create-save'),async event=>{event.preventDefault();if(await save(()=>apiPost('/api/settings/payment-methods',{name:$('payment-name').value}),loadPayments,'결제 수단을 추가했습니다.'))$('payment-name').value='';});
     document.querySelectorAll('.settings-section').forEach(section=>section.addEventListener('click',event=>{
         const button=event.target.closest('[data-action]'); if(!button||button.disabled||saving||!admin)return;
         const kind=button.dataset.kind, row=(kind==='payment-methods'?payments:brands).find(v=>(v.id??v.code)===button.dataset.id);if(!row)return;
@@ -72,11 +72,11 @@
         else {setError('settings-delete-error',null);$('settings-delete-description').textContent=`‘${row.name}’ 등록을 삭제할까요?`;$('settings-delete-dialog').showModal();}
     }));
     const reloadTarget=()=>target?.kind==='payment-methods'?loadPayments():loadBrands();
-    $('settings-edit-form').addEventListener('submit',async event=>{event.preventDefault();if(!target)return;if(await save(()=>apiPost(`/api/settings/${target.kind}/${encodeURIComponent(target.id)}`,{name:$('settings-edit-name').value,revision:target.revision}),reloadTarget,'이름을 변경했습니다.','settings-edit-error'))$('settings-edit-dialog').close();});
-    $('settings-delete-form').addEventListener('submit',async event=>{event.preventDefault();if(!target)return;if(await save(()=>apiPost(`/api/settings/${target.kind}/${encodeURIComponent(target.id)}/delete`,{revision:target.revision}),reloadTarget,'등록을 삭제했습니다.','settings-delete-error'))$('settings-delete-dialog').close();});
+    FormActions.bindExplicitSubmit($('settings-edit-form'),$('settings-edit-save'),async event=>{event.preventDefault();if(!target)return;if(await save(()=>apiPost(`/api/settings/${target.kind}/${encodeURIComponent(target.id)}`,{name:$('settings-edit-name').value,revision:target.revision}),reloadTarget,'이름을 변경했습니다.','settings-edit-error'))$('settings-edit-dialog').close();});
+    FormActions.bindExplicitSubmit($('settings-delete-form'),$('settings-delete-save'),async event=>{event.preventDefault();if(!target)return;if(await save(()=>apiPost(`/api/settings/${target.kind}/${encodeURIComponent(target.id)}/delete`,{revision:target.revision}),reloadTarget,'등록을 삭제했습니다.','settings-delete-error'))$('settings-delete-dialog').close();});
     document.querySelectorAll('[data-settings-close]').forEach(b=>b.addEventListener('click',()=>{if(!saving)$(b.dataset.settingsClose).close();}));
     document.querySelectorAll('dialog').forEach(d=>d.addEventListener('cancel',event=>{if(saving)event.preventDefault();}));
-    $('schedule-settings-form')?.addEventListener('submit',event=>{event.preventDefault();save(()=>apiPost('/api/product-refresh/settings',{revision:schedule.revision,scheduleEnabled:$('schedule-enabled').checked,scheduleTime:$('schedule-time').value}),loadSchedule,'예약 설정을 저장했습니다. 다음 예약 실행부터 적용됩니다.');});
+    FormActions.bindExplicitSubmit($('schedule-settings-form'),$('schedule-save'),event=>{event.preventDefault();return save(()=>apiPost('/api/product-refresh/settings',{revision:schedule.revision,scheduleEnabled:$('schedule-enabled').checked,scheduleTime:$('schedule-time').value}),loadSchedule,'예약 설정을 저장했습니다. 다음 예약 실행부터 적용됩니다.');});
     $('settings-reload').addEventListener('click',load);
     load();
 })();

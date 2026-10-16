@@ -19,16 +19,20 @@ public enum MenuSection {
     /** 대표 전용 직원 계정 관리(가입 승인·역할 지정·정지·잠금 해제). */
     USER_MANAGE("직원 관리", pages("/user-manage"), apis("/api/admin/users/**")),
 
-    MARKETPLACE_ORDERS("판매 주문", pages("/marketplace-orders"), apis("/api/marketplace-orders", "/api/marketplace-orders/**")),
-    MARKETPLACES("판매 마켓", pages("/marketplaces", "/marketplaces/**"), apis("/api/marketplaces/**")),
-    INVENTORY("재고", pages("/inventory"), apis("/api/inventory/**")),
-    PRODUCTS("상품", pages("/products"), apis("/api/products/**")),
-    PRODUCT_IMAGES("상품 정보 도구", pages("/product-images"), apis("/api/product-images/**")),
-    PRODUCT_REFRESH("상품 최신화", pages("/product-refresh"), apis("/api/product-refresh/**")),
-    SETTINGS("공통 설정", pages("/settings"), apis("/api/settings/**")),
-    VERSION_HISTORY("버전 기록", pages("/version-history"));
+    // Specific order paths must precede the general /api/coupang matcher.
+    COUPANG_ORDERS("판매 주문", pages("/coupang/orders"), apis("/api/coupang/orders", "/api/coupang/orders/**")), COUPANG(
+            "쿠팡", pages("/coupang", "/coupang/**"),
+            apis("/api/coupang/**")), INVENTORY("재고", pages("/inventory"), apis("/api/inventory/**")), PRODUCTS("상품",
+                    pages("/products"), apis("/api/products/**")), PRODUCT_IMAGES("상품 정보 도구", pages("/product-images"),
+                            apis("/api/product-images/**")), PRODUCT_REFRESH("상품 최신화", pages("/product-refresh"),
+                                    apis("/api/product-refresh/**")), SETTINGS("공통 설정", pages("/settings"),
+                                            apis("/api/settings/**")), VERSION_HISTORY("버전 기록",
+                                                    pages("/version-history"));
 
-    /** 섹션 권한 authority 접두사. JwtAuthenticationFilter 부여 ↔ SecurityConfig·메뉴 노출 검사에서 공유. */
+    /**
+     * 섹션 권한 authority 접두사. JwtAuthenticationFilter 부여 ↔ SecurityConfig·메뉴 노출 검사에서
+     * 공유.
+     */
     public static final String PERMISSION_PREFIX = "PERM_";
 
     /** 헤더 메뉴에 표시할 이름. */

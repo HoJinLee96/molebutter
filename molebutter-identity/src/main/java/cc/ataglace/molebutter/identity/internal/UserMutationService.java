@@ -8,8 +8,6 @@ import cc.ataglace.molebutter.common.api.ErrorCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import cc.ataglace.molebutter.identity.internal.User;
-import cc.ataglace.molebutter.identity.internal.UserRepository;
 import lombok.RequiredArgsConstructor;
 
 @Service

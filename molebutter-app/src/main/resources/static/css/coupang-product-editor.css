@@ -21,22 +21,38 @@
 .coupang-row-body{min-width:0}
 .coupang-table-scroll{position:relative;box-sizing:border-box;width:100%;min-width:0;overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px}
 .coupang-table-scroll:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
-.coupang-option-table{width:100%;min-width:1000px;border-collapse:collapse;table-layout:fixed;margin:0}
+.coupang-option-table{width:100%;min-width:1160px;border-collapse:collapse;table-layout:fixed;margin:0}
 .coupang-option-table th{padding:14px 12px;text-align:left;font-size:12px;font-weight:700;color:#64748b;background:#f8fafc;border-bottom:1px solid #e2e8f0;white-space:normal}
 .coupang-option-table td{padding:16px 12px;vertical-align:top;border-bottom:1px solid #edf2f7;overflow-wrap:anywhere}
 .coupang-option-table tr:last-child td{border-bottom:0}
 .coupang-option-table .field{margin:0}
 .coupang-option-table .field>span{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 .coupang-option-table input,.coupang-table-field{width:100%;max-width:none!important;font-size:14px;min-height:40px}
+.coupang-option-id{display:flex;align-items:center;min-height:40px;padding:4px 2px 6px;border-bottom:1px solid transparent;font-size:14px;line-height:1.25}
 .coupang-option-table small{display:block;margin-top:7px;font-size:12px;line-height:1.5}
-.coupang-option-settings{padding:16px 0;border-top:1px solid #edf2f7}
-.coupang-option-settings:first-of-type{padding-top:0;border:0}
-.coupang-option-settings>strong{display:block;margin-bottom:14px;font-size:14px}
+.coupang-product-form #editor-option-list .coupang-table-scroll{width:min(100%,var(--coupang-options-width));max-width:none;overflow:visible}
+#editor-option-list .coupang-option-table{min-width:0}
+#editor-option-list .coupang-option-table th{padding:12px 8px}
+#editor-option-list .coupang-option-table td{padding:12px 8px}
+@media(max-width:1100px){
+ .coupang-product-form #editor-option-list .coupang-table-scroll{width:min(100%,480px)}
+ #editor-option-list .coupang-option-table,#editor-option-list .coupang-option-table tbody{display:block}
+ #editor-option-list .coupang-option-table colgroup{display:none}
+ #editor-option-list .coupang-option-table thead{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+ #editor-option-list .coupang-option-table tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px;padding:12px;margin:0;border:0;border-bottom:1px solid #edf2f7;border-radius:0}
+ #editor-option-list .coupang-option-table tr:last-child{border-bottom:0}
+ #editor-option-list .coupang-option-table td{display:block;min-width:0;padding:6px 8px;border:0}
+ #editor-option-list .coupang-option-table td::before{content:attr(data-label);display:block;margin-bottom:4px;font-size:12px;font-weight:700;line-height:1.5;color:#64748b}
+}
+@media(max-width:480px){#editor-option-list .coupang-option-table tr{grid-template-columns:minmax(0,1fr)}}
+
+
+
 .coupang-additional{margin-top:22px;border-top:1px solid #edf2f7;padding-top:16px}
 .coupang-additional summary{cursor:pointer;color:#475569;font-size:13px;font-weight:600}
 .coupang-additional[open]>summary{margin-bottom:20px}
-.coupang-brand-summary{display:flex;gap:24px;padding:12px 0 22px;font-size:14px}
-.coupang-brand-summary>span{color:#64748b;min-width:100px}
+
+
 .coupang-image-group{margin:16px 0 24px}
 .coupang-image-group .editor-image-grid{grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:14px}
 .coupang-image-group .editor-image-grid figure{padding:10px;background:#fff}
@@ -50,11 +66,7 @@
 .coupang-tag-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;min-width:0}
 .coupang-tag{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #bfdbfe;border-radius:18px;color:#1d4ed8;background:#eff6ff;font-size:13px;max-width:100%;overflow-wrap:anywhere}
 .coupang-tag button{border:0;background:transparent;color:#2563eb;cursor:pointer;font-size:11px;padding:2px;flex-shrink:0}
-.coupang-current-summary{margin-top:18px;font-size:13px}
-.common-marketplace-editor.coupang-product-form #common-editor-form>.editor-section{padding:0;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none}
-.common-marketplace-editor.coupang-product-form #common-editor-form>.editor-section>h2{display:none}
-.common-marketplace-editor.coupang-product-form #common-basic>.common-subheading{display:none}
-.common-marketplace-editor.coupang-product-form #common-media>.editor-option-picker{max-width:420px;margin:0 0 16px}
+
 @media(max-width:900px){.coupang-form-section{padding:22px}.coupang-form-row{grid-template-columns:130px minmax(0,1fr);gap:18px}}
 @media(max-width:700px){
  .coupang-form-section{padding:18px 16px;border-radius:10px;scroll-margin-top:125px;margin-bottom:16px}
@@ -78,7 +90,7 @@
 .coupang-product-form input[data-field="basic.displayProductName"],
 .coupang-product-form input[data-field="basic.generalProductName"]{max-width:420px}
 .coupang-product-form input[data-field*=".attributes."]{max-width:220px}
-.coupang-product-form .editor-option-picker,.coupang-product-form .editor-option-picker select{max-width:360px}
+
 .coupang-product-form .coupang-table-scroll{max-width:1160px}
 .coupang-product-form .coupang-option-table input{max-width:180px!important}
 .coupang-product-form .coupang-option-table input[type=number],.coupang-product-form .coupang-option-table input[data-plain-number]{max-width:130px!important}
@@ -153,9 +165,9 @@
 /* Separate expanded certification details from the following major-information choice. */
 #editor-settings-fields>.coupang-form-row+.coupang-choice-row{border-top:1px solid #e2e8f0}
 
-.coupang-product-form .editor-preview .marketplace-html{display:block;width:800px;max-width:100%;box-sizing:border-box;margin-inline:auto}
-.coupang-product-form .editor-preview .marketplace-html{height:1200px}
-@media(max-width:640px){.coupang-product-form .editor-preview .marketplace-html{height:900px}}
+.coupang-product-form .editor-preview .coupang-html{display:block;width:800px;max-width:100%;box-sizing:border-box;margin-inline:auto}
+.coupang-product-form .editor-preview .coupang-html{height:1200px}
+@media(max-width:640px){.coupang-product-form .editor-preview .coupang-html{height:900px}}
 
 /* Compact product information, documents, search and notices. */
 #editor-settings,#editor-documents,#editor-search-tags,#editor-search-filters,#editor-notices{padding:18px 24px}
@@ -186,11 +198,11 @@
  .coupang-document-entry{flex-wrap:wrap}.coupang-document-entry .field{flex-basis:100%;grid-template-columns:minmax(0,1fr);gap:4px}
 }
 
-#editor-document-fields{display:flex;align-items:flex-start;flex-wrap:wrap;gap:12px 20px}
-#editor-document-fields .coupang-document-controls{flex:0 1 auto;margin:0}
-#editor-document-fields .coupang-document-list{flex:1 1 360px;min-width:0}
-#editor-document-fields .coupang-document-list>.empty{padding:8px 0;margin:0;text-align:left}
-@media(max-width:700px){#editor-document-fields .coupang-document-list{flex-basis:100%}}
+.coupang-document-fields{display:flex;align-items:flex-start;flex-wrap:wrap;gap:12px 20px}
+.coupang-document-fields .coupang-document-controls{flex:0 1 auto;margin:0}
+.coupang-document-fields .coupang-document-list{flex:1 1 360px;min-width:0}
+.coupang-document-fields .coupang-document-list>.empty{padding:8px 0;margin:0;text-align:left}
+@media(max-width:700px){.coupang-document-fields .coupang-document-list{flex-basis:100%}}
 
 /* Wing-style shipping rows and read-only seller address book. */
 #editor-delivery,#editor-returns{padding:18px 24px}
@@ -212,4 +224,24 @@
 .coupang-address-choice:hover,.coupang-address-choice:focus-visible{border-color:#3168ff;background:#eff6ff}
 .coupang-address-choice:disabled{opacity:.5;cursor:not-allowed}
 @media(max-width:640px){.coupang-address-summary{flex-wrap:wrap;padding:12px}.coupang-address-summary>div{flex-basis:100%}.coupang-return-total{margin-left:0}#editor-delivery,#editor-returns{padding:16px}}
-#editor-save-preview{max-width:100%;overflow-wrap:anywhere}#editor-save-preview .table-scroll{overflow-x:auto}#editor-save-preview table{width:100%;border-collapse:collapse;font-size:.875rem}#editor-save-preview th,#editor-save-preview td{padding:8px;border-bottom:1px solid var(--border,#e2e8f0);text-align:left;vertical-align:top;overflow-wrap:anywhere}#editor-save-results{margin-top:16px}#editor-save-results li{padding:6px 0;overflow-wrap:anywhere}
+
+
+
+/* Purchase columns share the available width; dense option rows become vertical cards. */
+.coupang-product-form #editor-option-list .coupang-table-scroll{width:min(100%,var(--coupang-options-width,1400px));max-width:none;overflow:visible}
+.coupang-product-form #editor-option-list .coupang-option-table{width:100%;min-width:0;table-layout:fixed}
+.coupang-product-form #editor-option-list :is(th,td){padding:12px 6px;vertical-align:middle;overflow-wrap:anywhere}
+.coupang-product-form #editor-option-list :is(input,select){width:100%;max-width:none!important;min-width:0;box-sizing:border-box}
+.coupang-product-form #coupang-option-list .field>.coupang-row-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+@media(max-width:1000px){
+ .coupang-product-form #editor-option-list :is(table,tbody){display:block}
+ .coupang-product-form #editor-option-list colgroup{display:none}
+ .coupang-product-form #editor-option-list thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+ .coupang-product-form #editor-option-list tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:12px;border-bottom:1px solid #e2e8f0}
+ .coupang-product-form #editor-option-list td{display:block;min-width:0;border:0}
+ .coupang-product-form #editor-option-list td::before{content:attr(data-label);display:block;margin-bottom:4px;font-size:12px;font-weight:700;color:#64748b}
+}
+@media(max-width:480px){.coupang-product-form #editor-option-list tr{grid-template-columns:minmax(0,1fr)}}
+.coupang-product-form #editor-option-list input[data-plain-number],.coupang-product-form #editor-option-list input[type=number]{max-width:130px!important}
+
+.coupang-brand-field{min-width:0}
