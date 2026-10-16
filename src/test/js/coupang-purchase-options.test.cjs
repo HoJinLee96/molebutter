@@ -47,14 +47,17 @@ test('existing value editing requires explicit trusted true, but missing attribu
   const o = {
     attributes: [{
       name: '색상',
+      exposed: 'EXPOSED',
       value: ''
     }],
     originalAttributes: [{
       name: '색상',
+      exposed: 'EXPOSED',
       value: ''
     }],
     attributePermissions: [{
       name: '색상',
+      exposed: 'EXPOSED',
       editable: null
     }]
   };
@@ -85,6 +88,7 @@ test('existing optional attributes stay visible even when their stored value is 
     }],
     originalAttributes: [{
       name: '선택항목',
+      exposed: 'EXPOSED',
       value: ''
     }]
   }]).length, 1);
@@ -96,6 +100,7 @@ test('existing optional attributes stay visible even when their stored value is 
     }],
     attributePermissions: [{
       name: '선택항목',
+      exposed: 'EXPOSED',
       editable: null
     }]
   }]).length, 1);

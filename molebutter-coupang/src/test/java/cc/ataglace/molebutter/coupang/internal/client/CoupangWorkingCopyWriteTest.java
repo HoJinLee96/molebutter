@@ -71,23 +71,27 @@ class CoupangWorkingCopyWriteTest {
     @Test
     void attributesWithTheSameNameUseExposureAsPartOfTheirIdentity() {
         var rows = raw.path("items").get(0).asObject().putArray("attributes");
-        rows.addObject().put("attributeTypeName", "색상").put("attributeValueName", "블랙").put("exposed", "EXPOSED")
-                .put("editable", true).put("future", "purchase");
         rows.addObject().put("attributeTypeName", "색상").put("attributeValueName", "검색값").put("exposed", "NONE")
                 .put("editable", false).put("future", "search");
-        observed = CoupangInputs.from(client.editorDocument(raw,
-                Map.of("222", new CoupangCatalog.CurrentInventory("222", 120000L, 9L, true)), Map.of()), mapping);
+        rows.addObject().put("attributeTypeName", "색상").put("attributeValueName", "블랙").put("exposed", "EXPOSED")
+                .put("editable", true).put("future", "purchase");
+        var editor = client.editorDocument(raw,
+                Map.of("222", new CoupangCatalog.CurrentInventory("222", 120000L, 9L, true)), Map.of());
+        assertThat(editor.options().getFirst().attributePermissions()).containsExactly(
+                new CoupangEditor.AttributePermission("색상", "NONE", false),
+                new CoupangEditor.AttributePermission("색상", "EXPOSED", true));
+        observed = CoupangInputs.from(editor, mapping);
         var edit = new CoupangEditing.Change("options.attributes.value", option, "브라운", List.of("색상", "EXPOSED"),
                 "SET");
         var p = prepare(edit);
-        rows.get(1).asObject().put("attributeValueName", "최신 검색값");
+        rows.get(0).asObject().put("attributeValueName", "최신 검색값");
         var sent = new ArrayList<Step>();
         assertThat(writer.execute(1L, p, p.steps().getFirst(), mapping, sent::add).state()).isEqualTo(State.CONFIRMED);
         var wire = json.readTree(sent.getFirst().bodyJson()).path("items").get(0).path("attributes");
-        assertThat(wire.get(0).path("attributeValueName").asString()).isEqualTo("브라운");
-        assertThat(wire.get(1)).isEqualTo(rows.get(1));
-        rows.get(0).asObject().put("editable", false);
-        rows.get(1).asObject().put("editable", true);
+        assertThat(wire.get(1).path("attributeValueName").asString()).isEqualTo("브라운");
+        assertThat(wire.get(0)).isEqualTo(rows.get(0));
+        rows.get(1).asObject().put("editable", false);
+        rows.get(0).asObject().put("editable", true);
         clearInvocations(client);
         assertThat(writer.execute(1L, p, p.steps().getFirst(), mapping, ignored -> {
         }).state()).isEqualTo(State.FAILED);

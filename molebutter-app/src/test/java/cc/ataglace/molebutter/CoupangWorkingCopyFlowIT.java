@@ -168,19 +168,21 @@ class CoupangWorkingCopyFlowIT {
                 List.of(), List.of(), List.of());
     }
     @Test
-    void rowIntentReentryPreservesExternalUntouchedSizeAndLegacyInputIsNotGuessed() {
-        doReturn(product("124", List.of(new CoupangCatalog.Attribute("색상", "빨강", "EXPOSED"),
+    void rowIntentReentryPreservesSameNameSearchAndUntouchedSizeAndLegacyInputIsNotGuessed() {
+        doReturn(product("124", List.of(new CoupangCatalog.Attribute("색상", "검색값", "NONE"),
+                new CoupangCatalog.Attribute("색상", "빨강", "EXPOSED"),
                 new CoupangCatalog.Attribute("사이즈", "M", "EXPOSED")))).when(editor).edit(actor, "124");
         var e = copies.open(actor, "124", null);
         var edit = new CoupangEditing.Change("options.attributes.value", e.document().options().getFirst().id(), "파랑",
                 List.of("색상", "EXPOSED"), "SET");
         var saved = copies.save(actor, null,
                 new Save(e.sessionId(), null, CoupangInputs.apply(json, e.document(), List.of(edit)), List.of(edit)));
-        doReturn(product("124", List.of(new CoupangCatalog.Attribute("색상", "빨강", "EXPOSED"),
+        doReturn(product("124", List.of(new CoupangCatalog.Attribute("색상", "최신 검색값", "NONE"),
+                new CoupangCatalog.Attribute("색상", "빨강", "EXPOSED"),
                 new CoupangCatalog.Attribute("사이즈", "L", "EXPOSED")))).when(editor).edit(actor, "124");
         var reopened = copies.open(actor, null, saved.workingCopyId());
         assertThat(reopened.document().options().getFirst().attributes()).extracting(CoupangCatalog.Attribute::value)
-                .containsExactly("파랑", "L");
+                .containsExactly("최신 검색값", "파랑", "L");
         assertThat(reopened.changes()).containsExactly(edit);
         var again = copies.save(actor, reopened.workingCopyId(),
                 new Save(reopened.sessionId(), reopened.revision(), reopened.document(), reopened.changes()));
@@ -191,7 +193,9 @@ class CoupangWorkingCopyFlowIT {
         var blocked = copies.open(actor, null, again.workingCopyId());
         assertThat(blocked.recoveryMessage()).isNotBlank();
         assertThat(blocked.document()).isEqualTo(again.document());
-        assertThat(blocked.recoveryBase().options().getFirst().attributes().getFirst().value()).isEqualTo("빨강");
+        assertThat(blocked.recoveryBase().options().getFirst().attributes())
+                .contains(new CoupangCatalog.Attribute("색상", "최신 검색값", "NONE"),
+                        new CoupangCatalog.Attribute("색상", "빨강", "EXPOSED"));
         assertThatThrownBy(() -> copies.save(actor, blocked.workingCopyId(),
                 new Save(blocked.sessionId(), blocked.revision(), blocked.document(), blocked.changes())))
                 .isInstanceOf(cc.ataglace.molebutter.common.api.InputValidationFailure.class);

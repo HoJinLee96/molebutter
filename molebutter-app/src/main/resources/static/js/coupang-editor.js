@@ -123,7 +123,7 @@
   }
   function attributeField(o, n, k, compact = false) {
     const a = o.attributes[k],
-      r = rules?.attributes.find(v => v.name === a.name),
+      r = rules?.attributes.find(v => M.sameAttribute(v, a)),
       locked = !['NONE', 'EXPOSED'].includes(a.exposed) || mode === 'edit' && M.isPurchase(a) && !M.canEditPurchase(o, a.name, true);
     return field(`options.${n}.attributes.${k}.value`, a.name === 'Manufacturer Part Number' ? '품번 (MPN)' : a.name === 'Global Trade Item Number' ? '바코드 (GTIN)' : a.name || '속성', 'text', a.value, r?.required === 'MANDATORY' && (!r.groupNumber || r.groupNumber === 'NONE'), locked, [], 30, compact);
   }
@@ -197,7 +197,7 @@
   }
   function purchaseCell(o, n, column) {
     const r = M.purchaseAttribute(o, column);
-    let k = o.attributes.findIndex(a => a.name === r.name);
+    let k = o.attributes.findIndex(a => M.sameAttribute(a, r));
     if (k < 0) {
       k = o.attributes.length;
       o.attributes.push({
@@ -206,7 +206,7 @@
         exposed: 'EXPOSED',_automatic:true
       });
     }
-    const group = column.group ? `<select aria-label="구매옵션 택1" data-purchase-group="${n}" data-purchase-choices="${e(column.choices.map(r => r.name).join('|'))}" ${mode === 'edit' && column.choices.some(r => (o.originalAttributes || []).some(a => a.name === r.name)) ? 'disabled' : ''}>${column.choices.map(a => `<option value="${e(a.name)}" ${a.name === r.name ? 'selected' : ''}>${e(a.name)}</option>`).join('')}</select>` : '';
+    const group = column.group ? `<select aria-label="구매옵션 택1" data-purchase-group="${n}" data-purchase-choices="${e(column.choices.map(r => r.name).join('|'))}" ${mode === 'edit' && column.choices.some(r => (o.originalAttributes || []).some(a => M.sameAttribute(a, r))) ? 'disabled' : ''}>${column.choices.map(a => `<option value="${e(a.name)}" ${a.name === r.name ? 'selected' : ''}>${e(a.name)}</option>`).join('')}</select>` : '';
     return group + attributeField(o, n, k, true) + (r.usableUnits?.length ? '<small>단위: ' + e(r.usableUnits.join(', ')) + '</small>' : '');
   }
   function renderOptionTable() {
@@ -567,8 +567,8 @@
     if (!t.hasAttribute('data-purchase-group') || t.disabled || saveBusy) return;
     const o = draft.options[Number(t.dataset.purchaseGroup)],
       choices = t.dataset.purchaseChoices.split('|');
-    o.attributes = o.attributes.filter(a => !choices.includes(a.name) || a.name === t.value);
-    if (!o.attributes.some(a => a.name === t.value)) o.attributes.push({
+    o.attributes = o.attributes.filter(a => !M.isPurchase(a) || !choices.includes(a.name) || a.name === t.value);
+    if (!o.attributes.some(a => M.isPurchase(a) && a.name === t.value)) o.attributes.push({
       name: t.value,
       value: '',
       exposed: 'EXPOSED'

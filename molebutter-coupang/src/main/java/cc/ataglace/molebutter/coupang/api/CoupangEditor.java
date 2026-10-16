@@ -15,7 +15,7 @@ public interface CoupangEditor {
                  String displayProductName, String generalProductName, String brand,
                  String productGroup, String displayCategoryCode, String statusName) {}
     record Limits(boolean categoryReadOnly, boolean optionStructureReadOnly, boolean purchaseAttributesReadOnly) {}
-    record AttributePermission(String name, Boolean editable) {}
+    record AttributePermission(String name, String exposed, Boolean editable) {}
     record EditOption(String sellerProductItemId, String vendorItemId, String itemName,
                       CurrentInventory current, String currentError, boolean separateCurrentChanges,
                       List<Attribute> attributes, List<Image> images, List<Content> contents,

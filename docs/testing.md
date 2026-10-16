@@ -1,6 +1,6 @@
 # 테스트 실행과 유지 기준
 
-Java 21과 프로젝트 Maven wrapper를 사용한다. 판매 연동은 쿠팡 전용이며 실제 외부 쓰기는 일반 검증에 포함하지 않는다. 최신 실행 결과는 [V47 커밋·중단 재검토](verification/2026-10-16-coupang-v47-rereview.md), 이전 결과는 [V47 중복 미디어 보존 수정](verification/2026-10-16-coupang-v47-media-fix.md)이다. 현재 데이터 보존 전환은 [V48 절차](coupang-intent-migration.md)를 따른다. 이전 검증 기록은 각 기록의 이전 결과 링크로 확인한다.
+Java 21과 프로젝트 Maven wrapper를 사용한다. 판매 연동은 쿠팡 전용이며 실제 외부 쓰기는 일반 검증에 포함하지 않는다. 최신 실행 결과는 [구매·검색 속성 구분 재검토](verification/2026-10-16-coupang-attribute-identity.md), 이전 결과는 [V47 커밋·중단 재검토](verification/2026-10-16-coupang-v47-rereview.md)다. 현재 데이터 보존 전환은 [V48 절차](coupang-intent-migration.md)를 따른다. 이전 검증 기록은 각 기록의 이전 결과 링크로 확인한다.
 
 ## 전체 Java 검증
 
@@ -26,6 +26,7 @@ node scripts/test-coupang-submissions.cjs
 node scripts/test-coupang-intent-ui.cjs
 node scripts/test-coupang-save-settlement.cjs
 node scripts/test-coupang-navigation.cjs
+node scripts/test-coupang-attribute-identity.cjs
 ```
 
 Playwright와 Chrome이 필요하다. Java 검사에서 생성하는 `molebutter-app/target/ui-fixtures`의 실제 Thymeleaf 화면과 프로젝트 JS·CSS를 사용한다. 화면만 검사할 때는 먼저 다음 명령으로 fixture를 만든다.
@@ -39,6 +40,8 @@ Playwright와 Chrome이 필요하다. Java 검사에서 생성하는 `molebutter
 주문 검사는 큰 문자열 ID·0수량·개인정보 상세 닫기·수집 진행·취소·실패 재개·클레임 전용 주문과 가로 넘침을 다룬다. 전송 검사는 미리보기에서 실행 없음, 중복 방지 키 재사용, 성공 단계 재실행 금지, 실패 후 입력 수정, UNKNOWN·승인 대기 결과 확인과 페이지 이동을 다룬다. 브라우저 스크립트는 로컬 모의 API를 사용하고 외부 트래픽을 차단한다.
 
 내부 상품·비교 편집 HTML·JS와 그 계층의 테스트를 제거하고 작업본 계약 검증으로 교체했다. 공유 `coupang-editor-model.js`의 계약 검사는 유지하며 현재 통합 화면의 동작은 위 JavaScript·PC/모바일 검사로 확인한다.
+
+`coupang-attribute-identity.test.cjs`는 이름·노출 구분별 규격 채우기·택1 선택·수정 권한·입력 검증·수정 의도 복구를 검사한다. `test-coupang-attribute-identity.cjs`는 같은 이름의 구매·검색속성을 두 순서로 배치하고 구매 권한 true/false/null을 PC·모바일에서 확인한다. 구매값만 저장·재진입·미리보기에 포함되고 최신 검색값은 유지되는지, 필수 표시가 섞이지 않는지, 신규·기존 상품의 택1 전환이 검색행을 지우지 않는지 검사한다. 렌더링만으로는 의도를 만들지 않아야 한다. `CoupangWorkingCopyWriteTest`는 서버 조회 권한의 노출 구분과 실제 모의 PUT의 미수정 검색행 보존·권한 재확인을, `CoupangWorkingCopyFlowIT`는 DB 저장·새 세션 복구의 같은 이름 검색값·외부 사이즈 보존을 검사한다.
 
 보존 기능의 화면 회귀는 `scripts/test-product-ui.cjs`, `test-inventory-ui.cjs`, `test-notifications-ui.cjs`, `test-product-images-ui.cjs`, `test-image-crop-editor.cjs`, `test-r2-image-picker.cjs`를 사용한다. 네이버 공개 검색·매입처 조회는 판매자 연동과 별개이며 관련 fixture를 보존한다.
 

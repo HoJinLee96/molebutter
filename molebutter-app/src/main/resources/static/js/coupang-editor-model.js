@@ -118,7 +118,7 @@
   };
   function applyRules(draft, rules) {
     for (const o of draft.options) {
-      for (const a of rules.attributes) if (!(grouped(a) && rules.attributes.some(r => r.groupNumber === a.groupNumber && o.attributes.some(v => v.name === r.name))) && !o.attributes.some(v => v.name === a.name)) o.attributes.push({
+      for (const a of rules.attributes) if (!(grouped(a) && rules.attributes.some(r => grouped(r) && r.groupNumber === a.groupNumber && o.attributes.some(v => sameAttribute(v, r)))) && !o.attributes.some(v => sameAttribute(v, a))) o.attributes.push({
         name: a.name,
         value: '',
         exposed: a.exposed
@@ -137,13 +137,14 @@
     });
   }
   const isPurchase = a => a.exposed === 'EXPOSED' && !productIdentity(a.name);
-  const grouped = a => a.groupNumber && a.groupNumber !== 'NONE';
+  const sameAttribute = (a, b) => a.name === b.name && a.exposed === b.exposed;
+  const grouped = a => isPurchase(a) && a.groupNumber && a.groupNumber !== 'NONE';
   function purchaseColumns(rules, options = []) {
     const result = [],
       groups = new Set(),
       metadata = (rules?.attributes || []).filter(isPurchase);
     for (const r of metadata) {
-      const used = options.some(o => o.attributes?.some(a => a.name === r.name && (a.value !== '' && a.value != null || o.originalAttributes?.some(v => v.name === a.name) || o.attributePermissions?.some(v => v.name === a.name))));
+      const used = options.some(o => o.attributes?.some(a => sameAttribute(a, r) && (a.value !== '' && a.value != null || o.originalAttributes?.some(v => sameAttribute(v, a)) || o.attributePermissions?.some(v => sameAttribute(v, a)))));
       if (r.required !== 'MANDATORY' && !used) continue;
       if (grouped(r)) {
         if (groups.has(r.groupNumber)) continue;
@@ -169,15 +170,18 @@
     return result.sort((a, b) => (a.required === 'MANDATORY' || a.required === true ? 0 : 1) - (b.required === 'MANDATORY' || b.required === true ? 0 : 1) || order(a) - order(b));
   }
   function purchaseAttribute(option, column) {
-    return column.choices.find(r => option.attributes?.some(a => a.name === r.name && (a.value !== '' && a.value != null || option.attributePermissions?.some(p => p.name === a.name)))) || column.choices.find(r => option.attributes?.some(a => a.name === r.name)) || column.choices[0];
+    return column.choices.find(r => option.attributes?.some(a => sameAttribute(a, r) && (a.value !== '' && a.value != null || option.attributePermissions?.some(p => sameAttribute(p, a))))) || column.choices.find(r => option.attributes?.some(a => sameAttribute(a, r))) || column.choices[0];
   }
   function canEditPurchase(option, name, existing) {
-    return !!(!existing || !option.attributePermissions?.some(p => p.name === name) && !(option.originalAttributes || option.attributes).some(a => a.name === name) || option.attributePermissions?.find(p => p.name === name)?.editable === true);
+    if (!existing) return true;
+    const attribute = {name, exposed: 'EXPOSED'},
+      permission = option.attributePermissions?.find(p => sameAttribute(p, attribute));
+    return permission ? permission.editable === true : !(option.originalAttributes || option.attributes).some(a => sameAttribute(a, attribute));
   }
   function categoryRemovals(draft, rules) {
     const labels = new Set();
     for (const o of draft.options) {
-      for (const a of o.attributes) if (a.value && !rules.attributes.some(r => r.name === a.name && r.exposed === a.exposed)) labels.add(a.name);
+      for (const a of o.attributes) if (a.value && !rules.attributes.some(r => sameAttribute(r, a))) labels.add(a.name);
       for (const n of o.notices) if (n.content && !rules.notices.some(r => r.name === n.category && r.fields.some(f => f.name === n.name))) labels.add(n.category + ' · ' + n.name);
       for (const c of o.certifications) if (c.code && !rules.certifications.some(r => r.type === c.type)) labels.add('인증 ' + c.type);
     }
@@ -191,7 +195,7 @@
       o.attributes = rules.attributes.filter(r => !grouped(r) || selectedGroups.get(r.groupNumber) === r.name).map(r => ({
         name: r.name,
         exposed: r.exposed,
-        value: o.attributes.find(a => a.name === r.name && a.exposed === r.exposed)?.value ?? ''
+        value: o.attributes.find(a => sameAttribute(a, r))?.value ?? ''
       }));
       const category = rules.notices.find(n => n.name === o.noticeCategory) || rules.notices[0];
       o.noticeCategory = category?.name || '';
@@ -260,15 +264,15 @@
       }
       const groups = new Map();
       for (const a of rules?.attributes || []) {
-        const index = o.attributes.findIndex(v => v.name === a.name),
+        const index = o.attributes.findIndex(v => sameAttribute(v, a)),
           value = String(o.attributes[index]?.value ?? '').trim(),
           path = prefix + '.attributes.' + index + '.value';
         if (mode === 'edit' && isPurchase(a)) {
-          const old = o.originalAttributes?.find(v => v.name === a.name);
+          const old = o.originalAttributes?.find(v => sameAttribute(v, a));
           if (old && String(old.value ?? '').trim() === value || !old && !value) continue;
         }
         if (required(a.required)) {
-          if (a.groupNumber && a.groupNumber !== 'NONE') {
+          if (grouped(a)) {
             const group = groups.get(a.groupNumber) || [];
             group.push({
               index,
@@ -463,6 +467,7 @@
     purchaseAttribute,
     canEditPurchase,
     isPurchase,
+    sameAttribute,
     productIdentity,
     registrationOptionName,
     categoryRemovals,

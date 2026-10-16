@@ -391,7 +391,8 @@ final class CoupangProductClient {
     private List<AttributePermission> attributePermissions(JsonNode item) {
         var result = new ArrayList<AttributePermission>();
         for (var a : array(item, "attributes"))
-            result.add(new AttributePermission(text(a, "attributeTypeName"), editable(a.path("editable"))));
+            result.add(new AttributePermission(text(a, "attributeTypeName"), text(a, "exposed"),
+                    editable(a.path("editable"))));
         return List.copyOf(result);
     }
     public cc.ataglace.molebutter.coupang.api.CoupangBrands.Page brands(String name, int page) {
