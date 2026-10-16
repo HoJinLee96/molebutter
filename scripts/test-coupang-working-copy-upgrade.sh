@@ -29,6 +29,7 @@ spring.datasource.password=
 coupang.previous-assets-directory=$COUPANG_PREVIOUS_ASSETS_DIRECTORY
 coupang.assets.directory=$COUPANG_ASSETS_DIRECTORY
 server.port=1
+coupang.assets.public-base-url=https://app.example.test
 PROPERTIES
 export SPRING_CONFIG_LOCATION="file:$upgrade_source_test/application.properties"
 upgrade_java="${JAVA_HOME:-/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home}/bin/java"

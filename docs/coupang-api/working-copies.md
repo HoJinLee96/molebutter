@@ -25,3 +25,5 @@
 현재 API는 `/api/coupang/working-copies`의 목록·생성·조회·저장과 `/api/coupang/submissions`의 준비·실행·재시도·입력 수정·결과 확인이다. 편집 세션은 진입·저장·전송 준비에서 관리한다. 중복 edit-data·검증·세션 갱신과 연결·내부 기준 저장·비교 해결·중복 등록 저장 API는 제거했다. 입력 Enter 규칙은 [공통 규칙](../ui-interaction-rules.md)을 따른다.
 
 현재 DB 전환은 [V48 보존 전환](../coupang-intent-migration.md), 작업본 구조의 역사적 근거는 [V47 보존 전환](../coupang-working-copy-migration.md), 검증은 [테스트 안내](../testing.md)를 따른다. 실제 쿠팡 쓰기와 공용 R2 삭제는 일반 회귀 검증에서 실행하지 않는다.
+
+중복 미디어의 ID 보존은 현재 편집기와 V47 오프라인 전환이 같은 함수로 처리한다. V47 보완은 백업·격리 복원 뒤의 유지보수 명령에 한정하며 현재 작업본 저장 요청에 전환용 형식을 허용하지 않는다.

@@ -11,6 +11,8 @@ COUPANG_ASSETS_DIRECTORY=/absolute/path/to/coupang-assets \
 
 현재 실행 설정에서 DB 설정을 읽으며 비밀 파일을 직접 열거나 수정하지 않는다. 명령은 로컬 격리 MySQL을 생성해 전체 dump를 복원하고 모든 테이블 지문을 대조한다. DB가 참조하는 이미지 파일 누락·심볼릭 링크·백업 중 변경을 거절한다. 이미지 바이트, 보존 업무 테이블과 현재·감사 판매 테이블을 전후 대조한다. 이미 V48이 적용된 경우 재실행은 데이터를 변경하지 않는다. 기존 V47 명령은 target 47로 고정돼 있으며 V48에는 새 명령을 사용한다.
 
+V46에서 시작한다면 먼저 [V47 오프라인 보존 전환](coupang-working-copy-migration.md)을 완료한다. 중복 미디어의 전환용 관측 입력이 남아 있으면 V48도 거절한다. 이 경우 V47 준비 전 백업을 복원하며, V48에서 앞선 전환 실패를 자동 수리하지 않는다. 이미 정상적으로 V47·V48이 적용된 설치에는 다시 준비하거나 데이터를 변경하지 않는다.
+
 백업에는 `database.sql`, `sales-assets/`, `verified-before.txt`, `verified-after.txt`, `immutable-previews.sha256`, `preflight.txt`, `UPGRADE_COMPLETE`를 남긴다. 이전 JAR도 별도 보존한다. DDL 이후 실패하면 새 앱을 시작하거나 무조건 repair하지 말고 검증된 전체 DB·파일과 이전 JAR을 함께 복원한다. 전환 후 새 입력이 생겼다면 먼저 별도 보관한다.
 
 이전 목록 전체 수정은 DB에서 삭제하거나 추정하지 않는다. 재진입 시 저장 입력을 보여주고 전송을 막으며, 입력을 보관한 뒤 사용자가 최신 데이터에서 수정 범위를 다시 지정한다. schemaVersion 1~3 전송 증거는 조회·결과 확인에 사용하고 새 쓰기는 schemaVersion 4 미리보기로 준비한다.

@@ -77,6 +77,74 @@ public final class CoupangInputs {
         settings.keySet().retainAll(SETTINGS);
         return new Document(basic, options, delivery, settings, list(source.documents()));
     }
+    /**
+     * Preserve individual media identities while keeping the latest observed
+     * values.
+     */
+    public static Document preserveMedia(Document fresh, Document previous, Map<String, String> tokens,
+            Map<String, String> publicUrls) {
+        var options = new ArrayList<Option>();
+        for (var o : fresh.options()) {
+            var prior = previous.options().stream().filter(v -> v.id().equals(o.id())).findFirst().orElse(null);
+            if (prior == null) {
+                options.add(o);
+                continue;
+            }
+            var images = new ArrayList<Image>();
+            var usedImages = new HashSet<String>();
+            var priorImageIds = prior.images().stream().map(Image::id).collect(java.util.stream.Collectors.toSet());
+            for (var image : o.images()) {
+                var old = prior.images().stream()
+                        .filter(v -> !usedImages.contains(v.id()) && (Objects.equals(v.url(), image.url())
+                                || v.assetId() != null && tokens.containsKey(v.assetId()) && image.url() != null
+                                        && image.url().endsWith("/coupang/images/" + tokens.get(v.assetId()))))
+                        .sorted(Comparator.comparing(v -> !Objects.equals(v.type(), image.type()))).findFirst()
+                        .orElse(null);
+                if (old != null)
+                    usedImages.add(old.id());
+                images.add(old == null
+                        ? new Image(priorImageIds.contains(image.id()) ? UUID.randomUUID().toString() : image.id(),
+                                image.assetId(), image.url(), image.type(), image.order())
+                        : new Image(old.id(),
+                                Objects.equals(old.url(), image.url())
+                                        || Objects.equals(publicUrls.get(old.assetId()), image.url())
+                                                ? old.assetId()
+                                                : null,
+                                image.url(), image.type(), image.order()));
+            }
+            var contents = new ArrayList<Content>();
+            var usedContents = new HashSet<String>();
+            var priorContentIds = prior.contents().stream().map(Content::id)
+                    .collect(java.util.stream.Collectors.toSet());
+            for (var content : o.contents()) {
+                var old = prior.contents().stream()
+                        .filter(v -> !usedContents.contains(v.id()) && Objects.equals(v.type(), content.type())
+                                && (Objects.equals(v.content(), content.content())
+                                        || published(v.assetId(), content.content(), tokens)))
+                        .sorted(Comparator.comparing(v -> !Objects.equals(v.detailType(), content.detailType())))
+                        .findFirst().orElse(null);
+                if (old != null)
+                    usedContents.add(old.id());
+                contents.add(old == null
+                        ? new Content(
+                                priorContentIds.contains(content.id()) ? UUID.randomUUID().toString() : content.id(),
+                                content.type(), content.detailType(), content.content(), content.assetId())
+                        : new Content(old.id(), content.type(), content.detailType(), content.content(),
+                                Objects.equals(old.detailType(), content.detailType())
+                                        && (Objects.equals(old.content(), content.content())
+                                                || Objects.equals(publicUrls.get(old.assetId()), content.content()))
+                                                        ? old.assetId()
+                                                        : null));
+            }
+            options.add(new Option(o.id(), o.itemName(), o.registration(), o.attributes(), images, contents,
+                    o.notices(), o.certifications(), o.noticeCategory()));
+        }
+        return new Document(fresh.basic(), List.copyOf(options), fresh.delivery(), fresh.settings(), fresh.documents());
+    }
+    private static boolean published(String asset, String value, Map<String, String> tokens) {
+        return asset != null && tokens.containsKey(asset) && value != null
+                && value.endsWith("/coupang/images/" + tokens.get(asset));
+    }
     public static Mapping enrich(Mapping mapping, CoupangEditor.EditorDocument source) {
         from(source, mapping);
         var links = new ArrayList<OptionMapping>();

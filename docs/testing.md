@@ -1,6 +1,6 @@
 # 테스트 실행과 유지 기준
 
-Java 21과 프로젝트 Maven wrapper를 사용한다. 판매 연동은 쿠팡 전용이며 실제 외부 쓰기는 일반 검증에 포함하지 않는다. 최신 실행 결과는 [업로드·재시도·요청 형식 재검토](verification/2026-10-16-coupang-final-review.md), 이전 결과는 [커밋·재시작 복구 재검토](verification/2026-10-16-coupang-recovery-review.md)다. 현재 데이터 보존 전환은 [V48 절차](coupang-intent-migration.md)를 따른다. 이전 검증 기록은 각 기록의 이전 결과 링크로 확인한다.
+Java 21과 프로젝트 Maven wrapper를 사용한다. 판매 연동은 쿠팡 전용이며 실제 외부 쓰기는 일반 검증에 포함하지 않는다. 최신 실행 결과는 [V47 커밋·중단 재검토](verification/2026-10-16-coupang-v47-rereview.md), 이전 결과는 [V47 중복 미디어 보존 수정](verification/2026-10-16-coupang-v47-media-fix.md)이다. 현재 데이터 보존 전환은 [V48 절차](coupang-intent-migration.md)를 따른다. 이전 검증 기록은 각 기록의 이전 결과 링크로 확인한다.
 
 ## 전체 Java 검증
 
@@ -55,6 +55,10 @@ MOLEBUTTER_TEST_PACKAGE_SMOKE=true bash scripts/test-integration.sh \
 ```
 
 유지보수 검사는 합성 DB와 가짜 이미지로 전체 백업·격리 복원·행 지문 대조·FK 순서·이미지 백업·재실행·보존 감사를 수행한다. 실제 초기화 명령과 구분하며 운영 데이터에 사용하지 않는다.
+
+`CoupangV47PreparationIT`는 원래 V47의 중복 URL·본문 실패를 재현하고 오프라인 관측 입력 준비 → 불변 V47 → 준비 입력 제거 → V48을 검사한다. 활성 임대·계정 불일치·중복 상품·조회 근거 누락의 무변경 거절, 준비 후 중단 표식과 완료 대조 실패도 검사한다. 원본 초안·실제 수정 의도·이미지 참조·공개 토큰의 지문을 대조한다. `CoupangMediaIdentityTest`는 일대일 매칭·역할/세부 타입·신규 행 ID 충돌·정확한 공개 URL의 로컬 참조를 검사한다. `test-coupang-working-copy-upgrade.sh`에는 동일 URL 이미지와 동일 본문의 연결 상품을 포함해 실제 명령의 전체 백업·복원·감사 동일성·재실행을 검사한다. 일반 Flyway 실행으로 과거 V47을 고쳤다고 해석하지 않는다.
+
+`CoupangV47CommitIT`는 실제 격리 MySQL에 JDBC 커밋 응답 실패를 주입한다. 준비 커밋의 실제 성공/미성공과 롤백 성공/실패, 정리 대조 실패·커밋 실패, 성공한 정리 커밋의 응답 유실을 구분한다. 롤백 실패 뒤 autocommit을 다시 켜지 않는지와 새 DB 연결에서 잔여 표식·감사 지문을 확인한다. 별도 JVM을 정리 삭제 후 커밋 전에 종료해 롤백·재실행 거절을 확인한다. 호스트 전원 차단 검사와 구분한다. 감사·파일 대조를 정리 커밋 뒤로 옮기면 응답 유실 사례가 실패해야 한다.
 
 최종 JAR은 `molebutter-app/target/molebutter-0.0.1-SNAPSHOT.jar` 하나다. packaged smoke는 격리 MySQL·Redis에서 HTTP 기동·정적 자원·마이그레이션과 상태 복구 명령의 미리보기를 검사한다. 비밀 파일·테스트 fixture·테스트 라이브러리와 제거된 판매 모듈이 포함되지 않아야 한다. 인증 설정은 기존 런타임에서 읽으며 `application-secret/` 파일을 직접 열거나 수정하지 않는다.
 

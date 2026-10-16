@@ -5,6 +5,7 @@ import java.nio.file.*;
 import java.security.*;
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.Callable;
 import org.springframework.boot.*;
 import org.springframework.context.annotation.Configuration;
 import db.migration.V47__coupang_working_copies;
@@ -61,6 +62,7 @@ public final class CoupangWorkingCopyMaintenance {
             if (backup.startsWith(current) || Files.isSymbolicLink(current))
                 throw new IllegalStateException("이미지 경로와 새 백업 위치를 확인하세요.");
             try (var connection = DriverManager.getConnection(url, user, password)) {
+                CoupangV47Preparation.requireComplete(connection);
                 try (var st = connection.createStatement();
                         var r = st.executeQuery("SELECT COUNT(*) FROM flyway_schema_history WHERE version='" + target
                                 + "' AND success=TRUE")) {
@@ -142,31 +144,45 @@ public final class CoupangWorkingCopyMaintenance {
                     System.setProperty("molebutter.intent.verified", "true");
                 } else
                     throw new IllegalStateException("지원하지 않는 전환 버전입니다.");
+                Callable<Void> verification = () -> {
+                    if (!before.equals(preserved(SalesDataMaintenance.digests(connection))))
+                        throw new IllegalStateException("전환 후 행·참조 데이터가 일치하지 않습니다. 재기동하지 말고 백업을 보존하세요.");
+                    if (!immutablePreviews.equals(SalesDataMaintenance.queryDigest(connection,
+                            "SELECT p.* FROM coupang_submission_preview p JOIN coupang_execution e ON e.preview_id=p.id")))
+                        throw new IllegalStateException("실행된 미리보기 증거가 변경되었습니다. 재기동하지 말고 복원하세요.");
+                    Files.writeString(backup.resolve("immutable-previews.sha256"), immutablePreviews);
+                    var after = SalesDataMaintenance.digests(connection);
+                    for (var proof : evidence.entrySet())
+                        if (!Objects.equals(proof.getValue(), after.get(proof.getKey())))
+                            throw new IllegalStateException("전환 후 판매 증거·원본·참조 지문이 다릅니다. 재기동하지 말고 복원하세요.");
+                    Files.writeString(backup.resolve("verified-after.txt"), after.toString());
+                    if (!files.equals(fileHashes(current)))
+                        throw new IllegalStateException("전환 후 이미지 데이터가 일치하지 않습니다.");
+                    return null;
+                };
                 try {
+                    var prepared = target == 47
+                            ? CoupangV47Preparation.prepare(connection, account,
+                                    env.getProperty("coupang.assets.public-base-url", ""))
+                            : List.<CoupangV47Preparation.Observation>of();
                     if (target == 47)
-                        V47__coupang_working_copies.check(connection, account);
+                        Files.writeString(backup.resolve("preflight.txt"),
+                                "V47 observation preparation (no user changes): "
+                                        + prepared.stream().map(CoupangV47Preparation.Observation::id).toList() + "\n",
+                                StandardOpenOption.APPEND);
                     SalesDataMaintenance.migrate(env.getProperty("spring.flyway.url", url),
                             env.getProperty("spring.flyway.user", user),
                             env.getProperty("spring.flyway.password", password), Integer.toString(target));
+                    if (target == 47)
+                        CoupangV47Preparation.finish(connection, prepared, verification);
+                    else
+                        verification.call();
                 } finally {
                     for (String property : List.of("molebutter.working-copy.account",
                             "molebutter.working-copy.verified", "molebutter.working-copy.public-base",
                             "molebutter.intent.verified"))
                         System.clearProperty(property);
                 }
-                if (!before.equals(preserved(SalesDataMaintenance.digests(connection))))
-                    throw new IllegalStateException("전환 후 행·참조 데이터가 일치하지 않습니다. 재기동하지 말고 백업을 보존하세요.");
-                if (!immutablePreviews.equals(SalesDataMaintenance.queryDigest(connection,
-                        "SELECT p.* FROM coupang_submission_preview p JOIN coupang_execution e ON e.preview_id=p.id")))
-                    throw new IllegalStateException("실행된 미리보기 증거가 변경되었습니다. 재기동하지 말고 복원하세요.");
-                Files.writeString(backup.resolve("immutable-previews.sha256"), immutablePreviews);
-                var after = SalesDataMaintenance.digests(connection);
-                for (var proof : evidence.entrySet())
-                    if (!Objects.equals(proof.getValue(), after.get(proof.getKey())))
-                        throw new IllegalStateException("전환 후 판매 증거·원본·참조 지문이 다릅니다. 재기동하지 말고 복원하세요.");
-                Files.writeString(backup.resolve("verified-after.txt"), after.toString());
-                if (!files.equals(fileHashes(current)))
-                    throw new IllegalStateException("전환 후 이미지 데이터가 일치하지 않습니다.");
                 Files.writeString(backup.resolve("UPGRADE_COMPLETE"), "V" + target
                         + " applied; all business rows, immutable evidence, IDs and asset bytes preserved\n");
                 System.out.println("쿠팡 V" + target + " 전환 완료. 전체 DB 격리 복원·행 지문·이미지 바이트 동일성 확인. 백업: " + backup);
