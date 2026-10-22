@@ -664,7 +664,7 @@ class CoupangWorkingCopyFlowIT {
         assertThat(registry.collection(actor,failed.id()).status()).isEqualTo("FAILED");assertThat(resultMessage(failed.id())).contains("INTERNAL").doesNotContain("synthetic failure");
         String id="900001";var summary=new CoupangCatalog.Product(id,"알림 검증 상품","브랜드","APPROVED","910001","2026-10-16T10:00:00");
         observations.record(new CoupangObservations.Read(account,actor,cc.ataglace.molebutter.common.api.BusinessIds.next(),"SUMMARY",id,null,json.writeValueAsString(summary),summary,null,null,null));
-        doThrow(new CoupangFailure(CoupangFailure.Kind.UPSTREAM)).when(catalog).product(actor,id);
+        doThrow(new CoupangFailure(CoupangFailure.Kind.UPSTREAM)).when(catalog).productForCollection(actor,id);
         var partial=registry.collect(actor,new CoupangRegisteredProducts.Collect(List.of(id)));registry.runPending();
         assertThat(registry.collection(actor,partial.id()).status()).isEqualTo("PARTIAL");assertThat(resultMessage(partial.id())).contains("대상 1 · 완료 0 · 실패 1","UPSTREAM");
         assertThat(resultCount(partial.id())).isEqualTo(1);

@@ -18,6 +18,7 @@ final class DefaultCoupangCatalog implements cc.ataglace.molebutter.coupang.inte
     public java.util.List<CategoryChoice> categories(Long actor,String requestId){access.productActor(actor,true);return client.operation(actor,requestId,client::categories);}
     public ProductDetail product(Long actor,String id){return product(actor,id,null);}
     public ProductDetail product(Long actor,String id,String requestId){access.productActor(actor,true);return client.operation(actor,requestId,()->client.product(id));}
+    public ProductDetail productForCollection(Long actor,String id){access.productActor(actor,true);return client.operation(actor,null,()->client.productForCollection(id));}
     public cc.ataglace.molebutter.coupang.internal.RecentProductCandidates.Page candidates(Long actor,String date,String token) {
         access.productActor(actor,true);return client.operation(actor,null,()->client.candidates(date,token));
     }

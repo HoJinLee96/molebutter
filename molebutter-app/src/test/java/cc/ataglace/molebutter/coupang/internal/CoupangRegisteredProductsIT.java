@@ -2,6 +2,8 @@ package cc.ataglace.molebutter.coupang.internal;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.flywaydb.core.Flyway;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.*;
@@ -49,12 +51,12 @@ class CoupangRegisteredProductsIT {
     }
     Search all(){return new Search(null,null,null,null,null,null,null,null,null);}
     void emptyLists(){when(catalog.products(anyLong(),eq(100),anyString(),any())).thenReturn(new CoupangCatalog.ProductPage(List.of(),"",false));}
-    void complete(String id){detail(id,100000,70);when(catalog.product(1L,id)).thenAnswer(c->{detail(id,100000,70);return store.detail(store.find(account,id,false));});}
+    void complete(String id){detail(id,100000,70);when(catalog.productForCollection(1L,id)).thenAnswer(c->{detail(id,100000,70);return store.detail(store.find(account,id,false));});}
     RecentProductCandidates port(){return (RecentProductCandidates)catalog;}
     RecentProductCandidates.Candidate candidate(String id,String timestamp){return candidate(id,timestamp,"APPROVED");}
     RecentProductCandidates.Candidate candidate(String id,String timestamp,String status){var p=new CoupangCatalog.Product(id,"상품 "+id,"브랜드",status,null,timestamp);return new RecentProductCandidates.Candidate(p,json.writeValueAsString(p),BusinessIds.next(),java.time.Instant.now().toString());}
     Collect recent(String from,String to,int count){return new Collect(List.of(),"RECENT",from,to,count);}
-    void collectDetails(){when(catalog.product(anyLong(),anyString())).thenAnswer(call->{String id=call.getArgument(1);detail(id,100000,70);return store.detail(store.find(account,id,false));});}
+    void collectDetails(){when(catalog.productForCollection(anyLong(),anyString())).thenAnswer(call->{String id=call.getArgument(1);detail(id,100000,70);return store.detail(store.find(account,id,false));});}
     @Test void recentFinishesBoundaryDayAndOnlyPublishesTheNewestNWithNumericTies(){
         detail("999",100000,70);long oldVersion=store.find(account,"999",false).row().version();
         when(port().candidates(1L,"2026-10-16","")).thenReturn(new RecentProductCandidates.Page(List.of(candidate("2","2026-10-16T10:00:00"),candidate("10","2026-10-16T10:00:00")),"next",true));
@@ -63,7 +65,7 @@ class CoupangRegisteredProductsIT {
         assertThat(result.status()).isEqualTo("SUCCEEDED");assertThat(result.listComplete()).isFalse();assertThat(result.discovered()).isEqualTo(2);assertThat(result.recent().apiPages()).isEqualTo(2);assertThat(result.recent().candidates()).isEqualTo(3);assertThat(result.recent().selected()).isEqualTo(2);
         assertThat(db.queryForList("SELECT seller_product_id FROM coupang_collection_candidate WHERE selected_rank IS NOT NULL ORDER BY selected_rank",String.class)).containsExactly("20","10");
         assertThat(db.queryForObject("SELECT COUNT(*) FROM coupang_registered_product",Long.class)).isEqualTo(3);assertThat(store.find(account,"999",false).row().version()).isEqualTo(oldVersion);assertThat(store.find(account,"999",false).row().deletionCandidate()).isFalse();
-        verify(catalog,never()).products(anyLong(),anyInt(),anyString(),any());verify(catalog,never()).product(1L,"2");verify(port(),never()).candidates(eq(1L),eq("2026-10-15"),anyString());
+        verify(catalog,never()).products(anyLong(),anyInt(),anyString(),any());verify(catalog,never()).productForCollection(1L,"2");verify(port(),never()).candidates(eq(1L),eq("2026-10-15"),anyString());
     }
     @Test void recentCheckpointSurvivesCancellationAndResumeKeepsTheOriginalCutoff(){
         when(port().candidates(1L,"2026-10-16","")).thenReturn(new RecentProductCandidates.Page(List.of(candidate("1","2026-10-16T10:00:00")),"p2",true));
@@ -71,13 +73,13 @@ class CoupangRegisteredProductsIT {
         var job=service.collect(1L,recent("2026-10-15","2026-10-16",1));service.runPending();var paused=service.collection(1L,job.id());assertThat(paused.status()).isEqualTo("PAUSED");assertThat(paused.recent().apiPages()).isEqualTo(1);assertThat(db.queryForObject("SELECT COUNT(*) FROM coupang_registered_product",Long.class)).isZero();
         service.resume(1L,job.id());service.cancel(1L,job.id());assertThat(service.collection(1L,job.id()).status()).isEqualTo("CANCELLED");
         doReturn(new RecentProductCandidates.Page(List.of(candidate("3","2026-10-16T11:00:00")),"",false)).when(port()).candidates(1L,"2026-10-16","p2");collectDetails();service.resume(1L,job.id());service.runPending();
-        var done=service.collection(1L,job.id());assertThat(done.status()).isEqualTo("SUCCEEDED");assertThat(done.recent().cutoffAt()).isEqualTo(paused.recent().cutoffAt());assertThat(done.completed()).isEqualTo(1);verify(port(),times(1)).candidates(1L,"2026-10-16","");verify(catalog).product(1L,"3");
+        var done=service.collection(1L,job.id());assertThat(done.status()).isEqualTo("SUCCEEDED");assertThat(done.recent().cutoffAt()).isEqualTo(paused.recent().cutoffAt());assertThat(done.completed()).isEqualTo(1);verify(port(),times(1)).candidates(1L,"2026-10-16","");verify(catalog).productForCollection(1L,"3");
     }
     @Test void recentCancelDuringResponseDoesNotCommitTheUncheckpointedPage(){
         when(port().candidates(1L,"2026-10-16","")).thenReturn(new RecentProductCandidates.Page(List.of(candidate("1","2026-10-16T10:00:00")),"p2",true));
         final String[] jobId={null};when(port().candidates(1L,"2026-10-16","p2")).thenAnswer(call->{service.cancel(1L,jobId[0]);return new RecentProductCandidates.Page(List.of(candidate("2","2026-10-16T11:00:00")),"",false);});
         jobId[0]=service.collect(1L,recent("2026-10-16","2026-10-16",1)).id();service.runPending();var stopped=service.collection(1L,jobId[0]);assertThat(stopped.status()).isEqualTo("CANCELLED");assertThat(stopped.recent().apiPages()).isEqualTo(1);assertThat(stopped.recent().candidates()).isEqualTo(1);assertThat(stopped.recent().selected()).isZero();
-        doReturn(new RecentProductCandidates.Page(List.of(candidate("2","2026-10-16T11:00:00")),"",false)).when(port()).candidates(1L,"2026-10-16","p2");collectDetails();service.resume(1L,jobId[0]);service.runPending();verify(catalog).product(1L,"2");
+        doReturn(new RecentProductCandidates.Page(List.of(candidate("2","2026-10-16T11:00:00")),"",false)).when(port()).candidates(1L,"2026-10-16","p2");collectDetails();service.resume(1L,jobId[0]);service.runPending();verify(catalog).productForCollection(1L,"2");
     }
     @Test void recentExpiredLeaseAndPermissionFailureKeepTheSameCheckpoint(){
         when(port().candidates(1L,"2026-10-16","")).thenThrow(new CoupangFailure(CoupangFailure.Kind.PERMISSION));var job=service.collect(1L,recent("2026-10-16","2026-10-16",1));service.runPending();assertThat(service.collection(1L,job.id()).error()).isEqualTo("PERMISSION");
@@ -90,7 +92,7 @@ class CoupangRegisteredProductsIT {
     }
     @Test void recentZeroResultsAndDeletedOrAfterCutoffNeverPublishProducts(){
         when(port().candidates(1L,"2026-10-16","")).thenReturn(new RecentProductCandidates.Page(List.of(candidate("1","2026-10-16T10:00:00","DELETED"),candidate("2","2026-10-16T11:00:00")),"",false));
-        var job=service.collect(1L,recent("2026-10-16","2026-10-16",100));db.update("UPDATE coupang_collection_recent SET cutoff_at='2026-10-16T10:30:00' WHERE job_id=?",Long.parseLong(job.id()));service.runPending();assertThat(service.collection(1L,job.id()).status()).isEqualTo("SUCCEEDED");assertThat(service.collection(1L,job.id()).discovered()).isZero();verify(catalog,never()).product(anyLong(),anyString());assertThat(db.queryForObject("SELECT COUNT(*) FROM coupang_registered_product",Long.class)).isZero();
+        var job=service.collect(1L,recent("2026-10-16","2026-10-16",100));db.update("UPDATE coupang_collection_recent SET cutoff_at='2026-10-16T10:30:00' WHERE job_id=?",Long.parseLong(job.id()));service.runPending();assertThat(service.collection(1L,job.id()).status()).isEqualTo("SUCCEEDED");assertThat(service.collection(1L,job.id()).discovered()).isZero();verify(catalog,never()).productForCollection(anyLong(),anyString());assertThat(db.queryForObject("SELECT COUNT(*) FROM coupang_registered_product",Long.class)).isZero();
     }
     @Test void recentRejectsInvalidDatesAndTokenLoopsWithoutAdvancingTheCheckpoint(){
         for(String scenario:List.of("missing","wrong-date","loop","conflict")){
@@ -102,13 +104,13 @@ class CoupangRegisteredProductsIT {
         }
     }
     @Test void recentDuplicateIdDoesNotConsumeTwoSlotsAndFailedDetailDoesNotBackfill(){
-        var first=candidate("1","2026-10-16T10:00:00");when(port().candidates(1L,"2026-10-16","")).thenReturn(new RecentProductCandidates.Page(List.of(first,first,candidate("2","2026-10-16T09:00:00")),"",false));when(catalog.product(1L,"1")).thenThrow(new CoupangFailure(CoupangFailure.Kind.REJECTED));
-        var job=service.collect(1L,recent("2026-10-16","2026-10-16",1));service.runPending();assertThat(service.collection(1L,job.id()).status()).isEqualTo("PARTIAL");assertThat(service.collection(1L,job.id()).failed()).isEqualTo(1);verify(catalog,never()).product(1L,"2");
-        doAnswer(call->{detail("1",100000,1);return store.detail(store.find(account,"1",false));}).when(catalog).product(1L,"1");service.resume(1L,job.id());service.runPending();assertThat(service.collection(1L,job.id()).status()).isEqualTo("SUCCEEDED");verify(port(),times(1)).candidates(1L,"2026-10-16","");
+        var first=candidate("1","2026-10-16T10:00:00");when(port().candidates(1L,"2026-10-16","")).thenReturn(new RecentProductCandidates.Page(List.of(first,first,candidate("2","2026-10-16T09:00:00")),"",false));when(catalog.productForCollection(1L,"1")).thenThrow(new CoupangFailure(CoupangFailure.Kind.REJECTED));
+        var job=service.collect(1L,recent("2026-10-16","2026-10-16",1));service.runPending();assertThat(service.collection(1L,job.id()).status()).isEqualTo("PARTIAL");assertThat(service.collection(1L,job.id()).failed()).isEqualTo(1);verify(catalog,never()).productForCollection(1L,"2");
+        doAnswer(call->{detail("1",100000,1);return store.detail(store.find(account,"1",false));}).when(catalog).productForCollection(1L,"1");service.resume(1L,job.id());service.runPending();assertThat(service.collection(1L,job.id()).status()).isEqualTo("SUCCEEDED");verify(port(),times(1)).candidates(1L,"2026-10-16","");
     }
     @Test void recentSelectedSummaryCannotOverwriteANewerObservation(){
         var old=candidate("1","2026-10-16T10:00:00");summary("1");var newer=store.find(account,"1",false).row().version();
-        when(port().candidates(1L,"2026-10-16","")).thenReturn(new RecentProductCandidates.Page(List.of(old),"",false));when(catalog.product(1L,"1")).thenThrow(new CoupangFailure(CoupangFailure.Kind.RATE_LIMIT));var job=service.collect(1L,recent("2026-10-16","2026-10-16",1));service.runPending();assertThat(store.find(account,"1",false).row().version()).isEqualTo(newer);
+        when(port().candidates(1L,"2026-10-16","")).thenReturn(new RecentProductCandidates.Page(List.of(old),"",false));when(catalog.productForCollection(1L,"1")).thenThrow(new CoupangFailure(CoupangFailure.Kind.RATE_LIMIT));var job=service.collect(1L,recent("2026-10-16","2026-10-16",1));service.runPending();assertThat(store.find(account,"1",false).row().version()).isEqualTo(newer);
     }
     @Test void listHydratesTwentyOrHundredOptionsWithConstantQueryCountAndNoDetailPayloads() {
         var evidence=new CoupangRecommendationSources.Source("41",115170L,true,"2026-10-16T10:00:00",
@@ -154,7 +156,7 @@ class CoupangRegisteredProductsIT {
             int page=call.getArgument(2,String.class).isEmpty()?0:Integer.parseInt(call.getArgument(2,String.class));var products=new ArrayList<CoupangCatalog.Product>();
             for(int n=page*100+1;n<=Math.min(300,(page+1)*100);n++){String id=Integer.toString(n);summary(id);products.add(product(id));}
             return new CoupangCatalog.ProductPage(products,page<2?Integer.toString(page+1):"",page<2);});
-        when(catalog.product(anyLong(),anyString())).thenAnswer(call->{String id=call.getArgument(1);detail(id,100000,70);return store.detail(store.find(account,id,false));});
+        when(catalog.productForCollection(anyLong(),anyString())).thenAnswer(call->{String id=call.getArgument(1);detail(id,100000,70);return store.detail(store.find(account,id,false));});
         var job=service.collect(1L,new Collect(List.of()));service.runPending();assertThat(service.collection(1L,job.id()).status()).isEqualTo("SUCCEEDED");
         assertThat(db.queryForObject("SELECT COUNT(*) FROM coupang_registered_product",Long.class)).isEqualTo(300);
         assertThat(db.queryForObject("SELECT COUNT(*) FROM coupang_registered_option",Long.class)).isEqualTo(600);
@@ -261,16 +263,58 @@ class CoupangRegisteredProductsIT {
         assertThat(db.queryForObject("SELECT COUNT(*) FROM coupang_product_change",Long.class)).isEqualTo(before);verifyNoInteractions(catalog,source);
     }
     @Test void failuresRetainValuesAndRetryOnlyFailedItems(){summary("1");summary("2");detail("1",100000,70);detail("2",100000,70);var reads=new AtomicInteger();
-        when(catalog.product(1L,"1")).thenAnswer(c->{reads.incrementAndGet();detail("1",110000,65);return store.detail(store.find(account,"1",false));});
-        when(catalog.product(1L,"2")).thenThrow(new CoupangFailure(CoupangFailure.Kind.UPSTREAM));
+        when(catalog.productForCollection(1L,"1")).thenAnswer(c->{reads.incrementAndGet();detail("1",110000,65);return store.detail(store.find(account,"1",false));});
+        when(catalog.productForCollection(1L,"2")).thenThrow(new CoupangFailure(CoupangFailure.Kind.UPSTREAM));
         var job=service.collect(1L,new Collect(List.of("1","2")));service.runPending();assertThat(service.collection(1L,job.id()).status()).isEqualTo("PARTIAL");
         assertThat(service.get(1L,"2").detail().items().getFirst().current().amountInStock()).isEqualTo(70);assertThat(service.get(1L,"2").state().deleted()).isFalse();
-        doAnswer(c->{detail("2",120000,60);return store.detail(store.find(account,"2",false));}).when(catalog).product(1L,"2");service.resume(1L,job.id());service.runPending();
+        doAnswer(c->{detail("2",120000,60);return store.detail(store.find(account,"2",false));}).when(catalog).productForCollection(1L,"2");service.resume(1L,job.id());service.runPending();
         assertThat(service.collection(1L,job.id()).status()).isEqualTo("SUCCEEDED");assertThat(reads).hasValue(1);
     }
-    @Test void onlyCompleteFullCollectionWithExplicitAbsenceCreatesCandidate(){summary("1");detail("1",100000,70);emptyLists();when(catalog.product(1L,"1")).thenThrow(new CoupangFailure(CoupangFailure.Kind.UPSTREAM));
+    @Test void ordinaryPartialInventoryFailureKeepsLastValueAndContinuesNextProduct(){
+        complete("1");complete("2");
+        doAnswer(call->{
+            store.record(new CoupangObservations.Read(account,1L,BusinessIds.next(),"INVENTORY_ERROR","1","110",null,null,null,null,"UPSTREAM"));
+            return store.detail(store.find(account,"1",false));
+        }).when(catalog).productForCollection(1L,"1");
+        var job=service.collect(1L,new Collect(List.of("1","2")));service.runPending();var result=service.collection(1L,job.id());
+        assertThat(result.status()).isEqualTo("PARTIAL");assertThat(result.failed()).isEqualTo(1);assertThat(result.completed()).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT error_code FROM coupang_product_collection_item WHERE job_id=? AND seller_product_id='1'",String.class,Long.parseLong(job.id()))).isEqualTo("RESPONSE");
+        assertThat(service.get(1L,"1").detail().items().getFirst().current().amountInStock()).isEqualTo(70);
+        verify(catalog).productForCollection(1L,"2");
+    }
+    @ParameterizedTest
+    @CsvSource({"SELECTED,RATE_LIMIT","FULL,RATE_LIMIT","RECENT,RATE_LIMIT","SELECTED,AUTHENTICATION","SELECTED,PERMISSION"})
+    void blockingInventoryFailurePausesAtCurrentProductAndResumeSkipsCompleted(String mode,CoupangFailure.Kind kind){
+        for(String id:List.of("1","2","3"))complete(id);
+        if(mode.equals("FULL"))when(catalog.products(anyLong(),eq(100),anyString(),any())).thenReturn(
+                new CoupangCatalog.ProductPage(List.of(product("1"),product("2"),product("3")),"",false));
+        if(mode.equals("RECENT"))when(port().candidates(1L,"2026-10-16","")).thenReturn(new RecentProductCandidates.Page(
+                List.of(candidate("1","2026-10-16T10:00:00"),candidate("2","2026-10-16T10:00:00"),candidate("3","2026-10-16T10:00:00")),"",false));
+        doAnswer(call->{
+            store.record(new CoupangObservations.Read(account,1L,BusinessIds.next(),"INVENTORY_ERROR","2","210",null,null,null,null,kind.name()));
+            throw new CoupangFailure(kind);
+        }).when(catalog).productForCollection(1L,"2");
+        var request=mode.equals("RECENT")?recent("2026-10-16","2026-10-16",3):new Collect(mode.equals("FULL")?List.of():List.of("1","2","3"));
+        var job=service.collect(1L,request);service.runPending();var paused=service.collection(1L,job.id());
+        assertThat(paused.status()).isEqualTo("PAUSED");assertThat(paused.error()).isEqualTo(kind.name());
+        assertThat(paused.completed()).isEqualTo(1);assertThat(paused.failed()).isZero();assertThat(paused.phase()).isEqualTo("DETAIL");
+        assertThat(db.queryForList("SELECT status FROM coupang_product_collection_item WHERE job_id=? ORDER BY seller_product_id",String.class,Long.parseLong(job.id())))
+                .containsExactly("DONE","PENDING","PENDING");
+        assertThat(service.get(1L,"2").detail().items().getFirst().current().amountInStock()).isEqualTo(70);
+        assertThat(db.queryForObject("SELECT error_code FROM coupang_registered_option WHERE vendor_item_id='210'",String.class)).isEqualTo(kind.name());
+        verify(catalog,never()).productForCollection(1L,"3");
+        doAnswer(call->{detail("2",120000,60);return store.detail(store.find(account,"2",false));}).when(catalog).productForCollection(1L,"2");
+        service.resume(1L,job.id());service.runPending();var done=service.collection(1L,job.id());
+        assertThat(done.status()).isEqualTo("SUCCEEDED");assertThat(done.completed()).isEqualTo(3);assertThat(done.error()).isNull();
+        assertThat(service.get(1L,"2").detail().items().getFirst().current().amountInStock()).isEqualTo(60);
+        assertThat(db.queryForObject("SELECT error_code FROM coupang_registered_option WHERE vendor_item_id='210'",String.class)).isNull();
+        verify(catalog,times(1)).productForCollection(1L,"1");verify(catalog,times(2)).productForCollection(1L,"2");verify(catalog,times(1)).productForCollection(1L,"3");
+        if(mode.equals("RECENT"))verify(port(),times(1)).candidates(1L,"2026-10-16","");
+        if(mode.equals("FULL"))verify(catalog,times(2)).products(eq(1L),eq(100),eq(""),any());
+    }
+    @Test void onlyCompleteFullCollectionWithExplicitAbsenceCreatesCandidate(){summary("1");detail("1",100000,70);emptyLists();when(catalog.productForCollection(1L,"1")).thenThrow(new CoupangFailure(CoupangFailure.Kind.UPSTREAM));
         var job=service.collect(1L,new Collect(List.of()));service.runPending();assertThat(service.get(1L,"1").state().deletionCandidate()).isFalse();
-        doThrow(new CoupangFailure(CoupangFailure.Kind.PRODUCT_ABSENT)).when(catalog).product(1L,"1");service.collect(1L,new Collect(List.of("1")));service.runPending();assertThat(service.get(1L,"1").state().deletionCandidate()).isFalse();
+        doThrow(new CoupangFailure(CoupangFailure.Kind.PRODUCT_ABSENT)).when(catalog).productForCollection(1L,"1");service.collect(1L,new Collect(List.of("1")));service.runPending();assertThat(service.get(1L,"1").state().deletionCandidate()).isFalse();
         service.collect(1L,new Collect(List.of()));service.runPending();var candidate=service.get(1L,"1");assertThat(candidate.state().deletionCandidate()).isTrue();assertThat(candidate.state().deleted()).isFalse();
         assertThatThrownBy(()->service.confirmDeletion(1L,"1",new DeleteConfirmation(candidate.state().version()-1,true))).isInstanceOf(InputValidationFailure.class);
         var deleted=service.confirmDeletion(1L,"1",new DeleteConfirmation(candidate.state().version(),true));assertThat(deleted.state().deleted()).isTrue();assertThat(service.list(1L,all(),false,0,20).totalElements()).isZero();

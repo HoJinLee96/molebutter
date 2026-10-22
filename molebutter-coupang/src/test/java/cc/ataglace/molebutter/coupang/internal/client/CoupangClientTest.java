@@ -11,6 +11,8 @@ import java.time.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import tools.jackson.databind.ObjectMapper;
 class CoupangClientTest {
     CoupangHttpTransport response(int status,String body){
@@ -253,9 +255,39 @@ class CoupangClientTest {
         });server.start();
         try{
             var c=client(new CoupangHttpTransport(URI.create("http://127.0.0.1:"+server.getAddress().getPort()),Duration.ofSeconds(2),8192));
-            var result=c.product("123");assertThat(result.items().getFirst().current()).isNotNull();
+            var result=new DefaultCoupangCatalog(mock(cc.ataglace.molebutter.identity.api.BusinessAccess.class),c).productForCollection(1L,"123");assertThat(result.items().getFirst().current()).isNotNull();
             assertThat(detailCalls.get()).isEqualTo(1);assertThat(inventoryCalls.get()).isEqualTo(2);
         }finally{server.stop(0);}
+    }
+    @ParameterizedTest
+    @CsvSource(value={"429,NULL,RATE_LIMIT,2","429,0,RATE_LIMIT,2","401,NULL,AUTHENTICATION,1","403,NULL,PERMISSION,1"},nullValues="NULL")
+    void collectionPropagatesBlockingInventoryFailuresAfterRetries(int status,String retryAfter,CoupangFailure.Kind kind,int attempts){
+        var transport=response(200,DETAIL.replace("\"vendorItemId\":null","\"vendorItemId\":100")
+                .replace("}],","},{\"sellerProductItemId\":2,\"vendorItemId\":101,\"itemName\":\"다음 옵션\"}],"));
+        when(transport.send(anyString(),contains("/inventories"),anyString(),anyString(),nullable(byte[].class),any()))
+                .thenReturn(new CoupangHttpTransport.Response(status,"{}".getBytes(StandardCharsets.UTF_8),retryAfter));
+        var c=client(transport);var observations=mock(cc.ataglace.molebutter.coupang.api.CoupangObservations.class);
+        org.springframework.beans.factory.ObjectProvider<cc.ataglace.molebutter.coupang.api.CoupangObservations> provider=mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(observations);c.observations(provider);
+        var access=mock(cc.ataglace.molebutter.identity.api.BusinessAccess.class);
+        var catalog=new DefaultCoupangCatalog(access,c);
+        failure(()->catalog.productForCollection(1L,"123"),kind);
+        verify(access).productActor(1L,true);
+        verify(transport,times(attempts)).send(eq("GET"),endsWith("/100/inventories"),anyString(),anyString(),any(),any());
+        verify(transport,never()).send(anyString(),endsWith("/101/inventories"),anyString(),anyString(),any(),any());
+        verify(observations).record(argThat(read->"INVENTORY_ERROR".equals(read.kind()) && kind.name().equals(read.error()) && "123".equals(read.productId()) && "100".equals(read.optionId())));
+    }
+    @Test void collectionKeepsOrdinaryOptionFailuresPartialAndUiReadsKeepBlockingErrorsPartial(){
+        var transport=response(200,DETAIL.replace("\"vendorItemId\":null","\"vendorItemId\":100"));
+        when(transport.send(anyString(),contains("/inventories"),anyString(),anyString(),nullable(byte[].class),any()))
+                .thenReturn(new CoupangHttpTransport.Response(400,"{}".getBytes(StandardCharsets.UTF_8)));
+        assertThat(client(transport).productForCollection("123").items().getFirst().currentError()).isNotBlank();
+        when(transport.send(anyString(),contains("/inventories"),anyString(),anyString(),nullable(byte[].class),any()))
+                .thenReturn(new CoupangHttpTransport.Response(403,"{}".getBytes(StandardCharsets.UTF_8)));
+        var partial=client(transport).product("123").items().getFirst();
+        assertThat(partial.current()).isNull();assertThat(partial.currentError()).isNotBlank();
+        var editor=client(transport).editor("123").options().getFirst();
+        assertThat(editor.current()).isNull();assertThat(editor.currentError()).isNotBlank();
     }
     @Test void fixedHmacVector(){assertThat(CoupangSignature.authorization("fake-access","fake-secret",CLOCK.instant(),"GET","/test","x=1")).isEqualTo("CEA algorithm=HmacSHA256, access-key=fake-access, signed-date=261005T080000Z, signature=4d8be5a4550bef38dc2b105f2073090df0f1560f06141ff8ea9c1bb554e248b9");}
     @Test void parsesListsAndPreservesIdentifiersWithoutInventingSaleStatus(){

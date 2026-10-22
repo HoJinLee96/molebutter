@@ -260,7 +260,7 @@ public class DefaultCoupangRegisteredProducts implements CoupangRegisteredProduc
                 try {
                     var known=store.find(a,product,false);
                     {
-                        var detail=catalog.product(actor,product);
+                        var detail=catalog.productForCollection(actor,product);
                         if(detail.items().stream().anyMatch(o->o.vendorItemId()!=null && o.currentError()!=null))throw new CoupangFailure(RESPONSE);
                         settle(a,product);
                     }

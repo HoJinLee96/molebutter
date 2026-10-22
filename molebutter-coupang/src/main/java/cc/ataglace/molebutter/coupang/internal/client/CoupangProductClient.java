@@ -500,9 +500,12 @@ final class CoupangProductClient {
     private record LoadedProduct(ProductDetail detail, JsonNode source) {
     }
     public ProductDetail product(String productId) {
-        return loadProduct(productId).detail();
+        return loadProduct(productId, false).detail();
     }
-    private LoadedProduct loadProduct(String productId) {
+    public ProductDetail productForCollection(String productId) {
+        return loadProduct(productId, true).detail();
+    }
+    private LoadedProduct loadProduct(String productId, boolean collection) {
         if (productId == null || !productId.matches("[0-9]{1,30}"))
             throw new InputValidationFailure("잘못된 등록상품 ID입니다.");
         if (vendor.isBlank() || access.isBlank() || secret.isBlank())
@@ -541,6 +544,8 @@ final class CoupangProductClient {
                     observe("INVENTORY_ERROR",productId,item.vendorItemId(),null,null,null,null,failure.kind().name());
                     if (Thread.currentThread().isInterrupted() || failure.kind() == CANCELLED)
                         throw failure;
+                    if (collection && Set.of(AUTHENTICATION, PERMISSION, RATE_LIMIT, BUSY, CONFIGURATION).contains(failure.kind()))
+                        throw failure;
                     if (Set.of(AUTHENTICATION, PERMISSION, RATE_LIMIT).contains(failure.kind()))
                         stoppedError = failure.getMessage();
                     updated = item.withCurrent(null, failure.getMessage());
@@ -554,7 +559,7 @@ final class CoupangProductClient {
         }
     }
     public EditorDocument editor(String productId) {
-        var loaded = loadProduct(productId);
+        var loaded = loadProduct(productId, false);
         return editorDocument(loaded.detail(), loaded.source());
     }
     /**
