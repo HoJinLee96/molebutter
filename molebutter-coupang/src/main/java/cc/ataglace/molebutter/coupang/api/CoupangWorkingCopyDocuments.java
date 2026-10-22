@@ -14,6 +14,8 @@ public final class CoupangWorkingCopyDocuments {
     private CoupangWorkingCopyDocuments() {
     }
     public static final int MAX_BYTES = 5 * 1024 * 1024;
+    public static final Set<String> CONTENT_TYPES = Set.of("HTML", "IMAGE", "IMAGE_NO_SPACE", "TEXT",
+            "IMAGE_TEXT", "TEXT_IMAGE", "IMAGE_IMAGE", "TEXT_TEXT", "TITLE");
     public static final Set<String> BASIC = Set.of("sellerProductName", "displayProductName", "generalProductName",
             "brand", "productGroup", "displayCategoryCode");
     public static final Set<String> SETTINGS = Set.of("saleStartedAt", "saleEndedAt", "manufacture", "brandId",
@@ -44,11 +46,14 @@ public final class CoupangWorkingCopyDocuments {
                         || image.assetId() == null && !https(image.url()))
                     throw invalid("이미지 식별자와 HTTPS 주소를 확인해 주세요.");
             var contentIds = new HashSet<String>();
+            long logos=list(o.contents()).stream().filter(c->c!=null&&"BRAND_LOGO".equals(c.purpose())).count();if(logos>1)throw invalid("옵션당 브랜드 로고는 하나만 지정해 주세요.");
             for (var c : list(o.contents()))
                 if (c == null || !uuid(c.id()) || !contentIds.add(c.id()) || c.assetId() != null && !uuid(c.assetId())
-                        || !Set.of("HTML", "IMAGE", "TEXT").contains(Objects.toString(c.type(), "")))
+                        || !CONTENT_TYPES.contains(Objects.toString(c.type(), "")) || c.purpose()!=null&&(!"BRAND_LOGO".equals(c.purpose())||!"IMAGE".equals(c.type())||!"IMAGE".equals(c.detailType())))
                     throw invalid("상세설명 입력을 확인해 주세요.");
-            options.add(new Option(o.id(), text(o.itemName()), map(o.registration()), list(o.attributes()),
+            var registration=map(o.registration());
+            for(String key:List.of("originalPrice","salePrice"))if(registration.containsKey(key))registration.put(key,CoupangPrices.normalize(registration.get(key)));
+            options.add(new Option(o.id(), text(o.itemName()), registration, list(o.attributes()),
                     list(o.images()), list(o.contents()), list(o.notices()), list(o.certifications()),
                     list(o.notices()).isEmpty() ? null : o.notices().getFirst().category()));
         }

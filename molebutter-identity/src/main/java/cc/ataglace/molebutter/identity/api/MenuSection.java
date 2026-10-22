@@ -21,7 +21,7 @@ public enum MenuSection {
 
     // Specific order paths must precede the general /api/coupang matcher.
     COUPANG_ORDERS("판매 주문", pages("/coupang/orders"), apis("/api/coupang/orders", "/api/coupang/orders/**")), COUPANG(
-            "쿠팡", pages("/coupang", "/coupang/**"),
+            "쿠팡 상품", pages("/coupang/products", "/coupang/products/**", "/coupang/working-copies/**"),
             apis("/api/coupang/**")), INVENTORY("재고", pages("/inventory"), apis("/api/inventory/**")), PRODUCTS("상품",
                     pages("/products"), apis("/api/products/**")), PRODUCT_IMAGES("상품 정보 도구", pages("/product-images"),
                             apis("/api/product-images/**")), PRODUCT_REFRESH("상품 최신화", pages("/product-refresh"),

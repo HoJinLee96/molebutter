@@ -8,6 +8,28 @@ const row = (name, exposed, value = '') => ({name, exposed, value});
 const rule = (name, exposed, required = 'MANDATORY', groupNumber = 'NONE', dataType = 'STRING') =>
   ({name, exposed, required, groupNumber, dataType});
 
+test('fixed color tone choices and conservative title inference match the server cases',()=>{
+  const data=require('../../../molebutter-coupang/src/test/resources/coupang-color-tone-cases.json');
+  assert.deepEqual(M.colorToneChoices,data.choices);
+  for(const c of data.cases)assert.equal(M.suggestColorTone(...c.titles),c.expected,JSON.stringify(c));
+  assert(M.colorToneAttribute(row('패션 의류/잡화 색상계열','NONE')));
+  assert(!M.colorToneAttribute(row('패션 의류/잡화 색상계열','EXPOSED')));
+});
+
+test('missing search filter inputs appear without inventing purchase rows or save intent',()=>{
+  for(const mode of ['CREATE','UPDATE']){
+    const {doc,source}=fixture(mode);doc.options[0].attributes=[row('색상','EXPOSED','브라운')];source.options[0].attributes=structuredClone(doc.options[0].attributes);
+    const draft=W.inflate({document:doc,observation:mode==='UPDATE'?source:null});
+    const metadata={...rules,attributes:[rule('색상','NONE','OPTIONAL'),rule('소재','NONE','OPTIONAL'),rule('미선택 구매옵션','EXPOSED','OPTIONAL')]};
+    M.addSearchFields(draft,metadata);M.addSearchFields(draft,metadata);
+    assert.equal(draft.options[0].attributes.length,3);assert.equal(draft.options[0].attributes[0].value,'브라운');
+    assert.deepEqual(W.flatten(draft),doc);assert.deepEqual(W.changes(doc,W.flatten(draft)),[]);
+    const search=draft.options[0].attributes.find(a=>a.exposed==='NONE'&&a.name==='색상');search.value='브라운계열';
+    const changes=W.changes(doc,W.flatten(draft));assert.equal(changes.length,1);assert.deepEqual(changes[0].rowKey,['색상','NONE']);
+    search.value='';assert.deepEqual(W.changes(doc,W.flatten(draft)),[]);
+  }
+});
+
 test('metadata fills distinct purchase/search rows in either order without replacing existing inputs', () => {
   for (const reversed of [false, true]) {
     const {native} = fixture('CREATE'), option = native.options[0];

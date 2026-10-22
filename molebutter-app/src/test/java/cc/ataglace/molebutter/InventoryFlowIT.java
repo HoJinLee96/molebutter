@@ -526,4 +526,15 @@ class InventoryFlowIT {
             return client.send(request.method(method,body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build(),HttpResponse.BodyHandlers.ofString());
         }
     }
+
+    @Autowired cc.ataglace.molebutter.coupang.api.CoupangQuickEditSources quickSources;
+    @Test void ownedStockBatchKeepsOptionsExcludesPendingAndReturnsZeroForNoRecords(){
+        var empty=quickSources.get(admin,product);
+        var order=create(line(product,5,100L,2));
+        var changed=quickSources.get(admin,product);assertThat(changed.fingerprint()).isNotEqualTo(empty.fingerprint());assertThat(changed.ownedQuantity()).isEqualTo(2);
+        var snapshot=inventory.ownedStocks(admin,List.of(product));assertThat(snapshot.get(product).quantity()).isEqualTo(2);assertThat(snapshot.get(product).options()).hasSize(1);
+        var none=products.create(admin,new ProductEditRequest(null,"","OWNED-NONE-"+request(),"미입고 제외")).id();create(line(none,4,100L,0));
+        var batch=inventory.ownedStocks(admin,List.of(product,none));assertThat(batch.get(none).quantity()).isZero();assertThat(batch.get(product).quantity()).isEqualTo(2);
+        jdbc.update("UPDATE inventory_item SET on_hand=1 WHERE purchase_id=?",order.get("id"));assertThat(inventory.ownedStocks(admin,List.of(product)).get(product).quantity()).isEqualTo(1);
+    }
 }

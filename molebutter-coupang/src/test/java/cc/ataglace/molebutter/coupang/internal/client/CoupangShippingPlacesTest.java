@@ -41,4 +41,17 @@ class CoupangShippingPlacesTest {
         var access=mock(BusinessAccess.class);var client=mock(CoupangProductClient.class);doThrow(new InputValidationFailure("권한 없음")).when(access).productActor(2L,true);
         assertThatThrownBy(()->new DefaultCoupangShippingPlaces(access,client).list(2L,false,1,null)).isInstanceOf(InputValidationFailure.class);verifyNoInteractions(client);
     }
+    @Test void creationReusesAnExplicitAddressReadAndRequiresRefreshAfterTenMinutes(){
+        var transport=mock(CoupangHttpTransport.class);when(transport.send(anyString(),anyString(),anyString(),anyString(),any(),any())).thenReturn(new CoupangHttpTransport.Response(200,bytes(outbound)));
+        var now=new java.util.concurrent.atomic.AtomicReference<>(java.time.Instant.parse("2026-10-21T01:00:00Z"));
+        var clock=mock(Clock.class);when(clock.instant()).thenAnswer(i->now.get());
+        var client=new CoupangProductClient("vendor","fake-access","fake-secret",new ObjectMapper(),transport,clock);
+        assertThatThrownBy(()->client.creationOutboundPlace("25414067")).isInstanceOf(InputValidationFailure.class);
+        client.outboundPlace("25414067");now.set(now.get().plusSeconds(599));
+        assertThat(client.creationOutboundPlace("25414067").code()).isEqualTo("25414067");
+        verify(transport,times(1)).send(anyString(),anyString(),anyString(),anyString(),any(),any());
+        now.set(now.get().plusSeconds(1));assertThatThrownBy(()->client.creationOutboundPlace("25414067")).isInstanceOf(InputValidationFailure.class);
+        client.shippingPlaces(false,1);assertThat(client.creationOutboundPlace("25414067")).isNotNull();
+        verify(transport,times(2)).send(anyString(),anyString(),anyString(),anyString(),any(),any());
+    }
 }

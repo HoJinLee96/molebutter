@@ -1,7 +1,33 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const W=require('../../../molebutter-app/src/main/resources/static/js/coupang-working-copy-model.js');
 const {fixture}=require('../../../scripts/coupang-ui-fixture.cjs');
+test('saving a changed notice type keeps the chosen category and only its rows without mutating the open form',()=>{
+ const {doc}=fixture('CREATE');const form=W.inflate({document:doc});const option=form.options[0];
+ option.notices=[{category:'가방',name:'소재',content:'이전 입력'},{category:'기타 재화',name:'품명',content:'상품 상세페이지 참조'}];
+ option.noticeCategory='기타 재화';const saved=W.flatten(form);
+ assert.equal(saved.options[0].noticeCategory,'기타 재화');assert.deepEqual(saved.options[0].notices,[option.notices[1]]);
+ assert.equal(option.notices.length,2);assert.equal(W.inflate({document:saved}).options[0].noticeCategory,'기타 재화');
+ const edits=W.changes(doc,saved);const recovered=W.apply(doc,edits);
+ assert.equal(recovered.options[0].noticeCategory,'기타 재화');assert.deepEqual(recovered.options[0].notices,saved.options[0].notices);
+ assert(saved.options[0].notices.every(n=>n.content==='상품 상세페이지 참조'));
+});
 test('initial Coupang observation produces no modification intent',()=>{const {doc,source}=fixture('UPDATE');const flat=W.flatten(W.inflate({document:doc,observation:source}));assert.deepEqual(W.changes(doc,flat),[]);});
+test('comma-formatted equal prices make no intent and changed prices save canonical integers',()=>{
+ const {doc,source}=fixture('UPDATE'),form=W.inflate({document:doc,observation:source});
+ const same=doc.options[0].registration.salePrice;
+ form.options[0].currentChanges.salePrice=' '+Number(same).toLocaleString('en-US')+' ';
+ form.options[0].registration.originalPrice=' '+Number(doc.options[0].registration.originalPrice).toLocaleString('en-US')+' ';
+ assert.deepEqual(W.changes(doc,W.flatten(form)),[]);
+ form.options[0].currentChanges.salePrice=' 139,000 ';
+ const edits=W.changes(doc,W.flatten(form));assert.equal(edits.length,1);assert.equal(edits[0].value,'139000');
+ assert.equal(W.flatten(W.inflate({document:W.apply(doc,edits),observation:source})).options[0].registration.salePrice,'139000');
+ for(const value of ['1원','-1','1.5','1 000'])assert.equal(require('../../../molebutter-app/src/main/resources/static/js/app-ui.js').normalizeCoupangPrice(value),value);
+});
+test('price normalization preserves the distinction between absent and explicitly empty fields',()=>{
+ const {doc}=fixture('UPDATE');delete doc.options[0].registration.originalPrice;
+ const after=structuredClone(doc);after.options[0].registration.originalPrice='';
+ assert.equal(W.changes(doc,after).find(c=>c.path==='options.registration.originalPrice').value,'');
+});
 test('a price change is tied to option UUID and leaves unrelated inputs alone',()=>{const {doc,source}=fixture('UPDATE');const form=W.inflate({document:doc,observation:source});form.options[0].currentChanges.salePrice='130000';const edits=W.changes(doc,W.flatten(form));assert.deepEqual(edits,[{path:'options.registration.salePrice',optionId:doc.options[0].id,value:'130000'}]);});
 test('saved explicit values survive fresh inventory values on reentry',()=>{const {doc,source}=fixture('UPDATE');doc.options[0].registration.salePrice='130000';source.options[0].current.salePrice=150000;const form=W.inflate({document:doc,observation:source});assert.equal(form.options[0].currentChanges.salePrice,'130000');assert.equal(W.flatten(form).options[0].registration.salePrice,'130000');});
 test('newer local values replace saved modification intent for the same field',()=>{const {doc}=fixture('UPDATE'),next=structuredClone(doc);next.basic.sellerProductName='new';assert.deepEqual(W.changes(doc,next,[{path:'basic.sellerProductName',optionId:null,value:'old'}]),[{path:'basic.sellerProductName',optionId:null,value:'new'}]);});
@@ -14,3 +40,11 @@ test('row intent survives reentry while external untouched size wins',()=>{const
 test('notices certifications and documents each retain explicit row identities',()=>{const {doc}=fixture('UPDATE');doc.options[0].notices=[{category:'분류',name:'제조국',content:'한국'},{category:'분류',name:'소재',content:'면'}];doc.options[0].noticeCategory='분류';doc.options[0].certifications=[{type:'KC',code:'old',attachments:[]}];doc.documents=[{templateName:'서류',path:'old'}];const next=structuredClone(doc);next.options[0].notices[0].content='일본';next.options[0].certifications[0].code='new';next.documents[0].path='new';const edits=W.changes(doc,next);assert(edits.every(c=>c.rowKey));const fresh=structuredClone(doc);fresh.options[0].notices[1].content='외부 소재';assert.equal(W.apply(fresh,edits).options[0].notices[1].content,'외부 소재');});
 test('row add/edit/delete composes without a stale parent snapshot',()=>{const {doc}=fixture('UPDATE');doc.options[0].attributes=[];const a=structuredClone(doc);a.options[0].attributes=[{name:'색상',exposed:'EXPOSED',value:'빨강'}];const first=W.changes(doc,a),b=structuredClone(a);b.options[0].attributes[0].value='파랑';const second=W.changes(a,b,first);assert.equal(second.length,1);assert.deepEqual(W.apply(doc,second),b);const c=structuredClone(b);c.options[0].attributes=[];const removed=W.changes(b,c,second);assert.equal(removed.length,1);assert.equal(removed[0].operation,'REMOVE');assert.deepEqual(W.apply(doc,removed),c);});
 test('legacy whole non-media lists require re-preparation instead of guessed recovery',()=>{const {doc}=fixture('UPDATE');assert.throws(()=>W.apply(doc,[{path:'options.attributes',optionId:doc.options[0].id,value:[]}]),/이전 목록/);});
+
+
+test('unchanged dates and distinct notice types survive reentry with no edit intent',()=>{
+ const {doc}=fixture('UPDATE');doc.settings.saleStartedAt='2026-10-19T22:51:37';doc.settings.saleEndedAt='2099-12-31T00:00:00';
+ doc.options[0].noticeCategory='가방';doc.options[0].notices=[{category:'가방',name:'소재',content:'가죽'}];
+ const second=structuredClone(doc.options[0]);second.id='second';second.noticeCategory='패션잡화';second.notices=[{category:'패션잡화',name:'치수',content:'상세 참조'}];doc.options.push(second);
+ const flat=W.flatten(W.inflate({document:doc}));assert.deepEqual(flat,doc);assert.deepEqual(W.changes(doc,flat),[]);assert.deepEqual(W.apply(doc,[]),doc);
+});

@@ -6,7 +6,7 @@
 
 1. 현재 소스·기존 JAR의 SHA-256과 복구 사본을 보관한다. 실행 중인 JAR를 빌드로 덮지 않는다. `JAVA_HOME=/path/to/jdk21 ./mvnw -o -Dmolebutter.build-directory=target/release verify`처럼 별도 경로에서 검증한다. 신규 환경은 의존성을 받아야 하므로 `-o`를 생략한다.
 2. 현재 프로세스의 PID·포트·실행 디렉터리·JAR가 프로젝트 앱인지 확인한다. 판매 단계 QUEUED/RUNNING, 수집 작업 QUEUED/RUNNING과 두 계정 잠금의 활성 임대를 확인하고 앱·워커를 정상 종료한다. 다른 프로젝트 프로세스를 포괄 종료하지 않는다.
-3. DB 전환이 있으면 전체 DB·전용 파일·기존 실행 설정을 안전한 별도 보관소에 백업하고 격리 MySQL 복원·행 지문·파일 해시를 대조한다. 현재 전환은 [V48 절차](coupang-intent-migration.md)다. 이번처럼 코드만 바꾸는 배포는 마이그레이션·초기화를 실행하지 않는다.
+3. DB 전환이 있으면 전체 DB·전용 파일·기존 실행 설정을 안전한 별도 보관소에 백업하고 격리 MySQL 복원·행 지문·파일 해시를 대조한다. 현재 전환은 [V49 절차](coupang-products-migration.md)이며, 이전 단계는 [V48 절차](coupang-intent-migration.md)다. 코드만 바꾸는 배포는 마이그레이션·초기화를 실행하지 않는다.
 4. 검증된 JAR만 교체하고 기존 실행 디렉터리·프로필·자격 증명 로딩 방식을 유지해 기동한다. 로컬 PropertiesLauncher 실행은 `molebutter-app`에서 다음과 같이 수행한다.
 
    ```sh
@@ -71,3 +71,17 @@ WORKFLOW·DASHBOARD·VERSION_HISTORY는 현재 화면이 없는 메뉴 정의다
 앱의 쿠팡 JSON 수신은 `application/json`과 `application/*+json`에 같은 이전 판매 형식 거절·11MiB 요청 제한을 적용한다. 작업본 문서 자체의 5MiB 제한은 별도로 유지한다. text/plain·XML처럼 지원하지 않는 요청 형식은 415이며 장애 알림을 만들지 않는다. 이 규칙은 앱의 수신 계약으로, 쿠팡 공식 API의 Content-Type을 변경하는 안내가 아니다.
 
 로그 파일의 현재 보관 설정은 일반 30일/1GiB, WARN 90일/512MiB, ERROR 180일/512MiB다. 비밀·배송 개인정보·외부 원문을 남기지 않는다. 쿠팡 예기치 않은 전송 오류는 실행 ID와 예외 클래스만 WARN으로 기록한다. GitHub CI나 호스트 로그 경로 변경은 이번 점검에서 구성하지 않았다.
+
+쿠팡 전송 단계 결과 커밋 후 `[COUPANG_SUBMISSION] execution=… step=… type=… action=… state=… code=…`를 기록한다. FAILED·UNKNOWN은 WARN, 그 외는 INFO다. 로그에는 요청·응답 원문, 상세 거절 문구, 계정 키나 서명을 포함하지 않는다. 결과 저장 실패는 별도 PERSISTENCE 로그로 구분한다. 민감정보를 제거한 거절 설명은 권한이 확인된 앱 전송 기록에서 조회한다. 변경 적용 이후의 결과부터 상세 사유가 보존되며 기존 실행에 소급 생성하지 않는다.
+
+## 등록상품 저장소 V49
+
+상품 화면은 `/coupang/products`, DB 기반 조회·수집 API는 `/api/coupang/products`다. [저장소 규칙](coupang-api/registered-products.md)과 [V49 오프라인 전환](coupang-products-migration.md)을 따른다. `coupang.products.worker-enabled`의 기본값은 true이며 수동으로 접수한 수집만 처리한다. 중단 작업은 임대 만료 후 INTERRUPTED로 표시하고 사용자가 재개한다. 운영 전환 전 앱·워커를 중지한다. V49 판매 테이블은 33개이며 V50에서 계산 설정 1개를 추가한다. 감사 테이블 11개는 그대로다. 등록상품 원문과 변경 이력의 이미지 참조도 자동 정리에서 보호한다.
+
+## 쿠팡 가격 계산 설정 V50
+
+[V50 보존 전환](coupang-pricing-migration.md)은 공유 계산 설정 테이블 하나를 추가한다. 기존 데이터가 있는 V49 설치는 일반 앱 기동에서 자동 적용하지 않는다. 검증한 신규 JAR과 `scripts/upgrade-coupang-pricing.sh`로 전체 백업·격리 복원·전후 지문 대조를 수행한 뒤 재기동한다. `CoupangSchema` 보존·복구·상태 점검 대상에 새 테이블을 포함한다. V1~V49는 변경하지 않는다.
+
+쿠팡 API 재시도 진단은 `[COUPANG_API]`의 실행·단계·시도 번호·고정 코드·RETRY/STOP을 확인한다. 실행 기록의 최종 결과는 기존 DB에 보존한다. 정책과 UNKNOWN 보호는 [공통 재시도](coupang-api/retries.md)를 따른다.
+
+V51 쿠팡 계정별 등록 기본설정은 [등록 준비·오프라인 적용](coupang-registration-prefill.md#v51-적용)을 따른다. 운영 DB 자동 전환 대신 전체 백업·격리 복원을 검증한 `scripts/upgrade-coupang-registration.sh`를 사용한다.

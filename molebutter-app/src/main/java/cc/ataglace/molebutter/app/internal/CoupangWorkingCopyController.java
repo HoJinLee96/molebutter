@@ -14,9 +14,9 @@ public final class CoupangWorkingCopyController {
     }
     @GetMapping
     public ApiResponse<PageResponse<CoupangWorkingCopies.Summary>> list(@AuthenticationPrincipal UserPrincipal actor,
-            @RequestParam(defaultValue = "") String query, @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "") String query, @RequestParam(required=false) String mode,@RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return ApiResponse.success(copies.list(actor.userId(), query, page, size));
+        return ApiResponse.success(copies.list(actor.userId(), query, mode, page, size));
     }
     @GetMapping("/entry")
     public ApiResponse<CoupangWorkingCopies.Entry> entry(@AuthenticationPrincipal UserPrincipal actor,
@@ -25,8 +25,8 @@ public final class CoupangWorkingCopyController {
     }
     @GetMapping("/{id}")
     public ApiResponse<CoupangWorkingCopies.Entry> get(@AuthenticationPrincipal UserPrincipal actor,
-            @PathVariable String id) {
-        return ApiResponse.success(copies.open(actor.userId(), null, id));
+            @PathVariable String id, @RequestParam(defaultValue="false") boolean observed) {
+        return ApiResponse.success(observed ? copies.openObserved(actor.userId(), id) : copies.open(actor.userId(), null, id));
     }
     @PostMapping
     @OperationAudit("COUPANG_WORKING_COPY_CREATE")

@@ -1,6 +1,7 @@
 package cc.ataglace.molebutter.coupang.internal.client;
 import cc.ataglace.molebutter.coupang.api.CoupangWriteGateway;
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
 import static cc.ataglace.molebutter.coupang.api.CoupangFailure.Kind.*;
 import cc.ataglace.molebutter.coupang.api.CoupangFailure;
 import com.sun.net.httpserver.HttpServer;
@@ -12,6 +13,40 @@ import java.util.concurrent.atomic.*;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 class CoupangClientTest {
+    CoupangHttpTransport response(int status,String body){
+        var transport=mock(CoupangHttpTransport.class);
+        when(transport.send(anyString(),anyString(),anyString(),anyString(),nullable(byte[].class),any()))
+            .thenReturn(new CoupangHttpTransport.Response(status,body.getBytes(StandardCharsets.UTF_8)));
+        return transport;
+    }
+    @Test void recentCandidatesUseDailyHundredItemQueryWithoutPublishingObservations(){
+        var transport=response(200,"{\"code\":\"SUCCESS\",\"data\":[{\"vendorId\":\"A000-test\",\"sellerProductId\":123,\"sellerProductName\":\"상품\",\"statusName\":\"APPROVED\",\"createdAt\":\"2026-10-16T10:00:00\",\"future\":true}],\"nextToken\":\"\"}");
+        var c=client(transport);var observer=mock(cc.ataglace.molebutter.coupang.api.CoupangObservations.class);
+        org.springframework.beans.factory.ObjectProvider<cc.ataglace.molebutter.coupang.api.CoupangObservations> provider=mock(org.springframework.beans.factory.ObjectProvider.class);when(provider.getIfAvailable()).thenReturn(observer);c.observations(provider);
+        var page=c.candidates("2026-10-16","");assertThat(page.items()).hasSize(1);assertThat(page.items().getFirst().raw()).contains("future");assertThat(page.items().getFirst().order()).isPositive();verifyNoInteractions(observer);
+        verify(transport).send(eq("GET"),eq(CoupangProductClient.PATH),contains("maxPerPage=100&createdAt=2026-10-16"),anyString(),any(),any());
+    }
+    @Test void predictionAndValidityAreReadOnlyAndStrict(){
+        var transport=response(200,"{\"code\":200,\"data\":{\"autoCategorizationPredictionResultType\":\"SUCCESS\",\"predictedCategoryId\":\"123\",\"predictedCategoryName\":\"지갑\"}}");
+        assertThat(client(transport).predict("지갑","닥스","SOURCE1").categoryCode()).isEqualTo("123");
+        verify(transport).send(eq("POST"),contains("/categorization/predict"),anyString(),anyString(),any(),any());
+        assertThat(client(response(200,"{\"code\":\"SUCCESS\",\"data\":true}")).validCategory("123")).isTrue();
+        assertThat(client(response(200,"{\"code\":\"SUCCESS\",\"data\":false}")).validCategory("123")).isFalse();
+        failure(()->client(response(200,"{\"code\":200,\"data\":{}}")).predict("지갑","닥스","SOURCE1"),RESPONSE);
+        failure(()->client(response(200,"{\"code\":\"SUCCESS\",\"data\":\"true\"}")).validCategory("123"),RESPONSE);
+    }
+    @Test void explicitAbsenceAndProcessingAreDifferentFromServerOrGenericErrors(){
+        for(var entry:java.util.Map.of("상품(123)의 데이터가 없습니다.",PRODUCT_ABSENT,"상품 정보가 등록 또는 수정되고 있습니다. 잠시 후 다시 조회해 주시기 바랍니다. [123]",PRODUCT_PROCESSING,"상품(999)의 데이터가 없습니다.",REJECTED).entrySet()) {
+            var transport=response(400,new ObjectMapper().writeValueAsString(java.util.Map.of("message",entry.getKey())));
+            failure(()->client(transport).product("123"),entry.getValue());
+        }
+        failure(()->client(response(500,"{\"message\":\"상품(123)의 데이터가 없습니다.\"}")).product("123"),UPSTREAM);
+    }
+    @Test void malformedDetailAndDuplicateItemIdentityNeverBecomeDeletion(){
+        failure(()->client(response(200,"not-json")).product("123"),RESPONSE);
+        var tree=new ObjectMapper().readTree(DETAIL);var items=tree.path("data").path("items").asArray();items.add(items.get(0).deepCopy());
+        failure(()->client(new CoupangHttpTransport()).parseDetail(new ObjectMapper().writeValueAsBytes(tree),"123"),RESPONSE);
+    }
     @Test void deletedStatusIsExplicitEvidenceAndRequiresTheLinkedOwner(){
         String body=DETAIL.replace("\"sellerProductId\":123","\"statusName\":\"상품삭제\",\"sellerProductId\":123");
         assertThatThrownBy(()->client(new CoupangHttpTransport()).parseDetail(body.getBytes(StandardCharsets.UTF_8),"123")).isInstanceOf(cc.ataglace.molebutter.coupang.api.CoupangListingMissing.class);
@@ -54,6 +89,47 @@ class CoupangClientTest {
         failure(()->client(new CoupangHttpTransport()).parseCategory("{\"code\":\"SUCCESS\",\"data\":{}}".getBytes(StandardCharsets.UTF_8),"123"),RESPONSE);
         failure(()->client(new CoupangHttpTransport()).parseCategory("{\"code\":\"ERROR\"}".getBytes(StandardCharsets.UTF_8),"123"),REJECTED);
         assertThatThrownBy(()->client(new CoupangHttpTransport()).category("../123")).isInstanceOf(cc.ataglace.molebutter.common.api.InputValidationFailure.class);
+    }
+    @Test void creationRulesAreAccountLocalExpireAtTenMinutesAndOnlyExplicitReadsRefreshThem() {
+        String body="{\"code\":\"SUCCESS\",\"data\":{\"isAllowSingleItem\":true,\"attributes\":[],\"noticeCategories\":[],\"certifications\":[],\"requiredDocumentNames\":[],\"allowedOfferConditions\":[]}}";
+        var transport=response(200,body);var clock=mock(Clock.class);
+        var instant=new java.util.concurrent.atomic.AtomicReference<>(Instant.parse("2026-10-21T00:00:00Z"));
+        when(clock.instant()).thenAnswer(i->instant.get());
+        var first=new CoupangProductClient("A-test","access","secret",new ObjectMapper(),transport,clock);
+        assertThat(first.cachedCategory("123")).isNull();
+        assertThatThrownBy(()->first.creationCategory("123")).isInstanceOf(cc.ataglace.molebutter.common.api.InputValidationFailure.class);
+        verifyNoInteractions(transport);
+        var rules=first.category("123");assertThat(rules.checkedAt()).isEqualTo(instant.get().toString());
+        instant.set(instant.get().plusSeconds(599));assertThat(first.creationCategory("123")).isSameAs(rules);
+        assertThat(first.cachedCategory("456")).isNull();
+        var otherAccount=new CoupangProductClient("B-test","access","secret",new ObjectMapper(),transport,clock);
+        assertThat(otherAccount.cachedCategory("123")).isNull();
+        var restarted=new CoupangProductClient("A-test","access","secret",new ObjectMapper(),transport,clock);
+        assertThat(restarted.cachedCategory("123")).isNull();
+        instant.set(instant.get().plusSeconds(1));assertThat(first.cachedCategory("123")).isNull();
+        assertThatThrownBy(()->first.creationCategory("123")).isInstanceOf(cc.ataglace.molebutter.common.api.InputValidationFailure.class);
+        verify(transport,times(1)).send(eq("GET"),contains("category-related-metas"),anyString(),anyString(),any(),any());
+        assertThat(first.category("123").checkedAt()).isEqualTo(instant.get().toString());
+        verify(transport,times(2)).send(eq("GET"),contains("category-related-metas"),anyString(),anyString(),any(),any());
+    }
+    @Test void categoryDiagnosticsIdentifyFixedValidationStageWithoutProviderValues() {
+        var logger=(ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(CoupangProductClient.class);
+        var logs=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();logs.start();logger.addAppender(logs);
+        try {
+            var c=client(new CoupangHttpTransport());
+            for(var entry:java.util.Map.of(
+                    "{\"code\":\"UNEXPECTED\",\"message\":\"PRIVATE_MESSAGE\"}", "ROOT",
+                    "{\"code\":\"SUCCESS\",\"data\":{}}", "DATA",
+                    "{\"code\":\"SUCCESS\",\"data\":{\"isAllowSingleItem\":true,\"attributes\":[],\"noticeCategories\":[{\"noticeCategoryName\":\"PRIVATE_VALUE\"}]}}", "NOTICE_CATEGORIES",
+                    "{\"code\":\"SUCCESS\",\"data\":{\"isAllowSingleItem\":true,\"attributes\":[],\"noticeCategories\":[],\"certifications\":{}}}", "CERTIFICATIONS").entrySet()) {
+                logs.list.clear();failure(()->c.parseCategory(entry.getKey().getBytes(StandardCharsets.UTF_8),"PRIVATE_CATEGORY"),RESPONSE);
+                assertThat(logs.list).hasSize(1);
+                assertThat(logs.list.getFirst().getFormattedMessage()).contains("operation=CATEGORY_RULES", "validation="+entry.getValue()).doesNotContain("PRIVATE", "SUCCESS", "noticeCategoryName");
+            }
+            assertThat(CoupangRetryPolicy.operation("GET","/v2/providers/marketplace_openapi/apis/api/v2/vendor/shipping-place/outbound")).isEqualTo("OUTBOUND_SHIPPING");
+            assertThat(CoupangRetryPolicy.operation("GET","/v2/providers/openapi/apis/api/v5/vendors/synthetic/returnShippingCenters")).isEqualTo("RETURN_SHIPPING");
+            assertThat(CoupangRetryPolicy.operation("GET","/v2/providers/seller_api/apis/api/v1/marketplace/meta/category-related-metas/display-category-codes/123")).isEqualTo("CATEGORY_RULES");
+        } finally { logger.detachAppender(logs);logs.stop(); }
     }
     @Test void searchValidationEncodingAndBlankOmission(){
         var empty=cc.ataglace.molebutter.coupang.api.CoupangCatalog.ProductSearch.empty();
@@ -221,14 +297,14 @@ class CoupangClientTest {
     }
     @Test void parsesRetryAfterAndBoundsLongCooldowns(){
         var now=Instant.parse("2026-10-05T08:00:00Z");
-        assertThat(CoupangProductClient.retryDelay(null,now)).isEqualTo(Duration.ofSeconds(5));
-        assertThat(CoupangProductClient.retryDelay("invalid",now)).isEqualTo(Duration.ofSeconds(5));
-        assertThat(CoupangProductClient.retryDelay("-1",now)).isEqualTo(Duration.ofSeconds(5));
+        assertThat(CoupangProductClient.retryDelay(null,now)).isEqualTo(Duration.ofSeconds(2));
+        assertThat(CoupangProductClient.retryDelay("invalid",now)).isEqualTo(Duration.ofSeconds(2));
+        assertThat(CoupangProductClient.retryDelay("-1",now)).isEqualTo(Duration.ofSeconds(2));
         assertThat(CoupangProductClient.retryDelay("0",now)).isZero();
         assertThat(CoupangProductClient.retryDelay("2",now)).isEqualTo(Duration.ofSeconds(2));
         assertThat(CoupangProductClient.retryDelay("Mon, 5 Oct 2026 08:00:07 GMT",now)).isEqualTo(Duration.ofSeconds(7));
         assertThat(CoupangProductClient.retryDelay("Mon, 5 Oct 2026 07:59:00 GMT",now)).isZero();
-        assertThat(CoupangProductClient.retryDelay("999999999999999999999",now)).isEqualTo(Duration.ofSeconds(5));
+        assertThat(CoupangProductClient.retryDelay("999999999999999999999",now)).isEqualTo(Duration.ofSeconds(2));
     }
     @Test void retriesOnlyFailedGetOnceAndSignsAgain()throws Exception {
         var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);var calls=new AtomicInteger();var wires=new java.util.ArrayList<String>();var auth=new java.util.ArrayList<String>();var starts=new java.util.ArrayList<Long>();

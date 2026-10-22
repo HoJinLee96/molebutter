@@ -2,10 +2,10 @@
     const $ = id => document.getElementById(id);
     const escape = AppUI.escape;
     const admin = document.body.dataset.settingsAdmin === 'true';
-    let brands = [], payments = [], schedule, target, saving = false, ready = false;
+    let brands = [], payments = [], schedule, pricing, target, saving = false, ready = false;
     function selectTab() {
         const requested = new URLSearchParams(location.search).get('tab');
-        const tab = ['brands','preferred','suppliers','schedule',...(admin?['payment-methods']:[])].includes(requested) ? requested : 'brands';
+        const tab = ['brands','preferred','suppliers','schedule','coupang-pricing','coupang-registration',...(admin?['payment-methods']:[])].includes(requested) ? requested : 'brands';
         document.querySelectorAll('[data-tab]').forEach(a => { a.classList.toggle('active', a.dataset.tab === tab); if(a.dataset.tab === tab) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
         document.querySelectorAll('[data-settings-panel]').forEach(panel => panel.hidden = panel.dataset.settingsPanel !== tab);
     }
@@ -39,9 +39,15 @@
         $('settings-schedule-summary').textContent = schedule.scheduleEnabled ? `매일 ${schedule.scheduleTime} (한국 시간) · 자동관리 상품 실행` : '자동 최신화 꺼짐';
         if(admin) { $('schedule-enabled').checked=schedule.scheduleEnabled; $('schedule-time').value=schedule.scheduleTime; }
     }
+    async function loadPricing(){
+        pricing=await apiGet('/api/settings/coupang-pricing');
+        $('pricing-settings-summary').textContent=`배송비 ${Number(pricing.shippingCost).toLocaleString('ko-KR')}원 · 수수료 ${Number(pricing.commissionPercent)}% · 희망 마진 ${Number(pricing.marginPercent)}%`;
+        if(admin){$('pricing-shipping').value=pricing.shippingCost;$('pricing-commission').value=pricing.commissionPercent;$('pricing-margin').value=pricing.marginPercent;}
+    }
+    FormActions.bindExplicitSubmit($('pricing-settings-form'),$('pricing-settings-save'),event=>{event.preventDefault();if(!pricing)return;return save(()=>apiRequest('/api/settings/coupang-pricing',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:pricing.revision,shippingCost:Number($('pricing-shipping').value),commissionPercent:Number($('pricing-commission').value),marginPercent:Number($('pricing-margin').value)})}),loadPricing,'쿠팡 가격 계산 설정을 저장했습니다. 새 미리보기부터 적용됩니다.');});
     async function load() {
         ready=false; controls(); $('settings-reload').hidden=true; setError('settings-error',null);
-        const result = await Promise.allSettled([loadBrands(),loadPayments(),loadSchedule(),apiGet('/api/settings/suppliers').then(list => {
+        const result = await Promise.allSettled([loadBrands(),loadPayments(),loadSchedule(),loadPricing(),apiGet('/api/settings/suppliers').then(list => {
             $('settings-suppliers').innerHTML=list.map(m=>`<li><strong>${escape(m.name)}</strong><span class="product-badge ${m.stockSupported===false?'warn':'good'}">${m.stockSupported===false?'재고 확인 보류':'옵션 조회 지원'}</span></li>`).join('');
         })]);
         const failure=result.find(r=>r.status==='rejected');
@@ -54,7 +60,8 @@
         try { await action(); await reload(); setError('settings-success',message); return true; }
         catch(error) {
             setError(errorId,error.message);
-            if(error.status===409) {
+            if(error.status===409 && reload===loadPricing){$('settings-reload').hidden=false;setError(errorId,'계산 설정이 변경되었습니다. 입력은 유지했습니다. 다시 조회한 뒤 저장해 주세요.');}
+            if(error.status===409 && reload!==loadPricing) {
                 await reload().catch(()=>{});
                 // 저장에 사용한 이전 버전은 유지한다. 새 내용을 확인하고 편집을 다시 열어야 한다.
                 if(errorId!=='settings-error') { $('settings-edit-dialog').close();$('settings-delete-dialog').close();setError('settings-error',error.message+' 내용을 확인한 뒤 다시 선택해 주세요.'); }

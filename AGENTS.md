@@ -16,6 +16,8 @@ OVERVIEW·LLM 노트·검수 기록은 길잡이이며 실제 API 성공·계정
 
 판매 업무는 `molebutter-coupang` 하나로 관리한다. 공개 계약은 `coupang.api`, 업무·저장은 `coupang.internal`, 쿠팡 HTTP는 `coupang.internal.client`에 둔다. 마켓 선택·마켓별 바인딩 맵·단일 대상 리스트 호환 계층을 다시 도입하지 않는다.
 
+등록상품 화면은 `/coupang/products`, API는 `/api/coupang/products`다. [등록상품 저장소](docs/coupang-api/registered-products.md)와 [V49 전환](docs/coupang-products-migration.md)을 따른다.
+
 현재 상품·주문·이미지·이력과 식별자는 보존한다. 적용된 V1~V48과 역사적 SalesSchema는 수정하지 않는다. DB 전환 전 앱·워커를 중지하고 전체 DB와 전용 파일 백업의 격리 복원을 확인한다. 현재 전환은 [V48 절차](docs/coupang-intent-migration.md), 작업본 구조는 [V47 전환](docs/coupang-working-copy-migration.md), 역사적 복원은 [V46 전환](docs/coupang-domain-migration.md), 개발은 [구현 안내](docs/coupang-api/README.md)와 [검증](docs/testing.md)을 따른다.
 
 쿠팡 공식 API·SOURCE·원문, 과거 마이그레이션·감사 증거·복구 백업, 기존 비밀 설정을 읽는 경로와 이행 판독기에만 역사적 문자열을 허용한다. 현재 앱 주소의 호환 경로는 제공하지 않는다.
@@ -37,7 +39,7 @@ OVERVIEW·LLM 노트·검수 기록은 길잡이이며 실제 API 성공·계정
 
 ## 쿠팡 작업본
 
-판매용 내부 상품·연결·기준값·비교 계층을 다시 도입하지 않는다. [작업본](docs/coupang-api/working-copies.md)과 [V47 보존 전환](docs/coupang-working-copy-migration.md)을 따른다. 임시 저장은 로컬에만 쓰고 쿠팡 반영은 미리보기와 명시적 확인을 거친다. 전송 직전 GET 원문에 사용자 수정 항목만 반영한다. 직접 수정한 값은 최신 외부 값보다 우선하며 계정·revision·외부 식별자·권한·UNKNOWN 보호는 유지한다. V47에서 초기화하지 않으며 감사 자료와 이미지 참조를 자동 삭제하지 않는다.
+판매용 내부 상품·연결·기준값·비교 계층을 다시 도입하지 않는다. [작업본](docs/coupang-api/working-copies.md)과 [V47 보존 전환](docs/coupang-working-copy-migration.md)을 따른다. 임시 저장은 로컬에만 쓰고 쿠팡 반영은 미리보기와 명시적 확인을 거친다. 전송 직전 GET 원문에 사용자 수정 항목만 반영한다. 등록상품 관측값은 작업본과 분리하고, 직접 수정한 항목과 최신 외부 값이 충돌하면 사용할 값을 선택한다. 선택 후 다시 값이 달라지면 재확인하며 계정·revision·외부 식별자·권한·UNKNOWN 보호는 유지한다. V47에서 초기화하지 않으며 감사 자료와 이미지 참조를 자동 삭제하지 않는다.
 
 수정 의도는 schemaVersion 4와 행·필드 식별자를 사용한다. 모호한 과거 목록 수정은 보관하고 재준비를 요구하며 추정하지 않는다. 성공 단계의 의도만 제거하고 새 미저장 입력을 보존한다. 재등록 이력 작성 계층을 다시 도입하지 않으며 `legacy_coupang_*` 이력·이미지 참조는 읽기 전용 감사 자료로 보호한다. 적용된 V48도 변경하지 않는다.
 

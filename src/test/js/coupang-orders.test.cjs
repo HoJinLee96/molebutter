@@ -63,6 +63,7 @@ function setup(history = []) {
       }
     },
     AppUI: {
+      coupangOptionLink: require('../../../molebutter-app/src/main/resources/static/js/app-ui.js').coupangOptionLink,
       $: get,
       uuid: () => `uuid-${++uuid}`,
       escape: v => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;')

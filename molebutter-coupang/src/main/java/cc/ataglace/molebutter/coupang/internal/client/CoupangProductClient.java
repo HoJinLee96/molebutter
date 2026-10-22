@@ -17,12 +17,82 @@ import static cc.ataglace.molebutter.coupang.api.CoupangFailure.Kind.*;
 @Component
 final class CoupangProductClient {
     static final String PATH = "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products";
+    private static final java.time.Duration REQUEST_GAP = java.time.Duration.ofSeconds(2);
     private final String vendor, access, secret;
     private final ObjectMapper json;
     private final CoupangHttpTransport transport;
     private final Clock clock;
-    private boolean running, started;
-    private long lastStart, cooldownUntil;
+    // One client belongs to one credential/account identity. Only explicit category reads populate this cache.
+    private final Map<String, CategoryRules> creationRules = new LinkedHashMap<>();
+    private record OutboundObservation(cc.ataglace.molebutter.coupang.api.CoupangShippingPlaces.Place place, java.time.Instant checkedAt) {}
+    private final Map<String, OutboundObservation> outboundObservations = new LinkedHashMap<>();
+    private cc.ataglace.molebutter.coupang.api.CoupangShippingPlaces.Page rememberOutbound(cc.ataglace.molebutter.coupang.api.CoupangShippingPlaces.Page page) {
+        synchronized (outboundObservations) {
+            for (var place : page.items()) outboundObservations.put(place.code(), new OutboundObservation(place, now()));
+            while (outboundObservations.size() > 1000) outboundObservations.remove(outboundObservations.keySet().iterator().next());
+        }
+        return page;
+    }
+    cc.ataglace.molebutter.coupang.api.CoupangShippingPlaces.Place creationOutboundPlace(String code) {
+        synchronized (outboundObservations) {
+            var saved = outboundObservations.get(code);
+            if (saved == null || !saved.checkedAt().plusSeconds(600).isAfter(now()))
+                throw new InputValidationFailure("출고지 확인이 만료되었거나 없습니다. 입력을 유지한 채 판매자 주소록에서 출고지를 다시 조회해 주세요.");
+            return saved.place();
+        }
+    }
+    CategoryRules cachedCategory(String code) {
+        synchronized (creationRules) {
+            creationRules.values().removeIf(r -> !java.time.Instant.parse(r.checkedAt()).plusSeconds(600).isAfter(now()));
+            return creationRules.get(code);
+        }
+    }
+    CategoryRules creationCategory(String code) {
+        var rules = cachedCategory(code);
+        if (rules == null) throw new InputValidationFailure("카테고리 규격 확인이 만료되었거나 없습니다. 입력을 유지한 채 카테고리 규격을 다시 조회해 주세요.");
+        return rules;
+    }
+    private org.springframework.beans.factory.ObjectProvider<cc.ataglace.molebutter.coupang.api.CoupangObservations> observationProvider;
+    private final ThreadLocal<Long> observationActor=new ThreadLocal<>();
+    private final ThreadLocal<Long> readOrder=new ThreadLocal<>();
+    @Autowired void observations(org.springframework.beans.factory.ObjectProvider<cc.ataglace.molebutter.coupang.api.CoupangObservations> provider) {observationProvider=provider;}
+    private void observe(String kind,String product,String option,JsonNode raw,Product summary,ProductDetail detail,CurrentInventory current,String error) {
+        if(observationProvider==null)return;
+        var observer=observationProvider.getIfAvailable();if(observer==null)return;
+        observer.record(new cc.ataglace.molebutter.coupang.api.CoupangObservations.Read(accountKey(),activeOperation.get()==null?observationActor.get():activeOperation.get().actor,
+            Objects.requireNonNullElseGet(readOrder.get(),cc.ataglace.molebutter.common.api.BusinessIds::next),kind,product,option,
+            raw==null?null:json.writeValueAsString(raw),summary,detail,current,error));
+    }
+    void observationActor(Long actor){observationActor.set(actor);}
+    void deletedReceipt(String product,JsonNode receipt) {
+        readOrder.set(cc.ataglace.molebutter.common.api.BusinessIds.next());
+        observe("DELETE",product,null,receipt,null,null,null,null);
+    }
+    private ProductDetail observeProduct(byte[] bytes,String id) {
+        JsonNode raw;
+        try {
+            var detail=parseDetail(bytes,id);raw=json.readTree(bytes).path("data");observe("DETAIL",id,null,raw,detail.product(),detail,null,null);return detail;
+        } catch(CoupangListingMissing deleted) {
+            raw=json.readTree(bytes).path("data");
+            if(vendor.equals(raw.path("vendorId").asString()) && id.equals(raw.path("sellerProductId").asString()))
+                observe("DETAIL",id,null,raw,new Product(id,text(raw,"sellerProductName"),text(raw,"brand"),text(raw,"statusName"),id(raw,"productId",false),text(raw,"createdAt")),null,null,null);
+            throw deleted;
+        } catch(CoupangFailure failure) {
+            observe("DETAIL_ERROR",id,null,null,null,null,null,failure.kind().name());throw failure;
+        }
+    }
+
+    // Reentrant for nested brand validation on the owning thread; other operations still fail BUSY.
+    private final java.util.concurrent.locks.ReentrantLock sessionLock = new java.util.concurrent.locks.ReentrantLock();
+    private long cooldownUntil;
+    private final ThreadLocal<java.time.Duration> firstResponseGap = new ThreadLocal<>();
+    private FinishedRequest lastResponse, lastFinished;
+    private record FinishedRequest(java.time.Instant at, long nanos) {}
+    private record RequestLog(String requestId, String operation, String method, int attempt,
+            java.time.Instant startedAt, long startedNanos, long paceWaitMs,
+            FinishedRequest previousResponse, FinishedRequest previousFinished) {}
+    private static final java.time.format.DateTimeFormatter LOG_TIME = java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
+            .withZone(java.time.ZoneId.of("Asia/Seoul"));
     private final ThreadLocal<ReadOperation> activeOperation = new ThreadLocal<>();
     private final Map<String, ReadOperation> operations = new HashMap<>();
     private static final class ReadOperation {
@@ -34,8 +104,10 @@ final class CoupangProductClient {
         }
     }
     <T> T operation(Long actor, String requestId, java.util.function.Supplier<T> work) {
-        if (requestId == null)
-            return work.get();
+        if (requestId == null) {
+            Long previousActor=observationActor.get();observationActor.set(actor);
+            try{return work.get();}finally{if(previousActor==null)observationActor.remove();else observationActor.set(previousActor);}
+        }
         checkRequestId(requestId);
         ReadOperation operation;
         synchronized (operations) {
@@ -162,23 +234,31 @@ final class CoupangProductClient {
         try {
             return work.get();
         } finally {
-            synchronized (this) {
-                running = false;
-            }
+            sessionLock.unlock();
         }
     }
     JsonNode rawProduct(String id) {
         if (id == null || !id.matches("[0-9]{1,30}"))
             throw new InputValidationFailure("잘못된 등록상품 ID입니다.");
         var bytes = request(PATH + "/" + id, "");
-        parseDetail(bytes, id);
+        observeProduct(bytes, id);
         return json.readTree(bytes).path("data").deepCopy();
+    }
+    /** A flow may extend the first dispatch's response gap without changing later calls/retries. */
+    <T> T withFirstResponseGap(java.time.Duration gap, java.util.function.Supplier<T> work) {
+        if (gap == null || gap.compareTo(REQUEST_GAP) < 0 || gap.compareTo(java.time.Duration.ofSeconds(30)) > 0)
+            throw new IllegalArgumentException("Invalid response gap");
+        var previous = firstResponseGap.get();
+        firstResponseGap.set(previous == null || previous.compareTo(gap) < 0 ? gap : previous);
+        try { return work.get(); }
+        finally { if (previous == null) firstResponseGap.remove(); else firstResponseGap.set(previous); }
     }
     JsonNode rawInventory(String id) {
         if (id == null || !id.matches("[0-9]{1,30}"))
             throw new InputValidationFailure("잘못된 옵션 ID입니다.");
         var bytes = request("/v2/providers/seller_api/apis/api/v1/marketplace/vendor-items/" + id + "/inventories", "");
-        parseInventory(bytes);
+        var current=parseInventory(bytes);
+        observe("INVENTORY",null,id,json.readTree(bytes).path("data"),null,null,current,null);
         return json.readTree(bytes).path("data").deepCopy();
     }
     /**
@@ -189,7 +269,10 @@ final class CoupangProductClient {
         if (id == null || !id.matches("[0-9]{1,30}"))
             throw new InputValidationFailure("잘못된 옵션 ID입니다.");
         var bytes = request("/v2/providers/seller_api/apis/api/v1/marketplace/vendor-items/" + id + "/inventories", "");
-        return selectedInventory(bytes, requirePrice, requireStock);
+        var selected=selectedInventory(bytes, requirePrice, requireStock);
+        if(!selected.path("salePrice").isMissingNode() && !selected.path("amountInStock").isMissingNode())
+            observe("INVENTORY",null,id,selected,null,null,parseInventory(bytes),null);
+        return selected;
     }
     JsonNode selectedInventory(byte[] bytes, boolean requirePrice, boolean requireStock) {
         try {
@@ -224,37 +307,165 @@ final class CoupangProductClient {
         return root.path("data");
     }
     /**
-     * Only an explicit HTTP 429 can be repeated; all ambiguous write failures
+     * Only an explicit transient rejection can be repeated; all ambiguous write failures
      * remain ambiguous.
      */
-    CoupangHttpTransport.Response write(String method, String path, String query, String payload) {
-        if (!Set.of("POST", "PUT").contains(method) || !path.startsWith(PATH)
+    CoupangHttpTransport.Response write(String method, String path, String query, String payload, Runnable beforeRetry) {
+        if (!Set.of("POST", "PUT", "DELETE").contains(method) || !path.startsWith(PATH)
                 && !path.startsWith("/v2/providers/seller_api/apis/api/v1/marketplace/vendor-items/"))
             throw new InputValidationFailure("쿠팡 전송 경로를 확인해 주세요.");
+        if(method.equals("DELETE") && !path.matches(java.util.regex.Pattern.quote(PATH)+"/[0-9]{1,30}"))
+            throw new InputValidationFailure("쿠팡 삭제 경로를 확인해 주세요.");
         byte[] body = payload == null ? null : payload.getBytes(StandardCharsets.UTF_8);
         if (body != null && body.length > 5 * 1024 * 1024)
             throw new InputValidationFailure("쿠팡 전송 내용은 5MiB 이하로 줄여 주세요.");
-        for (int attempt = 0; attempt < 2; attempt++) {
+        return exchange(method, path, query, body, false, beforeRetry);
+    }
+    CoupangHttpTransport.Response write(String method, String path, String query, String payload) {
+        return write(method, path, query, payload, () -> {});
+    }
+
+    /** One shared budget (two total attempts), fresh signatures, cancellable delay and safe diagnostics. */
+    private CoupangHttpTransport.Response exchange(String method, String path, String query, byte[] body,
+            boolean read, Runnable beforeRetry) {
+        String requestId = UUID.randomUUID().toString();
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            long pacingStarted = System.nanoTime();
             paceNextRequest();
-            var response = transport.send(method, path, query,
-                    CoupangSignature.authorization(access, secret, clock.instant(), method, path, query), body,
-                    () -> Thread.currentThread().isInterrupted());
-            if (response.status() == 429) {
-                var delay = retryDelay(response.retryAfter(), clock.instant());
+            long paceWaitMs = elapsedMs(System.nanoTime() - pacingStarted);
+            checkCancelled();
+            if (read) readOrder.set(cc.ataglace.molebutter.common.api.BusinessIds.next());
+            String authorization = CoupangSignature.authorization(access, secret, clock.instant(), method, path, query);
+            var trace = startRequest(requestId, method, path, attempt, paceWaitMs);
+            CoupangHttpTransport.Response response = null;
+            RuntimeException transportFailure = null;
+            FinishedRequest finished;
+            try {
+                response = transport.send(method, path, query, authorization, body, this::cancelled);
+            } catch (RuntimeException failure) {
+                transportFailure = failure;
+            } finally {
+                // Every response (and transport failure) starts the shared account cooldown.
+                // Parsing, session boundaries and retry guards must never bypass this gap.
+                finished = new FinishedRequest(clock.instant(), System.nanoTime());
                 synchronized (this) {
-                    cooldownUntil = Math.max(cooldownUntil, System.nanoTime() + delay.toNanos());
+                    cooldownUntil = Math.max(cooldownUntil, finished.nanos() + REQUEST_GAP.toNanos());
+                    lastFinished = finished;
+                    if (response != null) lastResponse = finished;
                 }
-                if (attempt == 0 && delay.compareTo(java.time.Duration.ofSeconds(30)) <= 0)
-                    continue;
             }
-            return response;
+            if (transportFailure != null) {
+                var kind = transportFailure instanceof CoupangFailure failure ? failure.kind() : null;
+                boolean retry = read && attempt == 1 && kind != null && Set.of(NETWORK, TIMEOUT).contains(kind);
+                diagnostic(trace, finished, false, 0, kind == null ? "CLIENT_ERROR" : kind.name(), retry);
+                if (!retry) throw transportFailure;
+                continue;
+            }
+            String reason = CoupangRetryPolicy.reason(json, path, response, read);
+            if (reason == null) {
+                diagnostic(trace, finished, true, response.status(), responseCode(path, response), false);
+                checkCancelled();
+                return response;
+            }
+            var delay = response.status() == 429 || response.retryAfter() != null
+                    ? retryDelay(response.retryAfter(), clock.instant())
+                    : REQUEST_GAP;
+            if (delay.compareTo(REQUEST_GAP) < 0) delay = REQUEST_GAP;
+            boolean retry = attempt == 1 && delay.compareTo(java.time.Duration.ofSeconds(30)) <= 0;
+            diagnostic(trace, finished, true, response.status(), reason, retry);
+            checkCancelled();
+            synchronized (this) {
+                cooldownUntil = Math.max(cooldownUntil, System.nanoTime() + delay.toNanos());
+            }
+            if (!retry) return response;
+            waitUntil(System.nanoTime() + delay.toNanos());
+            if (!read) beforeRetry.run();
         }
-        throw new CoupangFailure(RATE_LIMIT);
+        throw new IllegalStateException("Unreachable retry budget");
+    }
+    private String responseCode(String path, CoupangHttpTransport.Response response) {
+        return switch (response.status()) {
+            case 200 -> responseResult(path, response.body());
+            case 401 -> "AUTHENTICATION";
+            case 403 -> "PERMISSION";
+            case 408 -> "TIMEOUT";
+            case 429 -> "RATE_LIMIT";
+            default -> response.status() >= 500 ? "UPSTREAM" : "HTTP_REJECTED";
+        };
+    }
+    private String responseResult(String path, byte[] body) {
+        try {
+            var root = json.readTree(body);
+            if (root == null || !root.isObject()) return "INVALID_RESPONSE";
+            var result = "200".equals(root.path("code").asString()) ? root.path("data") : root;
+            if ("200".equals(root.path("code").asString()) && Set.of("SUCCESS","FAILURE","INSUFFICIENT_INFORMATION").contains(result.path("autoCategorizationPredictionResultType").asString(""))) return "SUCCESS";
+            // These documented read envelopes differ from the product SUCCESS/ERROR envelope.
+            if (!result.has("code")) {
+                if (path.contains("/shipping-place/outbound") && !root.has("code")
+                        && root.path("content").isArray() && root.path("pagination").isObject()) return "SUCCESS";
+                if ("200".equals(root.path("code").asString()) && path.contains("/returnShippingCenters")
+                        && result.path("content").isArray() && result.path("pagination").isObject()) return "SUCCESS";
+                if ("200".equals(root.path("code").asString()) && path.contains("/vendors/")
+                        && !path.contains("/returnShippingCenters") && (result.isArray() || result.isObject())) return "SUCCESS";
+            }
+            return switch (result.path("code").asString("")) {
+                case "SUCCESS" -> "SUCCESS";
+                case "ERROR" -> "REJECTED";
+                default -> "INVALID_RESPONSE";
+            };
+        } catch (RuntimeException ignored) { return "INVALID_RESPONSE"; }
+    }
+    private RequestLog startRequest(String id, String method, String path, int attempt, long paceWaitMs) {
+        RequestLog trace;
+        synchronized (this) {
+            trace = new RequestLog(id, CoupangRetryPolicy.operation(method, path), method, attempt,
+                    clock.instant(), System.nanoTime(), paceWaitMs, lastResponse, lastFinished);
+        }
+        // All values are generated here or fixed classifications. Never log provider/request values.
+        LoggerFactory.getLogger(CoupangProductClient.class).info(
+                "[COUPANG_API] event=START request={} execution={} step={} operation={} method={} attempt={} startedAt={} previousResponseAt={} sincePreviousResponseMs={} previousFinishedAt={} sincePreviousFinishMs={} paceWaitMs={}",
+                trace.requestId(),
+                Objects.toString(org.slf4j.MDC.get("coupangExecution"), "-"),
+                Objects.toString(org.slf4j.MDC.get("coupangStep"), "-"),
+                trace.operation(), method, attempt, logTime(trace.startedAt()),
+                trace.previousResponse() == null ? "-" : logTime(trace.previousResponse().at()),
+                gapMs(trace.startedNanos(), trace.previousResponse()),
+                trace.previousFinished() == null ? "-" : logTime(trace.previousFinished().at()),
+                gapMs(trace.startedNanos(), trace.previousFinished()), trace.paceWaitMs());
+        return trace;
+    }
+    private static long elapsedMs(long nanos) {
+        return java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(Math.max(0, nanos));
+    }
+    private static Object gapMs(long start, FinishedRequest previous) {
+        return previous == null ? "-" : elapsedMs(start - previous.nanos());
+    }
+    private static String logTime(java.time.Instant time) { return LOG_TIME.format(time); }
+    private void diagnostic(RequestLog trace, FinishedRequest finished, boolean response, int http, String code, boolean retry) {
+        var level = "SUCCESS".equals(code) ? org.slf4j.event.Level.INFO
+                : retry || "CANCELLED".equals(code) ? org.slf4j.event.Level.WARN
+                : http >= 500 || Set.of("NETWORK", "TIMEOUT", "RESPONSE", "INVALID_RESPONSE", "CLIENT_ERROR").contains(code)
+                        ? org.slf4j.event.Level.ERROR : org.slf4j.event.Level.WARN;
+        LoggerFactory.getLogger(CoupangProductClient.class).atLevel(level).log(
+                "[COUPANG_API] event={} request={} execution={} step={} operation={} method={} attempt={} startedAt={} responseAt={} finishedAt={} durationMs={} http={} code={} decision={}",
+                response ? "RESPONSE" : "FAILURE", trace.requestId(),
+                Objects.toString(org.slf4j.MDC.get("coupangExecution"), "-"),
+                Objects.toString(org.slf4j.MDC.get("coupangStep"), "-"),
+                trace.operation(), trace.method(), trace.attempt(), logTime(trace.startedAt()),
+                response ? logTime(finished.at()) : "-", logTime(finished.at()),
+                elapsedMs(finished.nanos() - trace.startedNanos()), http, code, retry ? "RETRY" : "STOP");
     }
     public ProductPage products(int size, String token) {
         return products(size, token, ProductSearch.empty());
     }
     public ProductPage products(int size, String token, ProductSearch search) {
+        return productCandidates(size, token, search, true).page();
+    }
+    private record CandidateResult(ProductPage page, cc.ataglace.molebutter.coupang.internal.RecentProductCandidates.Page candidates) {}
+    cc.ataglace.molebutter.coupang.internal.RecentProductCandidates.Page candidates(String date,String token) {
+        return productCandidates(100,token,new ProductSearch(null,null,null,date),false).candidates();
+    }
+    private CandidateResult productCandidates(int size,String token,ProductSearch search,boolean publish) {
         String filters = searchQuery(search);
         if (!Set.of(10, 50, 100).contains(size))
             throw new InputValidationFailure("페이지 크기는 10·50·100 중 선택해 주세요.");
@@ -270,14 +481,20 @@ final class CoupangProductClient {
                     + (token.isEmpty() ? "" : "&nextToken=" + encode(token)) + filters;
             var body = request(PATH, query);
             ProductPage page = parse(body);
+            var rows=json.readTree(body).path("data");
+            var candidates=new ArrayList<cc.ataglace.molebutter.coupang.internal.RecentProductCandidates.Candidate>();
+            String observedAt=clock.instant().toString();
+            for(int i=0;i<page.items().size();i++) {
+                var p=page.items().get(i);
+                if(publish)observe("SUMMARY",p.sellerProductId(),null,rows.get(i),p,null,null,null);
+                candidates.add(new cc.ataglace.molebutter.coupang.internal.RecentProductCandidates.Candidate(p,json.writeValueAsString(rows.get(i)),readOrder.get(),observedAt));
+            }
             LoggerFactory.getLogger(CoupangProductClient.class).info(
                     "[COUPANG_PRODUCTS] http=200 code=SUCCESS count={} hasNext={}", page.items().size(),
                     page.hasNext());
-            return page;
+            return new CandidateResult(page,new cc.ataglace.molebutter.coupang.internal.RecentProductCandidates.Page(candidates,page.nextToken(),page.hasNext()));
         } finally {
-            synchronized (this) {
-                running = false;
-            }
+            sessionLock.unlock();
         }
     }
     private record LoadedProduct(ProductDetail detail, JsonNode source) {
@@ -293,7 +510,7 @@ final class CoupangProductClient {
         enter();
         try {
             var bytes = request(PATH + "/" + productId, "");
-            var detail = parseDetail(bytes, productId);
+            var detail = observeProduct(bytes, productId);
             var source = json.readTree(bytes).path("data");
             var items = new ArrayList<ProductOption>();
             var results = new HashMap<String, ProductOption>();
@@ -314,13 +531,14 @@ final class CoupangProductClient {
                 }
                 ProductOption updated;
                 try {
-                    var current = parseInventory(
-                            request("/v2/providers/seller_api/apis/api/v1/marketplace/vendor-items/"
-                                    + item.vendorItemId() + "/inventories", ""));
+                    var inventoryBytes=request("/v2/providers/seller_api/apis/api/v1/marketplace/vendor-items/"+item.vendorItemId()+"/inventories", "");
+                    var current=parseInventory(inventoryBytes);
+                    observe("INVENTORY",productId,item.vendorItemId(),json.readTree(inventoryBytes).path("data"),null,null,current,null);
                     updated = item.withCurrent(current, null);
                     LoggerFactory.getLogger(CoupangProductClient.class)
                             .info("[COUPANG_INVENTORY] http=200 code=SUCCESS");
                 } catch (CoupangFailure failure) {
+                    observe("INVENTORY_ERROR",productId,item.vendorItemId(),null,null,null,null,failure.kind().name());
                     if (Thread.currentThread().isInterrupted() || failure.kind() == CANCELLED)
                         throw failure;
                     if (Set.of(AUTHENTICATION, PERMISSION, RATE_LIMIT).contains(failure.kind()))
@@ -332,9 +550,7 @@ final class CoupangProductClient {
             }
             return new LoadedProduct(detail.withItems(items), source);
         } finally {
-            synchronized (this) {
-                running = false;
-            }
+            sessionLock.unlock();
         }
     }
     public EditorDocument editor(String productId) {
@@ -444,10 +660,10 @@ final class CoupangProductClient {
     cc.ataglace.molebutter.coupang.api.CoupangShippingPlaces.Page rawOutboundPlace(String code) {
         if (code == null || !code.matches("[0-9]{1,30}"))
             throw new InputValidationFailure("출고지 코드를 확인해 주세요.");
-        return parseShippingPlaces(
+        return rememberOutbound(parseShippingPlaces(
                 request("/v2/providers/marketplace_openapi/apis/api/v2/vendor/shipping-place/outbound",
                         "placeCodes=" + code),
-                false);
+                false));
     }
     public cc.ataglace.molebutter.coupang.api.CoupangShippingPlaces.Page shippingPlaces(boolean returns, int page) {
         if (page < 1 || page > 1_000_000)
@@ -455,7 +671,10 @@ final class CoupangProductClient {
         String path = returns
                 ? "/v2/providers/openapi/apis/api/v5/vendors/" + encode(vendor) + "/returnShippingCenters"
                 : "/v2/providers/marketplace_openapi/apis/api/v2/vendor/shipping-place/outbound";
-        return writeSession(() -> parseShippingPlaces(request(path, "pageNum=" + page + "&pageSize=50"), returns));
+        return writeSession(() -> {
+            var result = parseShippingPlaces(request(path, "pageNum=" + page + "&pageSize=50"), returns);
+            return returns ? result : rememberOutbound(result);
+        });
     }
     cc.ataglace.molebutter.coupang.api.CoupangShippingPlaces.Page parseShippingPlaces(byte[] bytes, boolean returns) {
         try {
@@ -516,9 +735,7 @@ final class CoupangProductClient {
             return parseCategories(
                     request("/v2/providers/seller_api/apis/api/v1/marketplace/meta/display-categories", ""));
         } finally {
-            synchronized (this) {
-                running = false;
-            }
+            sessionLock.unlock();
         }
     }
     List<CategoryChoice> parseCategories(byte[] bytes) {
@@ -555,6 +772,25 @@ final class CoupangProductClient {
             for (var child : row.path("child"))
                 categoryLeaves(child, path, result, depth + 1);
     }
+    public Prediction predict(String name,String brand,String sku) {
+        if(name==null||name.isBlank()||name.length()>1000)throw new InputValidationFailure("상품명을 확인해 주세요.");
+        return writeSession(()->{
+            var payload=json.createObjectNode().put("productName",name).put("brand",brand).put("sellerSkuCode",sku);
+            var root=json.readTree(request("POST","/v2/providers/openapi/apis/api/v1/categorization/predict","",json.writeValueAsBytes(payload)));
+            if(root==null||!"200".equals(root.path("code").asString())||!root.path("data").isObject())throw new CoupangFailure(RESPONSE);
+            var data=root.path("data");String status=data.path("autoCategorizationPredictionResultType").asString("");
+            if(!Set.of("SUCCESS","FAILURE","INSUFFICIENT_INFORMATION").contains(status))throw new CoupangFailure(RESPONSE);
+            String code=data.path("predictedCategoryId").asString("");
+            if(status.equals("SUCCESS")&&!code.matches("[0-9]{1,15}"))throw new CoupangFailure(RESPONSE);
+            return new Prediction(status,status.equals("SUCCESS")?code:null,data.path("predictedCategoryName").asString(""));
+        });
+    }
+    public boolean validCategory(String code) {
+        if(code==null||!code.matches("[0-9]{1,15}"))throw new InputValidationFailure("카테고리 코드를 확인해 주세요.");
+        return writeSession(()->{var root=json.readTree(request("/v2/providers/seller_api/apis/api/v1/marketplace/meta/display-categories/"+code+"/status",""));
+            if(root==null||!"SUCCESS".equals(root.path("code").asString())||!root.path("data").isBoolean())throw new CoupangFailure(RESPONSE);
+            return root.path("data").asBoolean();});
+    }
     public CategoryRules category(String code) {
         if (code == null || !code.matches("[0-9]{1,15}"))
             throw new InputValidationFailure("유효한 카테고리 코드를 입력해 주세요.");
@@ -562,11 +798,16 @@ final class CoupangProductClient {
             throw new CoupangFailure(CONFIGURATION);
         enter();
         try {
-            return rawCategory(code);
-        } finally {
-            synchronized (this) {
-                running = false;
+            var rules = rawCategory(code);
+            var checked = new CategoryRules(rules.categoryCode(), rules.allowSingleItem(), rules.attributes(),
+                    rules.notices(), rules.certifications(), rules.documents(), rules.allowedOfferConditions(), now().toString());
+            synchronized (creationRules) {
+                creationRules.put(code, checked);
+                while (creationRules.size() > 256) creationRules.remove(creationRules.keySet().iterator().next());
             }
+            return checked;
+        } finally {
+            sessionLock.unlock();
         }
     }
     CategoryRules rawCategory(String code) {
@@ -576,42 +817,67 @@ final class CoupangProductClient {
                 ""), code);
     }
     CategoryRules parseCategory(byte[] bytes, String code) {
+        String validation = "ROOT";
         try {
             var root = json.readTree(bytes);
             if (root == null || !root.isObject() || !root.path("code").isString())
                 throw new CoupangFailure(RESPONSE);
-            if (!"SUCCESS".equals(root.path("code").asString()))
+            if ("ERROR".equals(root.path("code").asString()))
                 throw new CoupangFailure(REJECTED);
+            if (!"SUCCESS".equals(root.path("code").asString()))
+                throw new CoupangFailure(RESPONSE);
+            validation = "DATA";
             var d = root.path("data");
             if (!d.isObject() || !d.path("attributes").isArray() || !d.path("noticeCategories").isArray()
                     || !d.path("isAllowSingleItem").isBoolean())
                 throw new CoupangFailure(RESPONSE);
+            validation = "ATTRIBUTES";
             var attrs = new ArrayList<AttributeRule>();
             for (var a : array(d, "attributes"))
                 attrs.add(new AttributeRule(requiredText(a, "attributeTypeName"), requiredText(a, "exposed"),
                         requiredText(a, "required"), text(a, "groupNumber"), requiredText(a, "dataType"),
                         text(a, "basicUnit"), strings(a, "usableUnits")));
+            validation = "NOTICE_CATEGORIES";
             var notices = new ArrayList<NoticeCategory>();
             for (var c : array(d, "noticeCategories")) {
+                if (!c.path("noticeCategoryDetailNames").isArray()) throw new CoupangFailure(RESPONSE);
                 var names = new ArrayList<NoticeRule>();
                 for (var f : array(c, "noticeCategoryDetailNames"))
                     names.add(new NoticeRule(requiredText(f, "noticeCategoryDetailName"), requiredText(f, "required")));
                 notices.add(new NoticeCategory(requiredText(c, "noticeCategoryName"), List.copyOf(names)));
             }
+            validation = "CERTIFICATIONS";
+            categoryArray(d, "certifications");
             var certs = new ArrayList<CertificateRule>();
             for (var c : array(d, "certifications"))
                 certs.add(new CertificateRule(text(c, "certificationType"), requiredText(c, "name"),
                         requiredText(c, "required"), text(c, "dataType")));
+            validation = "DOCUMENTS";
+            categoryArray(d, "requiredDocumentNames");
             var docs = new ArrayList<DocumentRule>();
             for (var f : array(d, "requiredDocumentNames"))
                 docs.add(new DocumentRule(requiredText(f, "templateName"), requiredText(f, "required")));
+            validation = "OFFER_CONDITIONS";
+            categoryArray(d, "allowedOfferConditions");
             return new CategoryRules(code, d.path("isAllowSingleItem").asBoolean(), List.copyOf(attrs),
                     List.copyOf(notices), List.copyOf(certs), List.copyOf(docs), strings(d, "allowedOfferConditions"));
         } catch (CoupangFailure e) {
+            if (e.kind() == RESPONSE) categoryDiagnostic(validation);
             throw e;
         } catch (RuntimeException e) {
+            categoryDiagnostic(validation);
             throw new CoupangFailure(RESPONSE);
         }
+    }
+    private static void categoryArray(JsonNode data, String field) {
+        if (data.has(field) && !data.path(field).isArray()) throw new CoupangFailure(RESPONSE);
+    }
+    private void categoryDiagnostic(String validation) {
+        // Only fixed stages are logged; no provider field values or identifiers.
+        LoggerFactory.getLogger(CoupangProductClient.class).warn(
+                "[COUPANG_CATALOG] execution={} step={} operation=CATEGORY_RULES code=INVALID_RESPONSE validation={}",
+                Objects.toString(org.slf4j.MDC.get("coupangExecution"), "-"),
+                Objects.toString(org.slf4j.MDC.get("coupangStep"), "-"), validation);
     }
     private static List<String> strings(JsonNode row, String key) {
         var a = row.path(key);
@@ -628,17 +894,17 @@ final class CoupangProductClient {
         return List.copyOf(result);
     }
     private void paceNextRequest() {
+        var gap = firstResponseGap.get();
+        firstResponseGap.remove();
         long deadline;
         synchronized (this) {
-            deadline = Math.max(started ? lastStart + 1_000_000_000L : System.nanoTime(), cooldownUntil);
+            deadline = Math.max(System.nanoTime(), cooldownUntil);
+            if (gap != null && lastFinished != null)
+                deadline = Math.max(deadline, lastFinished.nanos() + gap.toNanos());
         }
         if (deadline - System.nanoTime() > java.util.concurrent.TimeUnit.SECONDS.toNanos(30))
             throw new CoupangFailure(RATE_LIMIT);
         waitUntil(deadline);
-        synchronized (this) {
-            lastStart = System.nanoTime();
-            started = true;
-        }
     }
     CurrentInventory parseInventory(byte[] body) {
         try {
@@ -664,48 +930,53 @@ final class CoupangProductClient {
             throw new CoupangFailure(RESPONSE);
         return value.asLong();
     }
+    private void readFailure(String path,String error) {
+        if(path.matches(java.util.regex.Pattern.quote(PATH)+"/[0-9]{1,30}"))
+            observe("DETAIL_ERROR",path.substring(PATH.length()+1),null,null,null,null,null,error);
+        if(path.matches("/v2/providers/seller_api/apis/api/v1/marketplace/vendor-items/[0-9]{1,30}/inventories"))
+            observe("INVENTORY_ERROR",null,path.substring(path.indexOf("/vendor-items/")+14,path.length()-12),null,null,null,null,error);
+    }
     private byte[] request(String path, String query) {
         return request("GET", path, query, null);
     }
     private byte[] request(String method, String path, String query, byte[] payload) {
-        for (int attempt = 0; attempt < 2; attempt++) {
-            paceNextRequest();
-            checkCancelled();
-            // Each attempt gets a fresh UTC timestamp and signature for the identical wire
-            // query.
-            var response = transport.send(method, path, query,
-                    CoupangSignature.authorization(access, secret, clock.instant(), method, path, query), payload,
-                    this::cancelled);
-            int status = response.status();
-            if (status == 200) {
-                checkCancelled();
-                return response.body();
-            }
+        CoupangHttpTransport.Response response;
+        try {
+            response = exchange(method, path, query, payload, true, () -> {});
+        } catch (CoupangFailure failure) {
+            readFailure(path, failure.kind().name());
+            throw failure;
+        }
+        int status = response.status();
+        if (status == 200) return response.body();
+            boolean detailRequest=path.matches(java.util.regex.Pattern.quote(PATH)+"/[0-9]{1,30}");
+            boolean inventoryRequest=path.matches("/v2/providers/seller_api/apis/api/v1/marketplace/vendor-items/[0-9]{1,30}/inventories");
+            String productId=detailRequest?path.substring(PATH.length()+1):null;
+            cc.ataglace.molebutter.coupang.api.CoupangFailure.Kind productReason=null;
+            if(detailRequest && status==400)try {
+                String message=json.readTree(response.body()).path("message").asString("");
+                if(message.replaceAll("\\s+","").equals("상품("+productId+")의데이터가없습니다."))productReason=PRODUCT_ABSENT;
+                else if(message.startsWith("상품 정보가 등록 또는 수정되고 있습니다."))productReason=PRODUCT_PROCESSING;
+            }catch(RuntimeException ignored){}
+            String error=productReason!=null?productReason.name():status==401?"AUTHENTICATION":status==403?"PERMISSION":status==429?"RATE_LIMIT":status>=500?"UPSTREAM":"REJECTED";
+            if(detailRequest)observe("DETAIL_ERROR",productId,null,null,null,null,null,error);
+            if(inventoryRequest)observe("INVENTORY_ERROR",null,path.substring(path.indexOf("/vendor-items/")+14,path.length()-12),null,null,null,null,error);
+            if(productReason!=null)throw new CoupangFailure(productReason);
             boolean orderRequest = path.contains("/vendors/")
                     && (path.endsWith("/ordersheets") || path.contains("/returnRequests")
                             || path.contains("/exchangeRequests") || path.contains("/returnWithdraw"));
             var reason = orderRequest && status == 400 ? orderRejection(response.body()) : null;
             LoggerFactory.getLogger(CoupangProductClient.class).warn(
-                    "[COUPANG_READ] operation={} http={} attempt={} code={}", orderRequest ? "ORDER" : "PRODUCT",
-                    status, attempt + 1, reason == null ? "UNAVAILABLE" : reason.name());
+                    "[COUPANG_READ] operation={} http={} code={}", orderRequest ? "ORDER" : "PRODUCT",
+                    status, reason == null ? "UNAVAILABLE" : reason.name());
             if (reason != null)
                 throw new CoupangFailure(reason);
-            if (status == 429) {
-                var delay = retryDelay(response.retryAfter(), clock.instant());
-                synchronized (this) {
-                    cooldownUntil = Math.max(cooldownUntil, System.nanoTime() + delay.toNanos());
-                }
-                if (attempt == 0 && delay.compareTo(java.time.Duration.ofSeconds(30)) <= 0)
-                    continue;
-            }
-            throw new CoupangFailure(switch (status) {
-                case 401 -> AUTHENTICATION;
-                case 403 -> PERMISSION;
-                case 429 -> RATE_LIMIT;
-                default -> status >= 500 ? UPSTREAM : orderRequest ? ORDER_REJECTED : REJECTED;
-            });
-        }
-        throw new CoupangFailure(RATE_LIMIT);
+        throw new CoupangFailure(switch (status) {
+            case 401 -> AUTHENTICATION;
+            case 403 -> PERMISSION;
+            case 429 -> RATE_LIMIT;
+            default -> status >= 500 ? UPSTREAM : orderRequest ? ORDER_REJECTED : REJECTED;
+        });
     }
     // Parse only a documented fixed message. Never retain or expose the external
     // body.
@@ -743,7 +1014,7 @@ final class CoupangProductClient {
                 return java.time.Duration.ofSeconds(Math.min(seconds, 86400));
             } catch (RuntimeException ignored) {
             }
-        return java.time.Duration.ofSeconds(5);
+        return REQUEST_GAP;
     }
     ProductDetail parseDetail(byte[] body, String requestedId) {
         try {
@@ -761,7 +1032,9 @@ final class CoupangProductClient {
             if (!row.path("items").isArray())
                 throw new CoupangFailure(RESPONSE);
             var items = new ArrayList<ProductOption>();
+            var seenItems=new HashSet<String>();
             for (var item : row.path("items")) {
+                if(!seenItems.add(id(item,"sellerProductItemId",true)))throw new CoupangFailure(RESPONSE);
                 if (!item.isObject())
                     throw new CoupangFailure(RESPONSE);
                 items.add(parseOption(item));
@@ -923,11 +1196,10 @@ final class CoupangProductClient {
             throw new InputValidationFailure("검색 조건을 확인해 주세요.");
         return value;
     }
-    private synchronized void enter() {
+    private void enter() {
         checkCancelled();
-        if (running)
+        if (!sessionLock.tryLock())
             throw new CoupangFailure(BUSY);
-        running = true;
     }
     private static String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);

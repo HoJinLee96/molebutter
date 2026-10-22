@@ -18,9 +18,19 @@ import static cc.ataglace.molebutter.coupang.api.CoupangSubmissionFailure.Kind.*
  */
 @Repository
 class SubmissionStore {
+    private CoupangProductSource registeredSource;
+    @org.springframework.beans.factory.annotation.Autowired void registeredSource(CoupangProductSource source){registeredSource=source;}
+    private RegisteredProductStore registered;
+    @org.springframework.beans.factory.annotation.Autowired void registered(RegisteredProductStore registry){registered=registry;}
+
     private final JdbcTemplate db;
     private final ObjectMapper json;
     private final ImageAssets assets;
+    String creationRulesCheckedAt(CoupangWriteGateway.Prepared prepared) {
+        if (prepared == null) return null;
+        return prepared.steps().stream().filter(s -> s.type() == CoupangWriteGateway.Type.CREATE)
+                .findFirst().map(s -> json.readTree(s.baselineJson()).path("creationRulesCheckedAt").asString(null)).orElse(null);
+    }
     @org.springframework.beans.factory.annotation.Autowired
     SubmissionStore(JdbcTemplate db, ObjectMapper json, ImageAssets assets) {
         this.db = db;
@@ -172,6 +182,7 @@ class SubmissionStore {
                                 + (names.get(r.getString(3)) == null ? "" : " · " + names.get(r.getString(3))),
                         Status.valueOf(r.getString(4)), r.getInt(5), r.getString(6),
                         "HTTP_411_REJECTED".equals(r.getString(6))
+                                && (r.getString(7) == null || !r.getString(7).contains("쿠팡 상세 사유:"))
                                 ? CoupangWriteRejection.message(r.getString(6))
                                 : r.getString(7),
                         r.getTimestamp(8).toInstant().toString()),
@@ -325,6 +336,19 @@ class SubmissionStore {
                 Long.class, job.prepared().accountKey(), job.leaseOwner()) == 1;
     }
     void recordRequest(Job job, CoupangWriteGateway.Step actual) {
+        if(registered!=null && job.mapping()!=null && job.mapping().sellerProductId()!=null) {
+            var product=registered.optional(job.prepared().accountKey(),job.mapping().sellerProductId());
+            if(product!=null) {
+                var copy=new WorkingCopyStore(db,json).find(job.workingCopyId(),false);
+                if(registeredSource!=null && !job.prepared().editIntent().changes().isEmpty()
+                    && registered.conflicts(product,copy,registeredSource).stream().filter(c->job.prepared().editIntent().changes().stream().anyMatch(change->RegisteredProductStore.key(change).equals(c.key()))).anyMatch(c->Set.of("CONFLICT","UNVERIFIED","BASELINE_MISSING").contains(c.state())))
+                    throw new InputValidationFailure("쿠팡값이 변경되었습니다. 다시 선택한 뒤 전송해 주세요.");
+                registered.executionContext(job.executionId());
+                try{registered.event(product.id(),"EXECUTION_REQUEST",actual.optionId(),actual.type().name(),actual.baselineJson(),actual.expectedJson(),job.actor());}
+                finally{registered.executionContext(null);}
+            }
+        }
+
         db.queryForList("SELECT account_key FROM coupang_submission_account WHERE account_key=? FOR UPDATE",
                 String.class, job.prepared().accountKey());
         if (!owns(job))
@@ -383,13 +407,25 @@ class SubmissionStore {
                     job.prepared().accountKey(), job.leaseOwner());
             return;
         }
+        if(registered!=null && job.mapping()!=null && job.mapping().sellerProductId()!=null) {
+            try {
+                var product=registered.find(job.prepared().accountKey(),job.mapping().sellerProductId(),true);
+                registered.executionContext(job.executionId());
+                registered.event(product.id(),"EXECUTION_"+result.state().name(),job.step().optionId(),job.step().type().name(),null,json.writeValueAsString(Map.of("code",publicCode(result.code()),"stepId",job.step().id())),job.actor());
+            }catch(cc.ataglace.molebutter.common.api.InputValidationFailure absent){}finally{registered.executionContext(null);}
+        }
         String state = switch (result.state()) {
             case CONFIRMED -> "SUCCEEDED";
             case ACCEPTED -> "ACCEPTED";
             case FAILED -> "FAILED";
             case UNKNOWN -> "UNKNOWN";
         };
-        String code = publicCode(result.code()), message = publicMessage(state, code);
+        String code = publicCode(result.code()), message = publicMessage(state, code, result.rejectionDetails());
+        // Only the bounded, redacted projection belongs in persisted results. Keep raw messages private.
+        result = new CoupangWriteGateway.Result(result.state(), result.mapping(), result.code(),
+                publicMessage(state, code), result.attemptedAt(), result.requestJson(),
+                state.equals("FAILED") && CoupangWriteRejection.message(code) != null
+                        ? CoupangRejectionDetails.clean(result.rejectionDetails()) : null);
         db.update(
                 "UPDATE coupang_execution_step SET status=?,result_json=?,result_code=?,result_message=?,updated_at=CURRENT_TIMESTAMP(6) WHERE execution_id=? AND step_id=? AND status='RUNNING'",
                 state, json.writeValueAsString(result), code, message, job.executionId(), job.step().id());
@@ -446,10 +482,13 @@ class SubmissionStore {
         var remaining = new ArrayList<>(
                 json.readValue(current, new tools.jackson.core.type.TypeReference<List<CoupangEditing.Change>>() {
                 }));
+        var priorChanges=List.copyOf(remaining);
         remaining.removeIf(c -> intent.changes().stream().filter(done -> complete || coveredByStep(done, job))
                 .anyMatch(done -> CoupangInputs.sameChange(json, done, c)));
         db.update("UPDATE coupang_product_working_copy SET changes_json=? WHERE id=?",
                 json.writeValueAsString(remaining), job.workingCopyId());
+        if(registered!=null)for(var old:priorChanges)if(!remaining.contains(old))
+            db.update("DELETE FROM coupang_product_intent_base WHERE working_copy_id=? AND change_key=?",job.workingCopyId(),RegisteredProductStore.key(old));
     }
     private boolean coveredByStep(CoupangEditing.Change c, Job job) {
         var type = job.step().type();
@@ -541,6 +580,9 @@ class SubmissionStore {
             case "ORIGINAL_PRICE" -> "정상가 변경";
             case "PRICE" -> "현재 가격 변경";
             case "STOCK" -> "현재 재고 변경";
+            case "SALE_STOP" -> "판매중지";
+            case "SALE_RESUME" -> "판매재개";
+            case "DELETE" -> "상품 삭제";
             case "APPROVAL" -> "판매 승인 요청";
             default -> "반영 확인";
         };
@@ -588,6 +630,14 @@ class SubmissionStore {
             return "등록 상품은 조회되지만 현재 판매·승인 상태를 확인하지 못했습니다.";
         if (status.equals("ACCEPTED") && code.equals("APPROVAL_PENDING"))
             return "등록 상품 확인 완료 · 판매 승인 대기 중입니다.";
+        if (status.equals("ACCEPTED") && code.equals("APPROVAL_LOOKUP_PROCESSING"))
+            return "판매 승인 요청 접수 · 자동 결과 조회에서 쿠팡 상품 처리 중 응답을 받았습니다. 잠시 후 결과를 다시 확인해 주세요.";
+        if (status.equals("ACCEPTED") && code.equals("APPROVAL_LOOKUP_FAILED"))
+            return "판매 승인 요청 접수 · 자동 결과 조회를 완료하지 못했습니다. 결과를 다시 확인해 주세요.";
+        if (status.equals("ACCEPTED") && code.equals("APPROVAL_CHECK_TIMEOUT"))
+            return "판매 승인 요청 접수 · 10분 동안 자동 결과 확인을 진행했으나 쿠팡 처리가 완료되지 않았습니다. 이후 결과 확인만 다시 실행해 주세요.";
+        if (status.equals("ACCEPTED") && code.equals("APPROVAL_CHECK_ACCESS_DENIED"))
+            return "판매 승인 요청은 접수되었습니다. 권한 변경으로 자동 결과 확인을 중단했습니다.";
         if (status.equals("ACCEPTED") && code.equals("APPROVAL_REJECTED"))
             return "등록 상품 확인 완료 · 승인 반려 사유를 판매자센터에서 확인해 주세요.";
         if (status.equals("ACCEPTED") && code.equals("EDIT_UNSUPPORTED"))
@@ -599,6 +649,13 @@ class SubmissionStore {
         if (status.equals("UNKNOWN") && code.equals("UNRESOLVED"))
             return "이번 요청의 등록상품 ID를 확인할 수 없습니다. 새로 등록하지 말고 쿠팡 Wing에서 등록 여부를 확인해 주세요.";
         return fallbackMessage(status, code);
+    }
+    static String publicMessage(String status, String code, String details) {
+        String base = publicMessage(status, code);
+        String safe = status.equals("FAILED") && CoupangWriteRejection.message(code) != null
+                ? CoupangRejectionDetails.clean(details) : null;
+        String message = safe == null ? base : base + "\n쿠팡 상세 사유: " + safe;
+        return message.length() <= 500 ? message : message.substring(0, 499) + "…";
     }
     private <T> T read(String value, Class<T> type) {
         return value == null ? null : CoupangSnapshots.read(json, value, type);

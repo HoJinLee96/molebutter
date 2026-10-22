@@ -14,6 +14,7 @@
   };
   const active = execution => ['QUEUED', 'RUNNING'].includes(execution?.status);
   const steps = execution => execution?.target?.steps || [];
+  const automaticApproval = target => target?.mode === 'CREATE' && (target.steps || []).some(step => step.type === 'APPROVAL' && step.status === 'RUNNING');
   const freshPreviewCodes = new Set(['BASELINE_CHANGED', 'ACCOUNT_CHANGED', 'ACCESS_DENIED', 'MAPPING_CHANGED', 'ALREADY_CREATED', 'ALREADY_REGISTERED', 'LEGACY_INTENT', 'UNSUPPORTED_SNAPSHOT_VERSION']);
   const retryable = (execution, revision) => !execution.revised && !active(execution) && (revision == null || execution.revision === revision) && steps(execution).some(step => step.status === 'FAILED') && !steps(execution).some(step => ['UNKNOWN', 'ACCEPTED', 'RUNNING'].includes(step.status) || step.status === 'FAILED' && freshPreviewCodes.has(step.code));
   const revisable = execution => !execution.revised && ['FAILED', 'PARTIAL'].includes(execution.status) && steps(execution).some(step => step.status === 'FAILED') && !steps(execution).some(step => ['UNKNOWN', 'ACCEPTED', 'RUNNING'].includes(step.status));
@@ -121,8 +122,8 @@
         $(id).hidden = !message;
       }
     }
-    function badge(status) {
-      return `<span class="badge ${status === 'FAILED' ? 'fail' : status === 'SUCCEEDED' ? 'ok' : 'pending'}">${e(statuses[status] || status || '미확인')}</span>`;
+    function badge(status, automatic = false) {
+      return `<span class="badge ${status === 'FAILED' ? 'fail' : status === 'SUCCEEDED' ? 'ok' : 'pending'}">${e(automatic ? '승인·결과 자동 확인 중' : statuses[status] || status || '미확인')}</span>`;
     }
     const blocked = () => [...executions.values()].some(value=>active(value)||steps(value).some(step=>['RUNNING','QUEUED','UNKNOWN','ACCEPTED'].includes(step.status)));
     function update() {
@@ -144,9 +145,9 @@
     }
     function renderPreview(value) {
       function renderPreviewTarget(target) {
-        return target ? `<article class="coupang-submission-target"><h3>${e('쿠팡')} · ${e(mode(target.mode))}</h3>${''}${(target.issues || []).length ? `<ul class="form-error">${target.issues.map(issue => `<li>${e(issue.message)}</li>`).join('')}</ul>` : ''}<div class="coupang-planned-steps">${(target.steps || []).map(step => `<span>${e(step.label)}</span>`).join('')}</div>${(target.changes || []).length ? `<div class="table-scroll"><table class="coupang-submission-changes"><thead><tr><th>항목</th><th>현재 값</th><th>변경 값</th></tr></thead><tbody>${target.changes.map(change => `<tr><th>${e(changeLabel(change.path, currentWorkingCopy, window.CoupangEditorModel?.spec))}</th><td>${e(change.before ?? '—')}</td><td>${e(change.after ?? '—')}</td></tr>`).join('')}</tbody></table></div>` : '<p class="product-meta">변경된 항목 없음</p>'}</article>` : "";
+        return target ? `<article class="coupang-submission-target"><h3>${e('쿠팡')} · ${e(mode(target.mode))}</h3>${''}${(target.issues || []).length ? `<ul class="form-error">${target.issues.map(issue => `<li>${e(issue.message)}</li>`).join('')}</ul>` : ''}${(target.warnings || []).length ? `<ul class="product-meta" aria-label="확인 사항">${target.warnings.map(w => `<li>${e(w.message)}</li>`).join('')}</ul>` : ''}<div class="coupang-planned-steps">${(target.steps || []).map(step => `<span>${e(step.label)}</span>`).join('')}</div>${(target.changes || []).length ? `<div class="table-scroll"><table class="coupang-submission-changes"><thead><tr><th>항목</th><th>현재 값</th><th>변경 값</th></tr></thead><tbody>${target.changes.map(change => `<tr><th>${e(changeLabel(change.path, currentWorkingCopy, window.CoupangEditorModel?.spec))}</th><td>${e(change.before ?? '—')}</td><td>${e(change.after ?? '—')}</td></tr>`).join('')}</tbody></table></div>` : '<p class="product-meta">변경된 항목 없음</p>'}</article>` : "";
       }
-      $('coupang-submission-preview').innerHTML = `<p class="coupang-preview-summary">작업본 버전 ${e(String(value.revision))} · ${(value.target?.steps || []).some(s => s.type === 'APPROVAL') ? '쿠팡 저장 후 판매 승인 요청' : '상품 저장'}</p>` + renderPreviewTarget(value.target);
+      $('coupang-submission-preview').innerHTML = `<p class="coupang-preview-summary">작업본 버전 ${e(String(value.revision))} · ${(value.target?.steps || []).some(s => s.type === 'APPROVAL') ? '쿠팡 저장 후 판매 승인 요청' : '상품 저장'}${value.target?.categoryRulesCheckedAt ? ' · 규격 확인 ' + e(value.target.categoryRulesCheckedAt) : ''}</p>` + renderPreviewTarget(value.target);
       update();
     }
     async function prepare() {
@@ -215,12 +216,12 @@
     }
     function renderExecutions(items, pages) {
       function renderExecutionTarget(target) {
-        return target ? `<div class="coupang-submission-target"><h3>${e('쿠팡')} · ${e(mode(target.mode))} ${badge(target.status)}</h3>${target.externalProductId ? `<p class="product-meta">등록상품 ID ${e(target.externalProductId)}</p>${/^\d{1,30}$/.test(target.externalProductId) ? `<a class="btn small" href="/coupang/products/${encodeURIComponent(target.externalProductId)}/edit">쿠팡 상품 수정</a>` : ''}` : ''}<ul class="coupang-execution-steps">${(target.steps || []).map(step => `<li><span>${e(step.label)}</span>${badge(step.status)}<span class="coupang-step-message">${e(step.message || '')}</span></li>`).join('')}</ul></div>` : "";
+        return target ? `<div class="coupang-submission-target"><h3>${e('쿠팡')} · ${e(mode(target.mode))} ${badge(target.status, automaticApproval(target))}</h3>${target.externalProductId ? `<p class="product-meta">등록상품 ID ${e(target.externalProductId)}</p>${/^\d{1,30}$/.test(target.externalProductId) ? `<a class="btn small" href="/coupang/products/${encodeURIComponent(target.externalProductId)}/edit">쿠팡 상품 수정</a>` : ''}` : ''}<ul class="coupang-execution-steps">${(target.steps || []).map(step => `<li><span>${e(step.label)}</span>${badge(step.status, automaticApproval(target) && step.type === 'APPROVAL')}<span class="coupang-step-message">${e(step.message || '')}</span></li>`).join('')}</ul></div>` : "";
       }
       executions = new Map(items.map(execution => [execution.id, execution]));
       totalPages = pages;
       section.hidden = !currentWorkingCopy?.id;
-      $('coupang-submission-list').innerHTML = items.length ? items.map(execution => `<article class="coupang-execution" data-execution="${e(execution.id)}"><div class="coupang-execution-heading"><div><strong>실행 ${e(execution.id)}</strong> · 작업본 버전 ${e(String(execution.revision))} ${badge(execution.status)}<p class="product-meta">${e(execution.createdAt || '')}</p></div><div class="coupang-execution-actions">${(!execution.workingCopyId || execution.workingCopyId === currentWorkingCopy?.id) && retryable(execution, currentWorkingCopy?.revision) ? `<button type="button" class="btn small" data-submission-action="retry" data-execution-id="${e(execution.id)}">실패 작업 재시도</button>` : ''}${revisable(execution) ? `<button type="button" class="btn small" data-submission-action="revise" data-execution-id="${e(execution.id)}">입력 수정</button>` : ''}${reconcilable(execution) ? `<button type="button" class="btn small" data-submission-action="reconcile" data-execution-id="${e(execution.id)}">결과 확인</button>` : ''}</div></div>${execution.revised ? '<p class="product-meta">기존 처리 결과를 보존했습니다. 입력을 수정한 뒤 새 변경 확인을 진행해 주세요.</p>' : revisable(execution) ? '<p class="product-meta">입력 수정은 기존 처리 결과를 보존하고 아직 실행하지 않은 작업을 종료합니다. 작성 중인 입력은 유지됩니다.</p>' : ''}${steps(execution).some(step => step.status === 'FAILED') && !execution.revised && !revisable(execution) && !retryable(execution, currentWorkingCopy?.revision) && !reconcilable(execution) ? '<p class="product-meta">입력을 확인하고 현재 작업본으로 새 변경 확인을 진행해 주세요.</p>' : ''}${renderExecutionTarget(execution.target)}</article>`).join('') : '<p class="coupang-empty">전송 기록 없음</p>';
+      $('coupang-submission-list').innerHTML = items.length ? items.map(execution => `<article class="coupang-execution" data-execution="${e(execution.id)}"><div class="coupang-execution-heading"><div><strong>실행 ${e(execution.id)}</strong> · 작업본 버전 ${e(String(execution.revision))} ${badge(execution.status, automaticApproval(execution.target))}<p class="product-meta">${e(execution.createdAt || '')}</p></div><div class="coupang-execution-actions">${(!execution.workingCopyId || execution.workingCopyId === currentWorkingCopy?.id) && retryable(execution, currentWorkingCopy?.revision) ? `<button type="button" class="btn small" data-submission-action="retry" data-execution-id="${e(execution.id)}">실패 작업 재시도</button>` : ''}${revisable(execution) ? `<button type="button" class="btn small" data-submission-action="revise" data-execution-id="${e(execution.id)}">입력 수정</button>` : ''}${reconcilable(execution) ? `<button type="button" class="btn small" data-submission-action="reconcile" data-execution-id="${e(execution.id)}">결과 확인</button>` : ''}</div></div>${execution.revised ? '<p class="product-meta">기존 처리 결과를 보존했습니다. 입력을 수정한 뒤 새 변경 확인을 진행해 주세요.</p>' : revisable(execution) ? '<p class="product-meta">입력 수정은 기존 처리 결과를 보존하고 아직 실행하지 않은 작업을 종료합니다. 작성 중인 입력은 유지됩니다.</p>' : ''}${steps(execution).some(step => step.status === 'FAILED') && !execution.revised && !revisable(execution) && !retryable(execution, currentWorkingCopy?.revision) && !reconcilable(execution) ? '<p class="product-meta">입력을 확인하고 현재 작업본으로 새 변경 확인을 진행해 주세요.</p>' : ''}${renderExecutionTarget(execution.target)}</article>`).join('') : '<p class="coupang-empty">전송 기록 없음</p>';
       $('coupang-submission-previous').disabled = loading || page === 0;
       $('coupang-submission-next').disabled = loading || page + 1 >= totalPages;
       $('coupang-submission-page').textContent = totalPages ? `${page + 1} / ${totalPages}` : '0 / 0';
@@ -360,6 +361,7 @@
   const exports = {
     create,
     active,
+    automaticApproval,
     retryable,
     revisable,
     reconcilable,

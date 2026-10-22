@@ -35,13 +35,14 @@ const server=http.createServer(async(req,res)=>{try{
  const u=new URL(req.url,'http://localhost'),url=u.pathname;res.setHeader('Cache-Control','no-store');
  if(/^\/coupang\/(products|working-copies)\/(new|[^/]+\/edit)$/.test(url)){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(html('coupang-editor','ADMIN'));}
 
- if(['/','/products','/product-refresh','/settings','/attendance','/attendance-manage','/coupang'].includes(url)){const role=u.searchParams.get('role')||(/fixtureRole=(ADMIN|PRODUCT)/.exec(req.headers.cookie||'')?.[1]??'ADMIN');res.setHeader('Set-Cookie',`fixtureRole=${role}; Path=/; SameSite=Lax`);res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(html(url==='/'?'home':url.slice(1),role));}
+ if(['/','/products','/product-refresh','/settings','/attendance','/attendance-manage','/coupang/products'].includes(url)){const role=u.searchParams.get('role')||(/fixtureRole=(ADMIN|PRODUCT)/.exec(req.headers.cookie||'')?.[1]??'ADMIN');res.setHeader('Set-Cookie',`fixtureRole=${role}; Path=/; SameSite=Lax`);res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(html(url==='/'?'home':url==='/coupang/products'?'coupang':url.slice(1),role));}
  if(/^\/(js|css)\/[a-z0-9.-]+$/.test(url)){res.setHeader('Content-Type',url.endsWith('.js')?'text/javascript':'text/css');return res.end(fs.readFileSync(path.join(root,'static',url)));}
  if(url==='/favicon.ico'){res.statusCode=204;return res.end();}
  const chunks=[];for await(const c of req)chunks.push(c);const body=Buffer.concat(chunks).toString(),input=body&&req.headers['content-type']?.includes('application/json')?JSON.parse(body):{};
  let data;
  if(url==='/api/auth/csrf')data={token:'fixture',headerName:'X-XSRF-TOKEN'};
  else if(['POST','PUT','DELETE'].includes(req.method)&&req.headers['x-xsrf-token']!=='fixture'){res.statusCode=403;return res.end(JSON.stringify({code:'INVALID_CSRF_TOKEN'}));}
+ else if(url==='/api/settings/coupang-registration')data={accountKey:'a'.repeat(64),revision:0,delivery:{},registration:{},settings:{},certifications:[]};
  else if(url==='/api/inventory/summaries')data=(u.searchParams.get('productIds')||'').split(',').filter(Boolean).map(productId=>({productId,onHand:productId===first?5:0,pending:productId===first?2:0}));
  else if(url==='/fixture-state')data={lastScope,runStatus};
  else if(url==='/api/auth/signout')data=null;
@@ -51,6 +52,7 @@ const server=http.createServer(async(req,res)=>{try{
  else if(url==='/api/notifications/summary')data={count:notices.filter(n=>!n.dismissed).length,latestId:notices.filter(n=>!n.dismissed).sort((a,b)=>BigInt(a.id)>BigInt(b.id)?-1:1)[0]?.id||null};
  else if(url==='/api/notifications'){const all=notices.filter(n=>!n.dismissed&&(!u.searchParams.get('cursor')||BigInt(n.id)<BigInt(u.searchParams.get('cursor')))).sort((a,b)=>BigInt(a.id)>BigInt(b.id)?-1:1);data={items:all.slice(0,20),nextCursor:all.length>20?all[19].id:null};}
  else if(/^\/api\/notifications\/\d+(?:\/target)?$/.test(url)){const n=notices.find(n=>n.id===url.split('/')[3]);if(!n)throw Error('알림 없음');if(req.method==='DELETE'){n.dismissed=true;data=null;}else data={url:n.target||null,reason:n.target?null:'대상이 삭제되었습니다.'};}
+ else if(url==='/api/settings/coupang-pricing')data={revision:0,shippingCost:4000,commissionPercent:10.5,marginPercent:7};
  else if(url==='/api/settings/payment-methods')data=[{id:'1',name:'카드',revision:0},{id:'2',name:'계좌이체',revision:0},{id:'3',name:'현금',revision:0}];
  else if(url==='/api/settings/suppliers')data=Object.entries(malls).map(([code,name])=>({code,name,stockSupported:true}));
  else if(url==='/api/settings/supplier-store-identities')data=[];

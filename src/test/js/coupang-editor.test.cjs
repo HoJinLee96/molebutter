@@ -5,6 +5,13 @@ const {
   } = require('node:test'),
   assert = require('node:assert/strict');
 const M = require('../../../molebutter-app/src/main/resources/static/js/coupang-editor-model.js');
+test('creation rules use a matching category and a ten minute server observation window', () => {
+  const now=Date.parse('2026-10-21T01:00:00Z'),snapshot={categoryCode:'123',checkedAt:'2026-10-21T01:00:00Z',attributes:[],notices:[],certifications:[],documents:[]};
+  assert(M.currentRules(snapshot,'123',now));assert(M.currentRules(snapshot,'123',now+599999));
+  assert(!M.currentRules(snapshot,'123',now+600000));assert(!M.currentRules(snapshot,'456',now));
+  assert(!M.currentRules({...snapshot,checkedAt:null},'123',now));assert(!M.currentRules(snapshot,'123',now-1));
+  assert(!M.currentRules({...snapshot,notices:null},'123',now));
+});
 const rules = () => ({
   categoryCode: '123',
   allowSingleItem: true,
@@ -409,4 +416,14 @@ test('long sale period uses current Korean time and the requested 2099 endpoint'
   const period = M.longSalePeriod(new Date('2026-10-13T06:10:26Z'));
   assert.equal(period.saleStartedAt, '2026-10-13T15:10:26');
   assert.equal(period.saleEndedAt, '2099-12-31T23:59:00');
+});
+
+
+test('sale dates validate wall-clock components without browser timezone normalization', () => {
+  for (const value of ['2026-10-19T22:51:37', '2099-12-31T00:00', '2099-12-31T23:59:59', '2024-02-29T12:00:00']) assert(M.validDateTime(value), value);
+  for (const value of ['', 'not-a-date', '2026-02-29T12:00:00', '2026-10-19T24:00', '2026-10-19T12:60', '2100-01-01T00:00']) assert(!M.validDateTime(value), value);
+});
+test('metadata fill preserves an existing notice type absent from current rules', () => {
+  const d = M.fresh();d.options[0].noticeCategory='기존 유형';d.options[0].notices=[{category:'기존 유형',name:'소재',content:'보존'}];
+  M.applyRules(d,rules());assert.equal(d.options[0].noticeCategory,'기존 유형');assert.deepEqual(d.options[0].notices,[{category:'기존 유형',name:'소재',content:'보존'}]);
 });

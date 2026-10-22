@@ -5,7 +5,7 @@
 .coupang-submission-dialog .coupang-subheading{margin-top:0}.coupang-submission-dialog h2{font-size:20px;margin:0}.coupang-submission-dialog-actions{display:flex;justify-content:flex-end;position:sticky;bottom:-24px;padding:16px 0;background:#fff;border-top:1px solid #e2e8f0}
 .coupang-submission-target{padding:14px 0;border-top:1px solid #e2e8f0}.coupang-submission-target h3{font-size:16px;margin:0 0 12px}.coupang-planned-steps{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.coupang-planned-steps span{font-size:13px;padding:5px 9px;background:#f1f5f9;border-radius:6px}
 .coupang-submission-changes{min-width:500px;width:100%;table-layout:fixed}.coupang-submission-changes th,.coupang-submission-changes td{white-space:pre-wrap;overflow-wrap:anywhere;vertical-align:top}.coupang-submission-changes th:first-child{width:28%}.coupang-preview-summary{color:#475569;font-size:14px}
-.coupang-execution{border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin:14px 0}.coupang-execution-heading{display:flex;justify-content:space-between;align-items:start;gap:12px;flex-wrap:wrap}.coupang-execution-actions{display:flex;gap:8px;flex-wrap:wrap}.coupang-execution-steps{list-style:none;padding:0;margin:0}.coupang-execution-steps li{display:grid;grid-template-columns:minmax(140px,1fr) auto minmax(120px,2fr);gap:12px;align-items:start;margin:12px 0;font-size:14px}.coupang-step-message{overflow-wrap:anywhere;color:#64748b}
+.coupang-execution{border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin:14px 0}.coupang-execution-heading{display:flex;justify-content:space-between;align-items:start;gap:12px;flex-wrap:wrap}.coupang-execution-actions{display:flex;gap:8px;flex-wrap:wrap}.coupang-execution-steps{list-style:none;padding:0;margin:0}.coupang-execution-steps li{display:grid;grid-template-columns:minmax(140px,1fr) auto minmax(120px,2fr);gap:12px;align-items:start;margin:12px 0;font-size:14px}.coupang-step-message{overflow-wrap:anywhere;color:#64748b;white-space:pre-line}
 @media(max-width:700px){.coupang-submission-dialog{padding:16px}.coupang-submission-dialog-actions{bottom:-16px}.coupang-execution-steps li{grid-template-columns:minmax(0,1fr) auto}.coupang-step-message{grid-column:1/-1}.coupang-execution-heading>div{max-width:100%;overflow-wrap:anywhere}}
 @media(max-width:700px){.coupang-tab-list{flex-wrap:wrap;overflow-x:visible}.coupang-tab-list button{padding:10px 12px}}
 .coupang-category-dialog{width:min(800px,calc(100vw - 32px));max-height:calc(100dvh - 32px);border:1px solid #ddd;border-radius:12px;padding:20px}.coupang-category-actions,.coupang-subheading{display:flex;align-items:center;justify-content:space-between;gap:12px}.coupang-category-result{display:flex;justify-content:space-between;width:100%;padding:12px;background:white;border:1px solid #ddd}.coupang-category-result[aria-pressed=true]{background:#edf4ff}.coupang-category-results-panel{max-height:60dvh;overflow:auto}.coupang-category-actions{padding-top:16px}
@@ -14,3 +14,125 @@
 .coupang-empty,.coupang-category-selected{color:var(--text-sub);overflow-wrap:anywhere}
 .coupang-working-copy-table{width:100%}
 .coupang-upload-status{display:block;color:var(--text-sub)}
+
+/* Shared product list density comes from app.css; widths follow Coupang values. */
+.coupang-list-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:20px}
+.coupang-status-cards{display:flex;gap:8px;flex-wrap:wrap;min-width:0}
+.coupang-status-card{display:flex;flex-direction:column;align-items:flex-start;gap:5px;min-width:104px;padding:12px 16px;background:var(--panel,#fff);border:1px solid var(--border);border-radius:10px;font:inherit;color:var(--text);cursor:pointer}
+.coupang-status-card span{font-size:13px;color:var(--text-sub)}
+.coupang-status-card strong{font-size:21px;line-height:1.25;font-weight:650;font-variant-numeric:tabular-nums}
+.coupang-status-card[aria-pressed=true]{border-color:var(--primary);background:#eff4ff}
+.coupang-status-card[aria-pressed=true] span,.coupang-status-card[aria-pressed=true] strong{color:var(--primary)}
+.coupang-status-card:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+.coupang-list-actions,.coupang-list-actions .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0}
+.coupang-list-actions .btn{box-sizing:border-box;height:40px;padding:10px 14px;margin:0;font-family:inherit;font-size:14px;font-weight:600;line-height:1.25;white-space:nowrap}
+.coupang-collection-state{margin:0 0 20px;padding:16px 18px;border:1px solid #cbdcf7;border-radius:10px;background:#f7faff;overflow-wrap:anywhere}
+.coupang-collection-heading,.coupang-collection-heading>div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.coupang-collection-heading{justify-content:space-between}
+.coupang-collection-heading strong{font-size:15px}.coupang-collection-badge{border-radius:5px;padding:3px 8px;background:#e5edff;color:#1d4ed8;font-size:12px;font-weight:600}
+.coupang-collection-state[data-status=SUCCEEDED] .coupang-collection-badge{background:#e7f5ed;color:#166534}
+.coupang-collection-state:is([data-status=FAILED],[data-status=PARTIAL],[data-status=PAUSED],[data-status=INTERRUPTED]) .coupang-collection-badge{background:#fff0dc;color:#9a4b0a}
+.coupang-collection-phase{margin:10px 0 8px;font-size:14px}.coupang-collection-state progress{display:block;width:100%;height:8px;accent-color:var(--primary,#2563eb)}
+.coupang-collection-summary{margin:10px 0 6px;font-size:14px;font-variant-numeric:tabular-nums}.coupang-collection-state .product-meta{margin:0;font-size:12px}
+.coupang-collection-error{margin-top:10px;color:#b91c1c;font-size:13px}.coupang-collection-state .btn{margin-top:10px}
+.coupang-collection-meta .btn{margin:0}.coupang-collection-meta{margin-left:auto}
+@media(max-width:600px){.coupang-collection-state{padding:14px}.coupang-collection-heading{align-items:flex-start;gap:6px}.coupang-collection-heading>.product-meta{width:100%}.coupang-collection-summary{line-height:1.7}}
+.coupang-page .coupang-search-basic{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:20px}
+.coupang-page .coupang-search-basic .field{min-width:0;--control-width:100%;width:var(--field-width);max-width:none;flex:0 0 var(--field-width)}
+.coupang-search-id{--field-width:12rem}.coupang-search-brand{--field-width:8rem}.coupang-search-sku{--field-width:13rem}
+.coupang-page .coupang-search-basic .coupang-search-name{--field-width:18rem;flex:1 1 18rem}
+.coupang-search-number{--field-width:10rem}.coupang-search-status{--field-width:9rem}.coupang-search-size{--field-width:6.5rem}
+.coupang-search-sort{--field-width:8rem}
+.coupang-number-controls{display:flex;gap:6px;min-width:0}.coupang-number-controls input{min-width:0;width:calc(100% - 5rem)}.coupang-number-controls select{width:5rem;flex:0 0 5rem}
+.coupang-search-buttons{display:flex;gap:8px;flex:0 0 auto}.coupang-search-buttons .btn{flex:none;white-space:nowrap}
+.coupang-page .coupang-table{min-width:0;width:100%;table-layout:fixed}
+.coupang-col-select{width:4%}.coupang-col-image{width:5%}.coupang-col-sku{width:9%}.coupang-col-product-id{width:9%}.coupang-col-option-id{width:10%}.coupang-col-name{width:12%}.coupang-col-attributes{width:9%}.coupang-col-reasons{width:8%}.coupang-col-price{width:11%}.coupang-col-stock{width:7%}.coupang-col-state{width:6%}.coupang-col-days{width:5%}.coupang-col-edit{width:5%}
+.coupang-page .coupang-table th,.coupang-page .coupang-table td{vertical-align:middle;padding:6px 8px;white-space:normal;overflow-wrap:anywhere}
+.coupang-page .coupang-table :is(th,td):nth-child(1),.coupang-page .coupang-table :is(th,td):nth-child(2),.coupang-page .coupang-table :is(th,td):nth-child(11),.coupang-page .coupang-table :is(th,td):nth-child(13){padding-left:6px;padding-right:6px}
+.coupang-page .coupang-table td.wrap{overflow-wrap:anywhere;word-break:normal;line-height:1.45}
+.coupang-table .product-photo{width:44px;height:44px;flex-basis:44px}
+.coupang-page .coupang-table small,.coupang-detail small{display:block;color:var(--text-sub);font-size:12px;margin-top:4px;white-space:normal;overflow-wrap:anywhere}
+.coupang-product-selection{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.coupang-detail section[id^=coupang-registry]{margin-top:20px;padding-top:12px;border-top:1px solid var(--border)}
+.coupang-detail pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow:auto}.coupang-detail .toolbar{flex-wrap:wrap}
+.coupang-working-copy-dialog{width:min(920px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto}
+.coupang-working-copy-dialog .toolbar{flex-wrap:wrap}.coupang-working-copy-table{min-width:600px}
+@media(max-width:600px){.coupang-status-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%}.coupang-status-card{min-width:0;padding:10px 12px}.coupang-list-heading{gap:16px}.coupang-list-actions{width:100%}.coupang-page .coupang-search-basic .field{width:calc(50% - 6px);flex:0 1 calc(50% - 6px)}.coupang-page .coupang-search-basic .coupang-search-name,.coupang-page .coupang-search-basic .coupang-search-sku{width:100%;flex-basis:100%}.coupang-detail .btn{white-space:normal}.coupang-working-copy-dialog{padding:16px}}
+
+#coupang-image-dialog .product-image-close{position:absolute;top:8px;right:8px;z-index:1;width:32px;height:32px;border:1px solid var(--border);border-radius:50%;background:var(--surface,#fff);color:var(--text);font-size:22px;cursor:pointer}
+
+.coupang-sku{font-weight:700;white-space:normal;overflow-wrap:anywhere}.coupang-sku[aria-expanded=true]{color:var(--primary)}
+.coupang-page .coupang-table .coupang-supplier-row>td{padding:0;background:#f8fafc;white-space:normal}
+.coupang-supplier-panel{min-width:0}.coupang-supplier-panel>p{margin:8px 18px}.coupang-supplier-panel>button{margin:6px 18px}
+.coupang-page .coupang-table.coupang-supplier-table{min-width:0;margin:0;border:0;width:100%;table-layout:fixed}
+.coupang-page .coupang-supplier-table td{padding:6px 8px;white-space:normal;vertical-align:middle}
+.coupang-supplier-identity .product-meta,.coupang-supplier-identity .coupang-sku{display:block}
+.coupang-supplier-price,.coupang-supplier-stock{font-variant-numeric:tabular-nums}
+.coupang-supplier-price strong{font-size:14px;white-space:normal}
+.coupang-supplier-stock{font-size:12px;line-height:1.6}.coupang-supplier-stock>div{white-space:normal}
+.coupang-supplier-stock .supplier-list-quantity{font-weight:600}.coupang-supplier-stock .inventory-count{font-size:12px}
+.coupang-supplier-status>span{white-space:nowrap}.coupang-supplier-status{overflow-wrap:anywhere}.coupang-supplier-status small{font-size:11px}
+.coupang-supplier-source a{color:var(--text);text-decoration:none}
+
+.coupang-supplier-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}.coupang-supplier-actions .btn{white-space:nowrap}.coupang-quick-edit{max-width:720px}.coupang-quick-edit .form>div{min-width:0}.quick-calculation{display:grid;grid-template-columns:1fr auto;gap:6px 18px}.quick-calculation dd{margin:0;text-align:right}.coupang-quick-edit input[type=number]{width:100%;max-width:none}.coupang-quick-edit form{margin-bottom:12px}
+
+#quick-edit-form{gap:16px;margin:12px 0}.coupang-quick-edit #quick-edit-source p{margin:6px 0}.coupang-quick-edit #quick-edit-price>p{margin:8px 0}.coupang-quick-edit #quick-edit-price>.field{margin-top:12px}
+
+.quick-edit-toolbar{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin:12px 0}.quick-edit-inputs{display:grid;grid-template-columns:1fr 1fr;gap:16px}.quick-edit-inputs .field{min-width:0}.quick-edit-inputs:has(#quick-edit-cost-field[hidden]){grid-template-columns:1fr}#quick-edit-history{padding:12px 0;border-bottom:1px solid var(--line,#e2e8f0)}.quick-edit-history-row{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;padding:6px 0}.quick-edit-history-pages{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:8px}.quick-edit-margin{margin:8px 0}@media(max-width:600px){.quick-edit-inputs{grid-template-columns:1fr}.quick-edit-toolbar{justify-content:flex-start}}
+
+.coupang-page .coupang-table .coupang-supplier-price small{display:block;white-space:nowrap}
+
+.quick-edit-save-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.quick-edit-save-actions>span{font-variant-numeric:tabular-nums}.quick-edit-inputs #quick-edit-settings{margin:8px 0;line-height:1.6}.quick-edit-inputs #quick-edit-margin p{margin:8px 0}
+
+.quick-edit-context-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px 16px;flex-wrap:wrap;margin:12px 0}.quick-edit-context-info{flex:1 1 17rem;min-width:0}.quick-edit-context-info>p{margin:0;line-height:30px;overflow-wrap:anywhere}.quick-edit-context-info #quick-edit-source p{margin:0;line-height:1.5}.quick-edit-context-heading .quick-edit-toolbar{flex:0 0 auto;margin:0}
+
+.coupang-recommendation-reasons{display:flex;gap:6px;flex-wrap:wrap;margin:0}.coupang-recommendation-reasons span{font-size:12px;line-height:1.4;color:#92400e;background:#fffbeb;border-radius:4px;padding:2px 5px}
+.coupang-recommendation-filters{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 18px}.coupang-recommendation-filters[hidden]{display:none}.coupang-recommendation-filters button{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel,#fff);font:inherit;font-size:13px;color:var(--text);cursor:pointer}.coupang-recommendation-filters button span{font-variant-numeric:tabular-nums;color:var(--text-sub)}.coupang-recommendation-filters button[aria-pressed=true]{border-color:var(--primary);background:#eff4ff;color:var(--primary)}.coupang-recommendation-filters button[aria-pressed=true] span{color:inherit}.coupang-recommendation-filters button:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.coupang-recommendation-value{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;white-space:normal;font-variant-numeric:tabular-nums}.coupang-recommendation-current{font-weight:400}.coupang-recommendation-arrow{color:var(--text-sub);font-size:12px}.coupang-recommendation-target{color:var(--primary);font-weight:650}.coupang-recommendation-value .btn{height:28px;box-sizing:border-box;padding:4px 8px;font-size:12px;line-height:18px;font-weight:600;white-space:nowrap;margin:0 0 0 2px}
+.coupang-page [data-recommended=true] .coupang-col-price{width:13%}.coupang-page [data-recommended=true] .coupang-col-stock{width:9%}.coupang-page [data-recommended=true] .coupang-col-name{width:10%}.coupang-page [data-recommended=true] .coupang-col-attributes{width:7%}.coupang-page [data-recommended=true] .coupang-col-reasons{width:8%}.coupang-page [data-recommended=true] .form-error{color:#b91c1c}
+
+/* Both layouts share the same option DOM and expansion state. */
+#quick-edit-owned{display:flex;gap:6px 16px;flex-wrap:wrap;margin:8px 0}#quick-edit-owned[hidden]{display:none}
+.coupang-page .coupang-supplier-table td:nth-child(6),.coupang-page .coupang-supplier-table td:last-child{padding-left:6px;padding-right:6px}
+.coupang-page .coupang-table .coupang-supplier-price small{white-space:normal}
+.coupang-recommendation-reasons small{flex-basis:100%}
+@media(max-width:1439px){
+ .coupang-page .coupang-table,.coupang-page .coupang-table tbody{display:block;width:100%;min-width:0}
+ .coupang-page .coupang-table>colgroup,.coupang-page .coupang-table>thead{display:none}
+ .coupang-page .coupang-option-row{display:grid;grid-template-columns:32px 52px minmax(0,1fr) auto;grid-template-areas:"select photo code edit" "name name name name" "exposure exposure option option" "attributes attributes attributes attributes" "reasons reasons reasons reasons" "price price price price" "stock stock stock stock" "state state days days";gap:10px;padding:14px;border-bottom:1px solid var(--border)}
+ .coupang-page .coupang-option-row>td{display:flex;flex-direction:column;min-width:0;padding:0!important;border:0;overflow-wrap:anywhere}
+ .coupang-option-row>td::before{content:attr(data-label);font-size:11px;color:var(--text-sub);margin-bottom:3px}
+ .coupang-option-row>td:nth-child(-n+3)::before,.coupang-option-row>td:nth-child(6)::before,.coupang-option-row>td:nth-child(13)::before{display:none}
+ .coupang-option-row>td:nth-child(1){grid-area:select;justify-content:center}.coupang-option-row>td:nth-child(2){grid-area:photo}.coupang-option-row>td:nth-child(3){grid-area:code;justify-content:center}.coupang-option-row>td:nth-child(4){grid-area:exposure}.coupang-option-row>td:nth-child(5){grid-area:option}.coupang-option-row>td:nth-child(6){grid-area:name}.coupang-option-row>td:nth-child(7){grid-area:attributes}.coupang-option-row>td:nth-child(8){grid-area:reasons}.coupang-option-row>td:nth-child(9){grid-area:price}.coupang-option-row>td:nth-child(10){grid-area:stock}.coupang-option-row>td:nth-child(11){grid-area:state}.coupang-option-row>td:nth-child(12){grid-area:days}.coupang-option-row>td:nth-child(13){grid-area:edit;justify-content:center}
+ .coupang-option-row .btn{align-self:flex-start}.coupang-option-row .product-name{text-align:left}
+ .coupang-page .coupang-supplier-row{display:block;width:100%}.coupang-page .coupang-supplier-row>td{display:block;max-width:100%;border:0}
+ .coupang-page .coupang-supplier-product{display:grid;grid-template-columns:52px minmax(0,1fr);grid-template-areas:"photo identity" "source source" "price stock" "status status" "actions actions";gap:10px;padding:14px;border-bottom:1px solid var(--border)}
+ .coupang-page .coupang-supplier-product>td{display:block;min-width:0;padding:0!important;border:0}.coupang-supplier-product>td:empty{display:none!important}
+ .coupang-supplier-image{grid-area:photo}.coupang-supplier-identity{grid-area:identity}.coupang-supplier-source{grid-area:source}.coupang-supplier-price{grid-area:price}.coupang-supplier-stock{grid-area:stock}.coupang-supplier-status{grid-area:status}.coupang-supplier-product>td:last-child{grid-area:actions}
+ .coupang-supplier-actions{justify-content:flex-start}.coupang-page .coupang-supplier-status>span{white-space:normal}
+}
+
+.coupang-recommendation-reasons>span{word-break:keep-all;overflow-wrap:normal}
+.coupang-page .coupang-table th{font-size:11px}
+.coupang-page .coupang-option-row>td:nth-child(4),.coupang-page .coupang-option-row>td:nth-child(5){font-size:12px}
+.coupang-page .coupang-option-row>td:nth-child(12){white-space:nowrap}
+.coupang-page .coupang-table th:first-child{white-space:nowrap}
+/* Override the application-wide product density without widening the table. */
+.coupang-page table.coupang-table thead th,.coupang-page table.coupang-table tbody td{padding:6px 8px}
+.coupang-page table.coupang-table :is(thead,tbody) :is(th,td):is(:nth-child(1),:nth-child(2),:nth-child(11),:nth-child(13)){padding-left:6px;padding-right:6px}
+.coupang-page table.coupang-table tbody tr.coupang-supplier-row>td{padding:0}
+.coupang-page table.coupang-table .coupang-supplier-status,.coupang-page table.coupang-table .coupang-supplier-product>td:last-child{padding-left:6px;padding-right:6px}
+.coupang-option-row>td:last-child .btn{white-space:nowrap;padding:4px 6px}
+.coupang-recommendation-reasons>span{width:max-content;max-width:100%;box-sizing:border-box;flex-shrink:0}
+.coupang-selection-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:20px}.coupang-page .coupang-selection-bar .list-summary{margin:0}.coupang-selection-bar .toolbar{margin:0;gap:8px;flex-wrap:wrap}.coupang-select-all{display:flex;align-items:center;gap:4px}.coupang-mobile-select-all{display:none}@media(max-width:1439px){.coupang-mobile-select-all{display:flex}.coupang-selection-bar .toolbar{width:100%}}
+.coupang-bulk-edit{max-width:960px}.bulk-edit-table{table-layout:fixed;width:100%}.bulk-edit-table th,.bulk-edit-table td{white-space:normal!important;overflow-wrap:anywhere;padding:8px!important;vertical-align:middle}.bulk-edit-table input[type=number]{width:100%;min-width:0}.bulk-edit-table small{display:block;color:var(--text-sub);font-size:12px;margin-top:4px}.bulk-edit-table td input[type=checkbox]{margin:0}.coupang-bulk-edit .toolbar{flex-wrap:wrap}
+@media(max-width:600px){.bulk-edit-table,.bulk-edit-table tbody{display:block}.bulk-edit-table colgroup,.bulk-edit-table thead{display:none}.bulk-edit-table tr{display:grid;grid-template-columns:28px minmax(0,1fr);border-bottom:1px solid var(--border);padding:8px}.bulk-edit-table td{display:block;border:0!important}.bulk-edit-table td:nth-child(n+3){grid-column:2}.bulk-edit-table td:nth-child(3)::before{content:'변경 전 ';color:var(--text-sub)}.bulk-edit-table td:nth-child(4)::before{content:'변경값';color:var(--text-sub)}}
+.bulk-edit-select-mobile{display:none}@media(max-width:600px){.bulk-edit-select-mobile{display:flex;align-items:center;gap:8px;margin:12px 0}}
+.coupang-table thead .coupang-select-all{flex-direction:column;align-items:flex-start;gap:2px}
+.coupang-page label.coupang-mobile-select-all,.coupang-bulk-edit label.bulk-edit-select-mobile{display:none}
+.coupang-table thead label.coupang-select-all{font-size:11px;line-height:1.2}
+@media(max-width:1439px){.coupang-page label.coupang-mobile-select-all{display:flex}}
+@media(max-width:600px){.coupang-bulk-edit label.bulk-edit-select-mobile{display:flex}}
+/* Retained stock and search absence are separate facts; keep both inside narrow supplier cells. */
+.coupang-page .coupang-supplier-stock .supplier-list-quantity{font-size:12px;white-space:normal;overflow-wrap:anywhere}
+.coupang-page .coupang-supplier-status>span{white-space:normal}
+.coupang-page .coupang-supplier-status .selected-missing-button{max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:left}

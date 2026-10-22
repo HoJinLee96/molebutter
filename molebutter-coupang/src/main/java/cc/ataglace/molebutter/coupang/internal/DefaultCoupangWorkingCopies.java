@@ -14,6 +14,10 @@ import cc.ataglace.molebutter.coupang.api.CoupangWorkingCopies.*;
 import static cc.ataglace.molebutter.coupang.api.CoupangEditingFailure.Kind.*;
 @Service
 public final class DefaultCoupangWorkingCopies implements CoupangWorkingCopies {
+    private CoupangProductSource productSource;
+    @org.springframework.beans.factory.annotation.Autowired void productSource(CoupangProductSource source){this.productSource=source;}
+    private RegisteredProductStore registered;
+    @org.springframework.beans.factory.annotation.Autowired void registered(RegisteredProductStore registered){this.registered=registered;}
     private final BusinessAccess access;
     private final WorkingCopyStore copies;
     private final EditingStore sessions;
@@ -45,7 +49,11 @@ public final class DefaultCoupangWorkingCopies implements CoupangWorkingCopies {
             throw new CoupangFailure(CoupangFailure.Kind.CONFIGURATION);
         return account;
     }
-    public Entry open(Long actor, String product, String workingCopy) {
+    public Entry open(Long actor, String product, String workingCopy) {return open(actor,product,workingCopy,false,null);}
+    public Entry openObserved(Long actor,String workingCopy){return open(actor,null,workingCopy,true,null);}
+    Entry openStored(Long actor,String product){return openStored(actor,product,null);}
+    Entry openStored(Long actor,String product,String reuseSession){return open(actor,product,null,true,reuseSession);}
+    private Entry open(Long actor,String product,String workingCopy,boolean storedOnly,String reuseSession) {
         access.productActor(actor, true);
         String account = account();
         WorkingCopyStore.Copy copy = workingCopy == null
@@ -57,12 +65,13 @@ public final class DefaultCoupangWorkingCopies implements CoupangWorkingCopies {
             product = copy.product();
         }
         var mapping = copy == null ? null : copy.mapping();
+        if(copy==null&&reuseSession!=null){var prior=require(actor,reuseSession,false);if(prior.binding().mapping()==null||!Objects.equals(prior.binding().mapping().sellerProductId(),product))throw new CoupangEditingFailure(CONFLICT);mapping=prior.binding().mapping();}
         CoupangEditor.EditorDocument observation = null;
         Document base = copy == null ? CoupangInputs.empty() : copy.document();
         boolean blocked = false;
         if (product != null) {
             try {
-                observation = editor.edit(actor, product);
+                observation = storedOnly?registered.observation(account,product,productSource):editor.edit(actor, product);
                 if (mapping == null)
                     mapping = CoupangInputs.mapping(account, observation, copy == null ? null : copy.document());
                 var fresh = CoupangInputs.from(observation, mapping);
@@ -116,7 +125,22 @@ public final class DefaultCoupangWorkingCopies implements CoupangWorkingCopies {
                 blocked || copy != null && tx.execute(t -> submissions.active(id(s.workingCopyId()), account, -1)),
                 changes, account, recovery && !blocked ? base : null,
                 recovery ? "이전 목록 수정의 항목별 의도를 확인할 수 없습니다. 입력을 보관한 뒤 최신 값으로 다시 준비해 주세요." : null,
-                copy == null ? null : copy.appliedRevision());
+                copy == null ? null : copy.appliedRevision(),
+                product == null ? editor.cachedCategory(actor, document.basic().get("displayCategoryCode")) : null);
+    }
+    /** An unsaved, actor/account-bound CREATE baseline. No SQL or external writes. */
+    public Entry prefill(Long actor, Document document) {
+        access.productActor(actor, true);
+        String account = account();
+        Document normalized = CoupangWorkingCopyDocuments.normalize(document, json);
+        String sid = Long.toString(BusinessIds.next());
+        var session = new CoupangEditing.Session(sid, null, 0, Instant.now().plusSeconds(600).toString(),
+                "CREATE", normalized, null, List.of());
+        unsaved.entrySet().removeIf(e -> Instant.parse(e.getValue().session().expiresAt()).isBefore(Instant.now()));
+        if (unsaved.size() >= 1000) throw new InputValidationFailure("열린 편집기가 너무 많습니다.");
+        unsaved.put(sid, new EditingStore.Stored(actor, new EditingStore.Binding(account, null, 1L), session, false));
+        return new Entry("CREATE", null, null, null, normalized, sid, session.expiresAt(), null, false,
+                List.of(), account, null, null, null, editor.cachedCategory(actor, normalized.basic().get("displayCategoryCode")));
     }
     private Document preserveMedia(Long actor, Document fresh, Document previous) {
         var tokens = copies.publications(CoupangWorkingCopyDocuments.assetIds(previous));
@@ -137,8 +161,14 @@ public final class DefaultCoupangWorkingCopies implements CoupangWorkingCopies {
         if (!Objects.equals(initial.session().workingCopyId(), workingCopy) || workingCopy != null
                 && (input.expectedRevision() == null || input.expectedRevision() != initial.session().revision()))
             throw new CoupangEditingFailure(CONFLICT);
+        var formattedPrices=new HashSet<>(CoupangPrices.changes(input.changes().stream().filter(c->c!=null&&c.path()!=null
+                &&Set.of("options.registration.salePrice","options.registration.originalPrice").contains(c.path())
+                &&c.value() instanceof String v&&!v.equals(CoupangPrices.normalize(v))).toList()));
+        var requestedChanges=CoupangPrices.changes(input.changes()).stream().filter(c->
+                !formattedPrices.contains(c)||!CoupangInputs.matches(json,initial.session().document(),c)
+                ||initial.session().pendingChanges().stream().anyMatch(old->CoupangInputs.sameChange(json,old,c))).toList();
         var normalized = CoupangWorkingCopyDocuments.normalize(input.document(), json);
-        CoupangInputs.verify(json, initial.session().document(), normalized, input.changes(),
+        CoupangInputs.verify(json, initial.session().document(), normalized, requestedChanges,
                 initial.session().mode().equals("CREATE"));
         Entry result = tx.execute(t -> {
             var stored = require(actor, input.sessionId(), workingCopy != null);
@@ -146,13 +176,13 @@ public final class DefaultCoupangWorkingCopies implements CoupangWorkingCopies {
                 throw new CoupangEditingFailure(CONFLICT);
             WorkingCopyStore.Copy copy;
             var baseline = stored.session().document();
-            var accepted = input.changes();
+            var accepted = requestedChanges;
             if (workingCopy == null) {
                 if (input.expectedRevision() != null)
                     throw new CoupangEditingFailure(CONFLICT);
                 copy = copies.insert(actor, stored.binding().account(),
                         stored.binding().mapping() == null ? null : stored.binding().mapping().sellerProductId(),
-                        normalized, input.changes(), stored.binding().mapping(), stored.session().observation());
+                        normalized, requestedChanges, stored.binding().mapping(), stored.session().observation());
             } else {
                 copy = copies.find(id(workingCopy), true);
                 if (copy.revision() != input.expectedRevision() || !copy.account().equals(stored.binding().account()))
@@ -182,6 +212,7 @@ public final class DefaultCoupangWorkingCopies implements CoupangWorkingCopies {
                 sessions.insert(actor, stored.binding(), session);
             else
                 sessions.update(session);
+            if(registered!=null)registered.saved(copy,baseline,actor);
             assets.replaceReferences(actor, copy.id(), CoupangWorkingCopyDocuments.assetIds(copy.document()));
             return new Entry(session.mode(), copy.id(), copy.revision(), copy.product(), copy.document(), session.id(),
                     session.expiresAt(), session.observation(), false, copy.changes(), stored.binding().account(), null,
@@ -191,11 +222,12 @@ public final class DefaultCoupangWorkingCopies implements CoupangWorkingCopies {
             unsaved.remove(input.sessionId());
         return result;
     }
-    public PageResponse<Summary> list(Long actor, String query, int page, int size) {
+    public PageResponse<Summary> list(Long actor, String query, String mode, int page, int size) {
         access.productActor(actor, true);
         if (page < 0 || page > 1000000 || !Set.of(10, 20, 50, 100).contains(size))
             throw new InputValidationFailure("페이지를 확인해 주세요.");
-        return copies.list(account(), Objects.toString(query, ""), page, size);
+        if(mode!=null && !Set.of("CREATE","UPDATE").contains(mode))throw new InputValidationFailure("작업본 종류를 확인해 주세요.");
+        return copies.list(account(), Objects.toString(query, ""), mode, page, size);
     }
     EditingStore.Stored require(Long actor, String sid, boolean lock) {
         access.productActor(actor, true);

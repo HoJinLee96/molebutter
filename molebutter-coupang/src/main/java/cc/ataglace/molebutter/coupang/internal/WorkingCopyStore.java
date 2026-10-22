@@ -74,13 +74,14 @@ class WorkingCopyStore {
         }
         return out;
     }
-    PageResponse<Summary> list(String account, String query, int page, int size) {
+    PageResponse<Summary> list(String account, String query, String mode, int page, int size) {
         String pattern = "%" + query.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
+        String filter=mode==null?"":mode.equals("CREATE")?" AND seller_product_id IS NULL":" AND seller_product_id IS NOT NULL";
         long count = db.queryForObject(
-                "SELECT COUNT(*) FROM coupang_product_working_copy WHERE account_key=? AND product_name LIKE ? ESCAPE '!'",
+                "SELECT COUNT(*) FROM coupang_product_working_copy WHERE account_key=? AND product_name LIKE ? ESCAPE '!'"+filter,
                 Long.class, account, pattern);
         var rows = db.query(
-                "SELECT w.id,w.revision,w.product_name,w.seller_product_id,w.updated_at,EXISTS(SELECT 1 FROM coupang_execution e JOIN coupang_execution_step s ON s.execution_id=e.id WHERE e.working_copy_id=w.id AND s.status IN ('QUEUED','RUNNING','UNKNOWN','ACCEPTED')) FROM coupang_product_working_copy w WHERE w.account_key=? AND w.product_name LIKE ? ESCAPE '!' ORDER BY w.updated_at DESC,w.id DESC LIMIT ? OFFSET ?",
+                "SELECT w.id,w.revision,w.product_name,w.seller_product_id,w.updated_at,EXISTS(SELECT 1 FROM coupang_execution e JOIN coupang_execution_step s ON s.execution_id=e.id WHERE e.working_copy_id=w.id AND s.status IN ('QUEUED','RUNNING','UNKNOWN','ACCEPTED')) FROM coupang_product_working_copy w WHERE w.account_key=? AND w.product_name LIKE ? ESCAPE '!'"+filter+" ORDER BY w.updated_at DESC,w.id DESC LIMIT ? OFFSET ?",
                 (r, n) -> new Summary(r.getString(1), r.getLong(2), r.getString(3), r.getString(4),
                         r.getString(4) == null ? "CREATE" : "UPDATE", r.getTimestamp(5).toInstant().toString(),
                         r.getBoolean(6)),

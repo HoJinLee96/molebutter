@@ -11,6 +11,27 @@ import cc.ataglace.molebutter.common.api.InputValidationFailure;
 import cc.ataglace.molebutter.identity.api.BusinessAccess;
 import cc.ataglace.molebutter.coupang.api.*;
 class CoupangBrandsTest {
+    @Test void coldSavedBrandCanBeValidatedInsidePreparationWithoutReleasingTheOuterGuard() throws Exception {
+        var transport=mock(CoupangHttpTransport.class);
+        when(transport.send(anyString(),anyString(),anyString(),anyString(),any(),any())).thenReturn(
+            new CoupangHttpTransport.Response(200,bytes("{\"code\":\"SUCCESS\",\"data\":{\"page\":1,\"countPerPage\":10,\"totalCount\":1,\"items\":[{\"brandId\":\"KR-5\",\"brandName\":\"합성 브랜드\",\"isUIDRequired\":false,\"allowedUIDTypes\":[]}]}}")));
+        var client=new CoupangProductClient("vendor","fake-access","fake-secret",new ObjectMapper(),transport,Clock.systemUTC());
+        var service=new DefaultCoupangBrands(mock(BusinessAccess.class),client);
+        var pool=java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            client.writeSession(()->{
+                service.requireSelection(1L,"KR-5","합성 브랜드");
+                // Inner public brand read has finished, but competing work must still be excluded.
+                assertThatThrownBy(()->pool.submit(()->client.writeSession(()->true)).get())
+                    .hasCauseInstanceOf(CoupangFailure.class).satisfies(e->assertThat(((CoupangFailure)e.getCause()).kind()).isEqualTo(CoupangFailure.Kind.BUSY));
+                return true;
+            });
+            assertThat(pool.submit(()->client.writeSession(()->true)).get()).isTrue();
+            assertThatThrownBy(()->client.writeSession(()->{throw new IllegalStateException("synthetic");})).isInstanceOf(IllegalStateException.class);
+            assertThat(pool.submit(()->client.writeSession(()->true)).get()).isTrue();
+        } finally {pool.shutdownNow();}
+        verify(transport,times(1)).send(anyString(),anyString(),anyString(),anyString(),any(),any());
+    }
     private final CoupangProductClient parser=new CoupangProductClient("vendor","fake-access","fake-secret",new ObjectMapper(),new CoupangHttpTransport(),Clock.fixed(Instant.parse("2026-10-07T00:00:00Z"),ZoneOffset.UTC));
     @Test void parsesBrandIdentityPagingAndEmptyResults(){
         var page=parser.parseBrands(bytes("{\"code\":\"SUCCESS\",\"data\":{\"page\":1,\"countPerPage\":10,\"totalCount\":11,\"items\":[{\"brandId\":\"KR-5\",\"brandName\":\"합성 브랜드\",\"isUIDRequired\":true,\"allowedUIDTypes\":[\"MPN\"],\"unknown\":\"ignored\"}]}}"));

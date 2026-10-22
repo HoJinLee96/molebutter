@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"><th:block th:fragment="dialogs">
+<dialog id="product-dialog" class="attendance-dialog product-dialog" aria-labelledby="product-dialog-title">
+    <div class="product-dialog-head"><h2 id="product-dialog-title">매입처 가격·재고 비교</h2><button class="btn small" type="button" data-close="product-dialog">닫기</button></div>
+    <p id="detail-error" class="form-error" role="alert" hidden></p><p id="detail-success" class="form-success" role="status" hidden></p>
+    <div id="detail-summary"></div>
+    <div class="detail-refresh-row"><div id="detail-status" class="detail-status"></div><div class="detail-refresh-actions"><span id="detail-naver-search"></span><button id="detail-refresh" class="btn primary" type="button">최신화</button><button id="detail-reload" class="btn" type="button">결과 새로고침</button></div></div>
+    <div id="detail-progress" class="lookup-progress" role="status" aria-live="polite" hidden>
+        <span id="detail-spinner" class="lookup-spinner" aria-hidden="true" hidden></span>
+        <span id="detail-progress-text"></span><a id="detail-run-link" hidden>작업 확인</a>
+    </div>
+    <div id="product-change-summary"></div>
+    <div id="stock-lookup-jobs" class="stock-lookup-jobs" aria-label="개별 재고 조회 작업" hidden></div>
+    <section id="selected-supplier-section" class="product-detail-section" hidden><h3>선정 매입처</h3><div id="selected-supplier-results"></div></section>
+    <section class="product-detail-section"><h3>선호 매입처</h3><div id="supplier-results"></div></section>
+    <section id="recommendation-section" class="product-detail-section" hidden><h3>비선호 매입처 추천</h3><div id="recommendation-results"></div></section>
+    <details class="product-detail-section"><summary>이전 정상 조회 · 참고용</summary><div id="previous-result"></div></details>
+    <details id="value-change-history" class="product-detail-section"><summary>가격·재고 변동 이력</summary><form id="value-change-filter" class="toolbar"><div class="field"><label for="change-supplier">판매글</label><select id="change-supplier"><option value="">전체 판매글</option></select></div><div class="field"><label for="change-kind">변동 항목</label><select id="change-kind"><option value="ALL">전체</option><option value="PRICE">상품가</option><option value="DELIVERY">배송비</option><option value="STOCK">재고 수량</option><option value="STATE">구매 상태·판매글·옵션</option><option value="REVIEW">검토 기록</option></select></div><button id="value-change-query" class="btn small" type="submit">조회</button></form><div id="value-change-results"></div><div id="value-change-pager" class="pager"></div></details>
+    <details id="lookup-history" class="product-detail-section"><summary>조회 이력</summary><div id="history-results"></div><div id="history-pager" class="pager"></div></details>
+    <details class="product-detail-section"><summary>기본 정보 수정</summary><form id="edit-form" class="form product-form">
+        <div class="field"><label for="edit-brand">브랜드</label><select id="edit-brand" disabled><option value="">미지정</option></select></div>
+        <div class="field field--code"><label for="edit-code">전체 상품코드</label><input id="edit-code" maxlength="100" required></div>
+        <div class="field field--wide"><label for="edit-query">네이버 검색어</label><input id="edit-query" maxlength="255" required></div>
+        <div class="toolbar"><button id="edit-save" type="button" class="btn primary">기본 정보 저장</button></div>
+    </form></details>
+    <details id="duplicate-section" class="product-detail-section" hidden><summary>동일 전체 코드 통합 후보</summary><p class="field-hint">현재 상품의 브랜드·코드·검색어·자동관리 상태를 대표값으로 사용합니다. 시즌이 다른 상품은 별도로 유지합니다.</p><div id="duplicate-list"></div><div class="field"><label for="merge-selection">통합 후 유지할 선정 매입처</label><select id="merge-selection"></select></div><button id="merge-selected" class="btn" type="button">선택한 중복 상품 통합</button></details>
+</dialog>
+<dialog id="product-image-dialog" class="attendance-dialog product-image-dialog" aria-label="상품 이미지">
+    <div class="product-image-stage"><img id="product-image-full" alt="" referrerpolicy="no-referrer" hidden><p id="product-image-status" role="status">이미지를 불러오는 중…</p></div>
+</dialog>
+</th:block></html>

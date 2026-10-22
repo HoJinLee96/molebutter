@@ -9,10 +9,12 @@ const assert=require('node:assert/strict'),fs=require('node:fs');
   const base='http://127.0.0.1:'+server.address().port;
   for(const width of [1440,390]) {
    const context=await browser.newContext({viewport:{width,height:width===390?844:1080}}),page=await context.newPage(),errors=[];
-   page.setDefaultTimeout(8000);page.on('pageerror',e=>errors.push(e.message));
+   page.setDefaultTimeout(8000);page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
    await context.route('https://**',route=>route.abort());
    await page.goto(base+'/products');await page.locator(`[data-detail="${first}"]`).first().waitFor();
    await page.waitForFunction(id=>document.querySelector(`[data-inventory-summary="${id}"]`)?.textContent.includes('보유 5개'),first);
+   const pageCount=await page.locator('#product-rows [data-select]').count();await page.locator('#product-select-page').check();assert.equal(await page.locator('#product-rows [data-select]:checked').count(),pageCount);await page.locator('#product-rows [data-select]').first().uncheck();assert(await page.locator('#product-select-page').evaluate(el=>el.indeterminate));await page.locator('#product-select-page').check();await page.locator('#product-select-page').uncheck();assert.equal(await page.locator('#product-rows [data-select]:checked').count(),0);
+   const mallTag=page.locator('#product-rows .supplier-compact-source .mall-tag').first();assert.equal(await mallTag.innerText(),width===1440?'헤지스':'LF몰');assert.equal(await mallTag.evaluate(el=>getComputedStyle(el).backgroundColor),width===1440?'rgb(30, 58, 95)':'rgb(0, 0, 0)');
    await page.locator('#product-q').fill('HIBA');await page.locator('#product-query').click();
    await page.waitForFunction(()=>document.querySelectorAll('#product-rows tr').length===1);
    // Open the shared inventory dialog without navigating away from products.
@@ -34,6 +36,9 @@ const assert=require('node:assert/strict'),fs=require('node:fs');
    await page.locator('[data-clear-selection]').click();
    await page.locator('#supplier-results [data-pick="L0"]').click();
    await page.waitForFunction(()=>document.querySelector('#detail-summary').textContent.includes('69,000원'));
+   const missingRoute=async route=>{if(route.request().method()!=='GET')return route.continue();const response=await route.fetch(),body=await response.json(),c=body.data.comparison;c.selected={...c.selected,selectedMissing:true,current:false};c.groups=c.groups.map(g=>({...g,listings:g.listings.filter(l=>l.id!==c.selected.id)})).filter(g=>g.listings.length);return route.fulfill({json:body});};
+   await page.route('**/api/products/'+first,missingRoute);await page.locator('[data-close="product-dialog"]').click();await page.locator(`[data-detail="${first}"]`).first().click();await page.locator('#selected-supplier-results .is-selected-missing').waitFor();const missingCard=page.locator('#selected-supplier-results .lookup-supplier');assert.equal(await missingCard.evaluate(el=>getComputedStyle(el).borderTopColor),'rgb(214, 69, 69)');assert.equal(await missingCard.evaluate(el=>getComputedStyle(el).borderRightColor),'rgb(214, 69, 69)');assert.equal(await missingCard.evaluate(el=>getComputedStyle(el).borderBottomColor),'rgb(214, 69, 69)');assert.equal(await missingCard.evaluate(el=>getComputedStyle(el).borderLeftColor),'rgb(214, 69, 69)');
+   await page.unroute('**/api/products/'+first,missingRoute);await page.locator('[data-close="product-dialog"]').click();await page.locator(`[data-detail="${first}"]`).first().click();await page.locator('[data-clear-selection]').waitFor();await page.waitForFunction(()=>document.querySelectorAll('.is-selected-missing').length===0);
    if(!await page.locator('#edit-form').evaluate(e=>e.closest('details').open))await page.getByText('기본 정보 수정',{exact:true}).click();await page.locator('#edit-query').fill('저장 전 검색어');
    await page.locator('#detail-refresh').click();await page.locator('#detail-spinner').waitFor({state:'visible'});
    await page.locator('#detail-spinner').waitFor({state:'hidden'});
@@ -92,25 +97,26 @@ const assert=require('node:assert/strict'),fs=require('node:fs');
    await page.waitForFunction(name=>document.querySelector('#settings-brand-rows').textContent.includes(name),'검증 브랜드 '+width);
    await page.goto(base+'/settings?role=PRODUCT&tab=brands');await page.locator('#settings-brand-rows tr').first().waitFor();
    assert.equal(await page.locator('#brand-create-form').count(),0);
-   // Coupang stays manual and preserves opaque page tokens; no external request is made.
+   // Coupang list/search/page/detail read saved DB contracts; no external request is made.
    let marketCalls=0,failMarket=false;
    await page.route('**/api/coupang/products?*',async route=>{
     marketCalls++;const u=new URL(route.request().url());
     if(failMarket){failMarket=false;return route.fulfill({status:504,json:{code:'COUPANG_TIMEOUT',message:'쿠팡 응답 시간이 초과되었습니다.'}});}
-    const second=u.searchParams.has('nextToken');
-    if(second)assert.equal(u.searchParams.get('nextToken'),'0007+/=');
-    await route.fulfill({json:{code:'OK',data:{items:[{sellerProductId:second?'99999999999999999999':'1',sellerProductName:second?'두번째 상품':'<b>첫 상품</b>',productId:'14784194',brand:'헤지스',statusName:'승인완료',createdAt:'2026-10-05T18:00:00'}],nextToken:second?'':'0007+/=',hasNext:!second}}});
+    const second=Number(u.searchParams.get('page'))>0;
+    await route.fulfill({json:{code:'OK',data:{items:[{product:{sellerProductId:second?'99999999999999999999':'1',sellerProductName:second?'두번째 상품':'<b>첫 상품</b>',productId:'14784194',brand:'헤지스',statusName:'승인완료',createdAt:'2026-10-05T18:00:00'},option:null}],page:Number(u.searchParams.get('page')),totalPages:u.searchParams.get('size')==='50'?1:2,totalElements:2,productCount:2,counts:{all:2,selling:0,soldOut:0,stopped:0,deleted:0}}}});
    });
    let detailCalls=0;
    await page.route('https://images.example.test/first.svg',route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240"><rect width="240" height="240" fill="#e2e8f0"/><text x="70" y="120">첫 옵션</text></svg>'}));
    await context.route('https://img1a.coupangcdn.com/image/**',route=>{return route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jLZkAAAAASUVORK5CYII=','base64')});});
-   await page.route('**/api/coupang/products/*',route=>{detailCalls++;return route.fulfill({json:{code:'OK',data:{product:{sellerProductId:'1',sellerProductName:'관리용 상품명',productId:'14784194',brand:'헤지스',statusName:'승인완료'},displayProductName:'고객에게 노출되는 상품명',delivery:[{name:'deliveryCharge',value:'0'}],settings:[{name:'manufacture',value:'테스트 제조사'}],items:[{sellerProductItemId:'1001',vendorItemId:'3000000000',itemName:'블랙 / FREE',current:{sellerItemId:'3000000000',salePrice:99900,amountInStock:0,onSale:true},currentError:null,images:[{url:'https://images.example.test/first.svg',type:'REPRESENTATION',order:1},{url:'https://images.example.test/missing.jpg',type:'DETAIL',order:2}],contents:[{type:'HTML',detailType:'TEXT',content:'<h2>설명 미리보기</h2><img src="http://img1a.coupangcdn.com/image/description-test.svg"><script>parent.document.body.dataset.injected="yes"</script><form action="https://bad.test"><input></form>'}],notices:[],attributes:[{name:'색상',value:'블랙',exposed:'EXPOSED'}],settings:[{name:'salePrice',value:'100000'}]},{sellerProductItemId:'1002',vendorItemId:null,itemName:'화이트 / FREE',current:null,currentError:'현재 값 미확인',images:[],contents:[{type:'IMAGE',detailType:'IMAGE',content:'vendor_inventory/synthetic-description.svg'}],settings:[],notices:[]}]}}});});
-   await page.goto(base+'/coupang?role=ADMIN');await page.locator('#coupang-coupang-tab').click();assert.equal(marketCalls,0);
+   await page.route('**/api/coupang/products/collections/latest',route=>route.fulfill({json:{code:'OK',data:null}}));
+   await page.route('**/api/coupang/products/1/history?*',route=>route.fulfill({json:{code:'OK',data:{items:[],totalElements:0,totalPages:0}}}));
+   await page.route('**/api/coupang/products/*',route=>{if(new URL(route.request().url()).pathname.endsWith('/brands'))return route.fulfill({json:{code:'OK',data:['헤지스']}});detailCalls++;return route.fulfill({json:{code:'OK',data:{state:{version:1,deleted:false},conflicts:[],blocked:false,detail:{product:{sellerProductId:'1',sellerProductName:'관리용 상품명',productId:'14784194',brand:'헤지스',statusName:'승인완료'},displayProductName:'고객에게 노출되는 상품명',delivery:[{name:'deliveryCharge',value:'0'}],settings:[{name:'manufacture',value:'테스트 제조사'}],items:[{sellerProductItemId:'1001',vendorItemId:'3000000000',itemName:'블랙 / FREE',current:{sellerItemId:'3000000000',salePrice:99900,amountInStock:0,onSale:true},currentError:null,images:[{url:'https://images.example.test/first.svg',type:'REPRESENTATION',order:1},{url:'https://images.example.test/missing.jpg',type:'DETAIL',order:2}],contents:[{type:'HTML',detailType:'TEXT',content:'<h2>설명 미리보기</h2><img src="http://img1a.coupangcdn.com/image/description-test.svg"><script>parent.document.body.dataset.injected="yes"</script><form action="https://bad.test"><input></form>'}],notices:[],attributes:[{name:'색상',value:'블랙',exposed:'EXPOSED'}],settings:[{name:'salePrice',value:'100000'}]},{sellerProductItemId:'1002',vendorItemId:null,itemName:'화이트 / FREE',current:null,currentError:'현재 값 미확인',images:[],contents:[{type:'IMAGE',detailType:'IMAGE',content:'vendor_inventory/synthetic-description.svg'}],settings:[],notices:[]}]}}}});});
+   await page.goto(base+'/coupang/products?role=ADMIN');await page.locator('[data-coupang-product]').waitFor();assert.equal(marketCalls,1);
    await page.locator('#coupang-query button[type=submit]').click();await page.locator('#coupang-rows').getByText('<b>첫 상품</b>',{exact:true}).waitFor();
    assert.equal(await page.locator('#coupang-rows b').count(),0);
    await page.locator('#coupang-next').click();await page.locator('#coupang-rows').getByText('두번째 상품',{exact:true}).waitFor();assert(await page.locator('#coupang-next').isDisabled());
    await page.locator('#coupang-prev').click();await page.locator('#coupang-rows').getByText('<b>첫 상품</b>',{exact:true}).waitFor();
-   await page.locator('#coupang-size').selectOption('50');assert(await page.locator('#coupang-next').isDisabled());
+   await page.locator('#coupang-size').selectOption('50');await page.waitForFunction(()=>!document.querySelector('#filter-name').disabled);assert(await page.locator('#coupang-next').isDisabled());
    failMarket=true;await page.locator('#coupang-query button[type=submit]').click();await page.locator('#coupang-error').waitFor({state:'visible'});
    await page.locator('#coupang-query button[type=submit]').click();await page.locator('#coupang-rows').getByText('<b>첫 상품</b>',{exact:true}).waitFor();
    await page.screenshot({path:`target/ui-check/coupang-smoke-${width}.png`});
