@@ -5,6 +5,6 @@ import java.util.List;
 /** An owned, immutable selection captured from the observed product before asynchronous work. */
 @FunctionalInterface
 public interface ImageExportPlan {
-    /** Prepares all files in the selected order before an external storage write begins. */
+    /** Prepares upload files in order, including 750px size guides, before any storage write. */
     List<ExportImageDto> prepare();
 }

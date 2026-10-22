@@ -4,6 +4,11 @@
 (() => {
   'use strict';
 
+  function currentRules(rules, code, now = Date.now()) {
+    const checked = Date.parse(rules?.checkedAt);
+    return !!rules && rules.categoryCode === code && Number.isFinite(checked) && checked <= now && now < checked + 600000
+      && Array.isArray(rules.attributes) && Array.isArray(rules.notices) && Array.isArray(rules.certifications) && Array.isArray(rules.documents);
+  }
   const spec = {
     sellerProductName: ['등록상품명', 'text', 100, true],
     displayProductName: ['노출상품명', 'text', 100],
@@ -116,6 +121,27 @@
     const d = new Date(v + 'T00:00:00Z');
     return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === v;
   };
+  // Parse wall-clock components without using browser timezone or DST normalization.
+  function validDateTime(text) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(text);
+    if (!m || Number(m[1]) < 1 || Number(m[1]) > 2099 || Number(m[4]) > 23 || Number(m[5]) > 59 || Number(m[6] || 0) > 59) return false;
+    return validDate(m.slice(1, 4).join('-'));
+  }
+  const colorToneChoices=['그린 톤','다색','레드 톤','메탈릭 톤','밝은 톤','브라운 톤','블랙 톤','블루 톤','어스 톤','중성 톤','파스텔 톤','핑크 톤','화이트/오프 화이트 톤','회색 톤'];
+  const colorToneWords=['그린|녹색|초록색?','다색|멀티\\s*컬러|멀티\\s*색상|배색','레드|빨강|빨간색|적색|버건디|와인색','메탈릭|실버|골드|은색|금색','밝은\\s*톤','(?:다크|라이트|딥)?브라운|갈색','블랙|검정색?|검은색|흑색','블루|네이비|파랑|파란색|청색|남색','어스\\s*톤','중성\\s*톤','파스텔\\s*톤','핑크|분홍색?','화이트|오프\\s*화이트|흰색|백색|아이보리','그레이|회색|차콜'];
+  const colorToneAttribute=a=>a.exposed==='NONE'&&String(a.name||'').replace(/[^가-힣A-Za-z0-9]/g,'')==='패션의류잡화색상계열';
+  function suggestColorTone(...titles){
+    for(const source of titles){const title=String(source||'').normalize('NFKC'),found=new Set();
+      colorToneWords.forEach((pattern,i)=>{if(new RegExp('(?<![가-힣A-Za-z])(?:'+pattern+')(?:\\s*톤)?(?![가-힣A-Za-z])','i').test(title))found.add(colorToneChoices[i]);});
+      if(found.has('다색'))return '다색';if(found.size>1)return null;if(found.size===1)return [...found][0];
+    }return null;
+  }
+  function addSearchFields(draft, rules) {
+    for (const o of draft.options) for (const r of rules?.attributes || []) {
+      if (r.exposed === 'NONE' && !productIdentity(r.name) && !o.attributes.some(a => sameAttribute(a, r)))
+        o.attributes.push({name:r.name,value:'',exposed:'NONE',_automatic:true});
+    }
+  }
   function applyRules(draft, rules) {
     for (const o of draft.options) {
       for (const a of rules.attributes) if (!(grouped(a) && rules.attributes.some(r => grouped(r) && r.groupNumber === a.groupNumber && o.attributes.some(v => sameAttribute(v, r)))) && !o.attributes.some(v => sameAttribute(v, a))) o.attributes.push({
@@ -123,7 +149,7 @@
         value: '',
         exposed: a.exposed
       });
-      if (!rules.notices.some(n => n.name === o.noticeCategory)) o.noticeCategory = rules.notices[0]?.name || '';
+      if (!o.noticeCategory && rules.notices.length === 1) o.noticeCategory = rules.notices[0]?.name || '';
       addNotices(o, rules);
       for (const c of rules.certifications.filter(c => required(c.required))) if (!o.certifications.some(v => v.type === c.type)) o.certifications.push({
         type: c.type,
@@ -226,7 +252,7 @@
     });
     function field(path, key, v, skipRequired = false) {
       const [label, type, max, must, choices] = spec[key] || [key, 'text'];
-      const text = String(v ?? '').trim();
+      const text = ['originalPrice','salePrice'].includes(key)?(typeof module!=='undefined'?require('./app-ui.js'):AppUI).normalizeCoupangPrice(v):String(v ?? '').trim();
       if (!text) {
         if (must && !skipRequired) fail(path, label + '을 입력해 주세요.');
         return;
@@ -235,11 +261,7 @@
       if (type === 'number' && !integer(text)) fail(path, label + '은 0 이상의 안전한 정수로 입력해 주세요.');
       if (type === 'id' && !/^\d+$/.test(text)) fail(path, label + '을 숫자로 입력해 주세요.');
       if (type === 'select' && choices && !choices.includes(text)) fail(path, label + '의 값을 확인해 주세요.');
-      if (type === 'datetime-local') {
-        const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(text);
-        const date = match ? new Date(text) : null;
-        if (!date || !Number.isFinite(date.getTime()) || date.getFullYear() !== Number(match[1]) || date.getMonth() + 1 !== Number(match[2]) || date.getDate() !== Number(match[3]) || Number(match[1]) > 2099) fail(path, label + '을 유효한 2099년 이하 일시로 입력해 주세요.');
-      }
+      if (type === 'datetime-local' && !validDateTime(text)) fail(path, label + '을 유효한 2099년 이하 일시로 입력해 주세요.');
     }
     if (mode === 'new' && (!draft.basic.brand || !draft.settings.brandId)) fail('basic.brand', '브랜드를 검색해서 선택해 주세요.');
     for (const k of ['sellerProductName', 'displayProductName', 'generalProductName', 'brand', 'productGroup', 'displayCategoryCode']) field('basic.' + k, k, draft.basic[k]);
@@ -369,6 +391,7 @@
     option.attributes.push(...structuredClone(source.attributes.filter(a => a.exposed === 'NONE' && !productIdentity(a.name))));
     option.notices = structuredClone(source.notices);
     option.noticeCategory = source.noticeCategory;
+    option.contents.push(...structuredClone((source.contents||[]).filter(c=>c.purpose==='BRAND_LOGO')).map(c=>({...c,id:uuid()})));
     option.certifications = structuredClone(source.certifications);
     return option;
   }
@@ -462,17 +485,23 @@
   const model = {
     choiceNames,
     longSalePeriod,
+    validDateTime,
     courierNames,
     purchaseColumns,
     purchaseAttribute,
     canEditPurchase,
     isPurchase,
     sameAttribute,
+    addSearchFields,
+    colorToneChoices,
+    colorToneAttribute,
+    suggestColorTone,
     productIdentity,
     registrationOptionName,
     categoryRemovals,
     replaceRules,
     spec,
+    currentRules,
     deliveryKeys,
     settingsKeys,
     optionKeys,

@@ -18,6 +18,9 @@ public interface InventoryService {
     PageResponse<Map<String,Object>> stockProducts(Long actor,String q,String productId,String brandId,int page,int size);
     Map<String,Object> stockTotals(Long actor,String q,String productId,String brandId);
     Map<String,Object> stockProduct(Long actor,long product);
+    record OwnedOption(String color,String size,long quantity) {}
+    record OwnedStock(long quantity,List<OwnedOption> options) {}
+    Map<String,OwnedStock> ownedStocks(Long actor,List<String> productIds);
     List<Map<String,Object>> summaries(Long actor,List<String> productIds);
     Map<String,Object> create(Long actor,String requestId,PurchaseInput input);
     Map<String,Object> editPurchase(Long actor,long order,PurchaseEdit x);

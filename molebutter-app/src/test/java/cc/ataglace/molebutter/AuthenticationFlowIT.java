@@ -136,7 +136,7 @@ class AuthenticationFlowIT {
     @Test
     void coupangRequiresCurrentAdministrator() throws Exception {
         Browser admin = admin();
-        assertStatus(admin.get("/coupang"), 200);
+        assertStatus(admin.get("/coupang/products"), 200);
         for (String retired : List.of("/marketplaces", "/marketplace-orders", "/marketplaces/coupang/products/new",
                 "/api/marketplaces", "/api/marketplace-orders", "/api/marketplaces/coupang/products",
                 "/marketplace-images/" + "a".repeat(64)))
@@ -146,7 +146,7 @@ class AuthenticationFlowIT {
         assertStatus(admin.post("/api/coupang/requests/invalid/cancel", Map.of()), 400);
         if (!"true".equals(System.getenv("MOLEBUTTER_COUPANG_LIVE")))
             assertStatus(admin.get("/api/coupang/products"), 503, "COUPANG_CONFIGURATION");
-        assertStatus(admin.get("/api/coupang/products?maxPerPage=11"), 400);
+        assertStatus(admin.get("/api/coupang/products?size=11"), 400);
         assertStatus(admin.get("/api/coupang/products/invalid"), 400);
         String email = uniqueEmail();
         Browser staff = approvedUser(email);
@@ -155,7 +155,7 @@ class AuthenticationFlowIT {
         for (String path : List.of("/coupang/products/new", "/coupang/products/123/edit",
                 "/api/coupang/categories/123/rules"))
             assertStatus(staff.get(path), 403);
-        assertStatus(staff.get("/coupang"), 403);
+        assertStatus(staff.get("/coupang/products"), 403);
         assertStatus(staff.post(cancelPath, Map.of()), 403);
         assertThat(staff.get("/").body()).doesNotContain("href=\"/coupang\"");
         long id = users.findByEmail(email).orElseThrow().getId();
@@ -166,7 +166,7 @@ class AuthenticationFlowIT {
         for (String path : List.of("/coupang/products/new", "/coupang/products/123/edit",
                 "/api/coupang/categories/123/rules"))
             assertStatus(staff.get(path), 403);
-        assertStatus(staff.get("/coupang"), 403);
+        assertStatus(staff.get("/coupang/products"), 403);
         assertStatus(staff.post(cancelPath, Map.of()), 403);
         assertThat(staff.get("/").body()).doesNotContain("href=\"/coupang\"");
     }

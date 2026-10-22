@@ -24,7 +24,7 @@ final class ProductImageUploadReservations {
         Optional<ObjectMetadata> existing = storage.head(StorageArea.PRIVATE, key);
         if (existing.isPresent() && (!RELEASED.equals(existing.get().metadata().get("state"))
                 || requestId.equals(existing.get().metadata().get("request-id")))) {
-            throw duplicate();
+            throw busy();
         }
         try {
             if (existing.isEmpty()) {
@@ -35,7 +35,7 @@ final class ProductImageUploadReservations {
                         CONTENT_TYPE, metadata(requestId, HELD, generation));
             }
         } catch (StorageException failure) {
-            if (failure.code() == StorageException.Code.CONFLICT) throw duplicate();
+            if (failure.code() == StorageException.Code.CONFLICT) throw busy();
             throw failure;
         }
     }
@@ -79,8 +79,8 @@ final class ProductImageUploadReservations {
         return "product-image-upload-reservations/" + productCode + ".json";
     }
 
-    private static ProductImageUploadFailure duplicate() {
-        return new ProductImageUploadFailure(ProductImageUploadFailure.Kind.DUPLICATE,
-                "이미 업로드되었거나 업로드 중인 상품입니다. 다른 상품코드를 입력해주세요.");
+    private static ProductImageUploadFailure busy() {
+        return new ProductImageUploadFailure(ProductImageUploadFailure.Kind.BUSY,
+                "이 상품의 업로드 예약이 사용 중이거나 결과 확인이 필요합니다. 기존 작업의 결과를 확인해주세요.");
     }
 }

@@ -5,6 +5,7 @@ const fields = o => Object.entries(o).map(([name, value]) => ({
 }));
 const rules = {
   categoryCode: '123',
+  checkedAt: new Date().toISOString(),
   allowSingleItem: true,
   attributes: [{
     name: '색상',

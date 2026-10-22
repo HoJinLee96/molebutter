@@ -20,7 +20,7 @@ public class DefaultProductSupplierService implements cc.ataglace.molebutter.pro
     private final DefaultProductChangeService changes;
     List<Listing> allForChanges(long product){return listings(" WHERE p.id=? AND s.merged_into IS NULL ORDER BY s.id",product);}
     private static final String SELECT="""
-        SELECT s.*,p_pm.lookup_revision,p_pm.latest_status,p_pm.latest_result,
+        SELECT s.*,p_pm.lookup_revision,p_pm.latest_status,(p_pm.latest_result IS NOT NULL) has_latest_result,
         (SELECT e.status FROM product_refresh_entry e WHERE e.product_id=p.id ORDER BY e.run_id DESC LIMIT 1) latest_entry_status,
 
         (SELECT MAX(e.run_id) FROM product_refresh_entry e WHERE e.product_id=p.id) latest_run_id,
@@ -39,7 +39,7 @@ public class DefaultProductSupplierService implements cc.ataglace.molebutter.pro
             boolean conflict=manual!=null&&auto!=null&&!manual.id().equals(auto.id())||result!=null&&result.branch()!=null&&"CONFLICT".equals(result.branch().state());
             if(result!=null&&SupplierStorePolicy.conflicts(settings.stores(),result.offer().mall(),SupplierStorePolicy.identity(result.offer(),result.branch())))conflict=true;
             boolean criteria=r.getObject("observation_revision")!=null&&r.getLong("observation_revision")==r.getLong("lookup_revision");
-            boolean current=r.getString("latest_result")!=null&&!List.of("PENDING","CHECKING","CANCELLED","STALE").contains(Objects.toString(r.getString("latest_entry_status"),""))&&criteria&&r.getObject("observed_run_id")!=null&&Objects.equals(r.getString("observed_run_id"),r.getString("latest_run_id"))&&!List.of("PENDING","CHECKING","BLOCKED","CANCELLED","NOT_CHECKED").contains(r.getString("latest_status"));
+            boolean current=r.getBoolean("has_latest_result")&&!List.of("PENDING","CHECKING","CANCELLED","STALE").contains(Objects.toString(r.getString("latest_entry_status"),""))&&criteria&&r.getObject("observed_run_id")!=null&&Objects.equals(r.getString("observed_run_id"),r.getString("latest_run_id"))&&!List.of("PENDING","CHECKING","BLOCKED","CANCELLED","NOT_CHECKED").contains(r.getString("latest_status"));
             boolean channelSupported=!"NAVER_SMART_STORE".equals(r.getString("mall"))||result!=null&&NaverChannelPolicy.comparable(result.offer());
             current=current&&channelSupported;
             boolean priced=current&&result!=null&&result.offer().price()!=null&&result.offer().price()>0&&result.accepted();

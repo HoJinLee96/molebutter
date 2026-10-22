@@ -54,10 +54,10 @@ class CoupangIntentMigrationIT {
         }
     }
     static int migrate(String url) {
-        return Flyway.configure().dataSource(url, "test_migrator", "isolated-test-migration-password").load()
+        return Flyway.configure().dataSource(url, "test_migrator", "isolated-test-migration-password").target("48").load()
                 .migrate().migrationsExecuted;
     }
     static void repair(String url) {
-        Flyway.configure().dataSource(url, "test_migrator", "isolated-test-migration-password").load().repair();
+        Flyway.configure().dataSource(url, "test_migrator", "isolated-test-migration-password").target("48").load().repair();
     }
 }

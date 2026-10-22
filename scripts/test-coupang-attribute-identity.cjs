@@ -1,11 +1,12 @@
 'use strict';
+const C=require('../molebutter-app/src/main/resources/static/js/coupang-editor-model.js'),fs=require('node:fs');
 
 const {chromium} = require('playwright'), assert = require('node:assert/strict');
 const {server} = require('./product-ui-preview.cjs'), {fixture, rules} = require('./coupang-ui-fixture.cjs');
 const W = require('../molebutter-app/src/main/resources/static/js/coupang-working-copy-model.js');
 const row = (name, exposed, value) => ({name, exposed, value});
 
-async function editor(browser, width, {mode = 'UPDATE', attributes, metadata, permissions = []}, check) {
+async function editor(browser, width, {mode = 'UPDATE', attributes, metadata, permissions = [], failRules = false}, check) {
   const context = await browser.newContext({viewport: {width, height: 1000}});
   const page = await context.newPage(), errors = [];
   page.on('pageerror', e => errors.push(e.message));
@@ -13,11 +14,12 @@ async function editor(browser, width, {mode = 'UPDATE', attributes, metadata, pe
   doc.options[0].attributes = structuredClone(attributes);
   source.options[0].attributes = structuredClone(attributes);
   source.options[0].attributePermissions = permissions;
-  const state = {document: doc, source, revision: 1, changes: [], saves: 0, prepared: null};
+  const state = {document: doc, source, revision: 1, changes: [], saves: 0, prepared: null, failRules, acceptConfirm: true};
+  page.on('dialog',d=>state.acceptConfirm?d.accept():d.dismiss());
   const entry = () => ({mode, workingCopyId: '42', productId: mode === 'UPDATE' ? '123' : null,
     revision: state.revision, document: W.apply(state.document, state.changes), changes: state.changes,
     sessionId: '77', expiresAt: '2030-01-01T00:00:00Z', observation: mode === 'UPDATE' ? source : null,
-    blocked: false, accountKey: 'a'.repeat(64)});
+    blocked: false, accountKey: 'a'.repeat(64), categoryRules:mode==='CREATE'&&!state.failRules?{...rules,checkedAt:new Date().toISOString(),attributes:metadata}:null});
   await context.route('https://**/*', r => r.abort());
   await context.route('**/api/coupang/**', async r => {
     const req = r.request(), path = new URL(req.url()).pathname;
@@ -32,7 +34,7 @@ async function editor(browser, width, {mode = 'UPDATE', attributes, metadata, pe
       state.revision++;
       return reply(entry());
     }
-    if (path.endsWith('/rules')) return reply({...rules, attributes: metadata});
+    if (path.endsWith('/rules')) {if(state.failRules)return r.fulfill({status:503,json:{message:'모의 규격 조회 실패'}});return reply({...rules, attributes: metadata});}
     if (path.includes('/shipping-places/')) return reply({items: [], hasNext: false});
     if (path === '/api/coupang/submissions') return reply({items: [], totalPages: 0});
     if (path.endsWith('/prepare')) {
@@ -44,10 +46,11 @@ async function editor(browser, width, {mode = 'UPDATE', attributes, metadata, pe
     throw Error('Unexpected request: ' + req.method() + ' ' + path);
   });
   try {
-    const metadataLoaded = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/rules'));
+    const metadataLoaded = mode==='UPDATE' ? page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/rules')) : null;
     await page.goto('http://127.0.0.1:' + server.address().port + '/coupang/working-copies/42/edit');
     await page.locator('[data-field="basic.sellerProductName"]').waitFor();
-    await (await metadataLoaded).finished();
+    if(metadataLoaded)await (await metadataLoaded).finished();
+    else await page.locator('#editor-category-status').filter({hasText:failRules?'만료':'조회 완료'}).waitFor();
     await page.waitForFunction(() => !document.querySelector('#editor-save-working-copy').disabled);
     await check(page, state);
     assert.deepEqual(errors, []);
@@ -59,6 +62,25 @@ async function editor(browser, width, {mode = 'UPDATE', attributes, metadata, pe
   const browser = await chromium.launch({channel: 'chrome', headless: true});
   try {
     for (const width of [1440, 390]) {
+      const toneName='패션 의류/잡화 색상계열',toneMetadata=[{name:toneName,exposed:'NONE',required:'OPTIONAL',groupNumber:'NONE'},{name:'소재',exposed:'NONE',required:'OPTIONAL',groupNumber:'NONE'}];
+      for(const mode of ['CREATE','UPDATE'])await editor(browser,width,{mode,metadata:toneMetadata,attributes:[row('색상','EXPOSED','구매 브라운')]},async(page,state)=>{
+        const select=page.locator('#editor-search-filter-fields select[aria-label="'+toneName+'"]'),button=page.locator('[data-color-tone-path]');
+        assert.equal(await select.count(),1);assert.deepEqual(await select.locator('option').allTextContents(),['선택',...C.colorToneChoices]);assert.equal(await select.inputValue(),'');
+        await page.locator('#editor-save-working-copy').click();await page.waitForFunction(()=>document.querySelector('#editor-validation').textContent==='임시 저장 완료');assert.deepEqual(state.changes,[]);assert.equal(state.document.options[0].attributes.length,1);
+        await page.locator('[data-field="basic.displayProductName"]').fill('닥스 진한 브라운 중지갑');assert.equal(await select.inputValue(),'');await button.click();assert.equal(await select.inputValue(),'브라운 톤');
+        await select.selectOption('핑크 톤');await page.locator('[data-field="basic.displayProductName"]').fill('닥스 블랙 지갑');assert.equal(await select.inputValue(),'핑크 톤');state.acceptConfirm=false;await button.click();assert.equal(await select.inputValue(),'핑크 톤');state.acceptConfirm=true;await button.click();assert.equal(await select.inputValue(),'블랙 톤');
+        await select.selectOption('');await page.locator('[data-field="basic.displayProductName"]').fill('블랙 화이트 지갑');await button.click();assert.equal(await select.inputValue(),'');assert.match(await page.locator('[id^="color-tone-status-"]').textContent(),/직접 선택/);
+        await select.selectOption('브라운 톤');await page.locator('#editor-save-working-copy').click();await page.waitForFunction(()=>document.querySelector('#editor-validation').textContent==='임시 저장 완료');assert(state.changes.filter(c=>c.path.startsWith('options.attributes')).every(c=>c.rowKey[1]==='NONE'));assert.equal(state.document.options[0].attributes.filter(a=>a.exposed==='EXPOSED')[0].value,'구매 브라운');assert(!state.document.options[0].attributes.some(a=>a.name==='소재'));
+        await page.reload();await select.waitFor();assert.equal(await select.inputValue(),'브라운 톤');await page.locator('#editor-search-filters').scrollIntoViewIfNeeded();fs.mkdirSync('target/ui-check',{recursive:true});await page.screenshot({path:'target/ui-check/coupang-color-tone-'+mode+'-'+width+'.png'});
+      });
+      await editor(browser,width,{metadata:toneMetadata,attributes:[row(toneName,'NONE','기존 계열')]},async(page,state)=>{
+        const select=page.locator('#editor-search-filter-fields select');assert.equal(await select.inputValue(),'기존 계열');await page.locator('#editor-save-working-copy').click();await page.waitForFunction(()=>document.querySelector('#editor-validation').textContent==='임시 저장 완료');assert.deepEqual(state.changes,[]);
+      });
+      await editor(browser,width,{metadata:toneMetadata,attributes:[],failRules:true},async(page,state)=>{
+        await page.locator('#editor-search-filter-status').filter({hasText:'확인하지 못했습니다'}).waitFor();state.failRules=false;await page.locator('#editor-search-filter-retry').click();await page.locator('#editor-search-filter-fields select').waitFor();assert.equal(await page.locator('#editor-search-filter-fields select').inputValue(),'');
+      });
+      await editor(browser,width,{metadata:[],attributes:[]},async page=>{assert.match(await page.locator('#editor-search-filter-status').textContent(),/API에서 제공하는 검색필터가 없습니다/);});
+
       for (const editable of [null, false, true]) for (const reversed of [false, true]) {
         const attributes = [row('색상', 'NONE', '검색 색상'), row('색상', 'EXPOSED', '구매 색상')];
         const metadata = [{name: '색상', exposed: 'NONE', required: 'OPTIONAL', groupNumber: 'NONE'},

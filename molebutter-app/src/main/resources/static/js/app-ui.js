@@ -18,6 +18,14 @@ const AppUI = (() => {
         try { const u = new URL(value); return ['http:', 'https:'].includes(u.protocol) && !u.username && !u.password ? u.href : ''; }
         catch { return ''; }
     }
+    // Coupang exposure ID and vendor option ID are distinct from sellerProductId.
+    function coupangOptionLink(productId, vendorItemId, empty = '미확인') {
+        const id = value => (typeof value === 'string' || typeof value === 'number' && Number.isSafeInteger(value)) && /^[0-9]{1,30}$/.test(String(value)) ? String(value) : '';
+        const vendor = id(vendorItemId), product = id(productId);
+        if (!vendor) return escape(vendorItemId == null || vendorItemId === '' ? empty : vendorItemId);
+        const href = product ? `https://www.coupang.com/vp/products/${product}?vendorItemId=${vendor}` : `/api/coupang/products/options/${vendor}/open`;
+        return `<a class="coupang-option-link" href="${href}" target="_blank" rel="noopener noreferrer" aria-label="옵션 ${vendor} 쿠팡 상품 새 탭으로 열기">${vendor}</a>`;
+    }
     function pager(id, data, change, { numbered = false, label = '상품 목록 페이지 이동' } = {}) {
         const node = $(id);
         if (numbered) { numberedPager(node, data, change, label); return; }
@@ -70,6 +78,7 @@ const AppUI = (() => {
         summary.setAttribute('aria-live', 'polite'); node.append(summary);
         if (restoreFocus) currentButton?.focus();
     }
-    return { $, escape, stamp, uuid, webUrl, pager };
+    const normalizeCoupangPrice = value => String(value ?? '').trim().replaceAll(',', '');
+    return { $, escape, stamp, uuid, webUrl, coupangOptionLink, pager, normalizeCoupangPrice };
 })();
 if (typeof module !== 'undefined') module.exports = AppUI;

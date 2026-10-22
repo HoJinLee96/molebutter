@@ -23,10 +23,25 @@ class NaverSearchAccessTest {
             .isInstanceOf(NaverPriceSearch.SearchBlocked.class).hasMessageContaining("로그인하지 않습니다");
     }
 
-    @ParameterizedTest @ValueSource(strings={"접근이 제한되었습니다.","비정상적인 접근입니다.","보안 확인"})
+    @ParameterizedTest @ValueSource(strings={"접근이 제한되었습니다.","비정상적인 접근입니다.","보안 확인","자동입력 방지"})
     void stopsEvenWhenRestrictionPageReturnsHttpOk(String text) {
         assertThatThrownBy(()->NaverPriceSearch.checkAccess(SEARCH_URL,200,text))
-            .isInstanceOf(NaverPriceSearch.SearchBlocked.class).hasMessage("[네이버 검색 제한] 접속 제한·보안 확인 감지. 검색 전용 Chrome을 확인해 주세요.");
+            .isInstanceOfSatisfying(NaverPriceSearch.SearchBlocked.class, failure -> {
+                assertThat(failure.reason()).isEqualTo(NaverPriceSearch.BlockReason.SECURITY_CHECK);
+                assertThat(NaverSearchFailure.temporary(failure.reason().name(),failure.httpStatus())).isTrue();
+            });
+    }
+
+    @Test void onlyExplicitRetryableRestrictionsJoinTheBackoffPolicy() {
+        for(int status:new int[]{418,429})assertThatThrownBy(()->NaverPriceSearch.checkAccess(SEARCH_URL,status,"보안 확인"))
+            .isInstanceOfSatisfying(NaverPriceSearch.SearchBlocked.class,failure->{
+                assertThat(failure.httpStatus()).isEqualTo(status);
+                assertThat(NaverSearchFailure.temporary(failure.reason().name(),failure.httpStatus())).isTrue();
+            });
+        for(String reason:new String[]{"ACCESS_RESTRICTED","AUTHENTICATED_SESSION","TAB_CLEANUP_FAILED","BROWSER_UNAVAILABLE"})
+            assertThat(NaverSearchFailure.temporary(reason,null)).isFalse();
+        assertThatThrownBy(()->NaverPriceSearch.checkAccess(SEARCH_URL,403,"보안 확인"))
+            .isInstanceOfSatisfying(NaverPriceSearch.SearchBlocked.class,failure->assertThat(NaverSearchFailure.temporary(failure.reason().name(),failure.httpStatus())).isFalse());
     }
 
     @Test void permitsNormalResultsAndEmptyResults() {

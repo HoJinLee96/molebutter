@@ -6,7 +6,7 @@
 <main id="main-content" tabindex="-1" class="page settings-page">
     <h1>공통 설정</h1>
     <p th:unless="${settingsAdmin}" class="settings-notice">설정을 조회할 수 있습니다. 추가·변경은 관리자에게 요청해 주세요.</p>
-    <nav id="settings-tabs" class="tabs settings-tabs" aria-label="설정 항목"><a class="tab" href="/settings?tab=brands" data-tab="brands">브랜드</a><a class="tab" href="/settings?tab=preferred" data-tab="preferred">선호 매입처</a><a class="tab" href="/settings?tab=suppliers" data-tab="suppliers">매입처 지원</a><a class="tab" href="/settings?tab=payment-methods" data-tab="payment-methods" th:if="${settingsAdmin}">결제 수단</a><a class="tab" href="/settings?tab=schedule" data-tab="schedule">자동 최신화</a></nav>
+    <nav id="settings-tabs" class="tabs settings-tabs" aria-label="설정 항목"><a class="tab" href="/settings?tab=brands" data-tab="brands">브랜드</a><a class="tab" href="/settings?tab=preferred" data-tab="preferred">선호 매입처</a><a class="tab" href="/settings?tab=suppliers" data-tab="suppliers">매입처 지원</a><a class="tab" href="/settings?tab=payment-methods" data-tab="payment-methods" th:if="${settingsAdmin}">결제 수단</a><a class="tab" href="/settings?tab=coupang-registration" data-tab="coupang-registration">쿠팡 등록 기본설정</a><a class="tab" href="/settings?tab=coupang-pricing" data-tab="coupang-pricing">쿠팡 가격 계산</a><a class="tab" href="/settings?tab=schedule" data-tab="schedule">자동 최신화</a></nav>
     <p id="settings-error" class="form-error" role="alert" hidden></p><p id="settings-success" class="form-success" role="status" hidden></p>
     <button id="settings-reload" class="btn small" type="button" hidden>다시 조회</button>
     <section class="panel settings-section" data-settings-panel="brands" hidden>
@@ -28,6 +28,40 @@
         <h2>결제 수단</h2><form id="payment-create-form" class="toolbar"><label class="field">결제 수단 이름 <input id="payment-name" maxlength="100" required></label><button id="payment-create-save" class="btn primary" type="button" disabled>결제 수단 추가</button></form>
         <div class="table-wrap"><table class="data"><thead><tr><th>결제 수단</th><th>관리</th></tr></thead><tbody id="settings-payment-rows"></tbody></table></div>
     </section>
+    <section class="panel" data-settings-panel="coupang-registration" hidden>
+        <h2>쿠팡 등록 기본설정</h2><p>현재 쿠팡 계정의 신규 등록 준비에만 적용합니다. 기존 상품·작업본의 값은 바뀌지 않습니다. 비워 둔 항목은 등록 화면에서 직접 확인합니다.</p>
+        <p>판매기간은 등록 준비 시점의 한국 시각부터 2099년 12월 31일 23:59까지입니다. 인증·서류는 상품 카테고리별로 직접 확인합니다.</p>
+        <p id="registration-default-status" role="status"></p>
+        <form id="registration-default-form" class="form"><div id="registration-default-fields" class="coupang-field-grid"></div>
+        <div class="field"><label for="registration-default-cert-type">인증 기본 유형 (선택 · 카테고리 규격의 유형 코드)</label><input id="registration-default-cert-type" maxlength="100"><small>해당 카테고리가 지원하는 유형일 때만 적용합니다. 필수 인증·서류는 별도로 확인합니다.</small></div><div class="field"><label for="registration-default-cert-code">인증 기본 번호 (선택)</label><input id="registration-default-cert-code" maxlength="200"></div>
+        <section aria-labelledby="registration-prefix-title">
+            <h3 id="registration-prefix-title">상세설명 앞 이미지</h3>
+            <p>공개 R2의 common/ 이미지 URL을 최대 20개 지정합니다. 저장한 순서대로 새 등록의 상품 사진 앞에 넣습니다. 대표·추가 상품 이미지에는 넣지 않습니다.</p>
+            <p class="product-meta">예: https://assets.molebutter.link/common/first_guide.png</p>
+            <div id="registration-prefix-images"></div>
+            <button id="registration-prefix-add" class="btn" type="button">이미지 URL 추가</button>
+        </section>
+        <section aria-labelledby="registration-brand-logo-title">
+            <h3 id="registration-brand-logo-title">브랜드별 상세설명 로고</h3>
+            <p>브랜드명·별칭이 제목에서 하나만 확인되면 공통 안내 이미지 뒤에 로고를 넣습니다. 기존 상품·작업본은 바꾸지 않습니다.</p>
+            <p class="product-meta">닥스 예시: https://assets.molebutter.link/common/daks_logo.png · 예시는 자동 저장하지 않습니다.</p>
+            <datalist id="registration-brand-logo-names"></datalist><div id="registration-brand-logos"></div>
+            <button id="registration-brand-logo-add" class="btn" type="button">브랜드 로고 추가</button>
+        </section>
+        <div class="toolbar"><button type="button" id="registration-outbound" class="btn">출고지 조회</button><button type="button" id="registration-return" class="btn">반품지 조회</button><button type="button" id="registration-address-next" class="btn" hidden>주소록 다음</button></div><div id="registration-addresses" class="toolbar"></div>
+        <div class="toolbar"><button id="registration-default-reload" class="btn" type="button">다시 조회</button><button id="registration-default-save" class="btn primary" type="button" th:if="${settingsAdmin}">등록 기본설정 저장</button></div>
+        </form>
+    </section>
+    <section class="panel settings-section" data-settings-panel="coupang-pricing" hidden>
+        <h2>쿠팡 가격 계산</h2><p class="field-hint">배송비는 VAT 포함 계산 비용이며 매입처 배송비와 자동 합산하지 않습니다. VAT 10% · 천 원 미만 버림 · 만 원 단위 가격은 1,000원 추가 차감.</p>
+        <p id="pricing-settings-summary" role="status"></p>
+        <form id="pricing-settings-form" class="form" th:if="${settingsAdmin}">
+            <div class="field"><label for="pricing-shipping">계산 배송비 (원 · VAT 포함)</label><input id="pricing-shipping" type="number" min="0" max="9007199254740991" step="1" required></div>
+            <div class="field"><label for="pricing-commission">판매수수료율 (%)</label><input id="pricing-commission" type="number" min="0" max="99.9999" step="0.0001" required></div>
+            <div class="field"><label for="pricing-margin">희망 마진율 (%)</label><input id="pricing-margin" type="number" min="0" max="99.9999" step="0.0001" required></div>
+            <button id="pricing-settings-save" class="btn primary" type="button" disabled>계산 설정 저장</button>
+        </form>
+    </section>
     <section class="panel settings-section" data-settings-panel="schedule" hidden>
         <h2>자동 최신화</h2><p id="settings-schedule-summary" class="settings-notice">설정을 불러오고 있습니다.</p>
         <form id="schedule-settings-form" class="form" th:if="${settingsAdmin}">
@@ -43,5 +77,5 @@
 <dialog id="settings-delete-dialog" class="attendance-dialog" aria-labelledby="settings-delete-title">
     <h2 id="settings-delete-title">등록 삭제</h2><p id="settings-delete-description"></p><p id="settings-delete-error" class="form-error" role="alert" hidden></p><form id="settings-delete-form" class="attendance-actions"><button type="button" class="btn" data-settings-close="settings-delete-dialog">취소</button><button id="settings-delete-save" class="btn danger" type="button">삭제</button></form>
 </dialog>
-<script th:src="@{/js/api.js}"></script><script th:src="@{/js/settings.js}"></script><script th:src="@{/js/supplier-editor.js}"></script><script th:src="@{/js/supplier-settings.js}"></script>
+<script th:src="@{/js/api.js}"></script><script th:src="@{/js/settings.js(v=20261020-registration-text)}"></script><script th:src="@{/js/coupang-editor-model.js(v=20261020-registration-text)}"></script><script th:src="@{/js/coupang-registration-defaults.js(v=20261020-brand-logo)}"></script><script th:src="@{/js/supplier-editor.js}"></script><script th:src="@{/js/supplier-settings.js}"></script>
 </body></html>

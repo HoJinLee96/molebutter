@@ -30,7 +30,7 @@ final class CoupangHttpTransport {
         var builder=HttpRequest.newBuilder(base.resolve(path+(query.isEmpty()?"":"?"+query))).timeout(timeout).header("Authorization",authorization).header("Accept","application/json");
         // JDK 21 HTTP/2 omits Content-Length for an empty body. Coupang's gateway
         // requires it on bodyless writes; HTTP/1.1 emits Content-Length: 0 itself.
-        if((method.equals("PUT")||method.equals("POST"))&&(payload==null||payload.length==0))builder.version(HttpClient.Version.HTTP_1_1);
+        if((method.equals("PUT")||method.equals("POST")||method.equals("DELETE"))&&(payload==null||payload.length==0))builder.version(HttpClient.Version.HTTP_1_1);
         if(payload!=null)builder.header("Content-Type","application/json");
         var request=builder.method(method,payload==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofByteArray(payload)).build();
         var future=client.sendAsync(request,info->subscriber);

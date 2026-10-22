@@ -25,11 +25,15 @@ class ProductImageUploadServiceTest {
         uploads = new ProductImageUploadService(workspace, storage, queue::add, 32 * 1024 * 1024L, clock);
         when(storage.publicUrl(eq(StorageArea.PUBLIC), anyString())).thenAnswer(call ->
                 Optional.of(URI.create("https://assets.example.test/" + call.<String>getArgument(1))));
-        when(storage.list(eq(StorageArea.PUBLIC), anyString(), isNull(), eq(1))).thenReturn(new ObjectPage(List.of(), null));
+        when(storage.head(eq(StorageArea.PUBLIC), anyString())).thenReturn(Optional.empty());
         when(storage.head(eq(StorageArea.PRIVATE), anyString())).thenReturn(Optional.empty());
         when(workspace.prepareExport(anyLong(), any())).thenReturn(() -> images(2));
         when(storage.create(eq(StorageArea.PUBLIC), anyString(), any(), anyString(), anyMap())).thenReturn(
                 new ObjectMetadata(StorageArea.PUBLIC, "test/key.png", 3, "image/png", "\"etag\"", null, Map.of()));
+    }
+    private static byte[] sha256(byte[] bytes) {
+        try { return MessageDigest.getInstance("SHA-256").digest(bytes); }
+        catch (java.security.NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }
     }
     private ProductImageUploadRequest request(String id, int count) {
         List<DownloadImageItemDto> items = new ArrayList<>();
@@ -53,6 +57,22 @@ class ProductImageUploadServiceTest {
         return "products/HIHO861W2/" + directory + "/" + fileName;
     }
 
+    @Test void uploadsActual750PixelSizeRenditionAndHashesTheTransferredBytes() throws Exception {
+        var source=new java.awt.image.BufferedImage(2880,1880,java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var g=source.createGraphics();g.setColor(java.awt.Color.BLUE);g.fillRect(0,0,2880,1880);g.dispose();
+        byte[] original=cc.ataglace.molebutter.imaging.internal.render.RenderSupport.encodePng(source);
+        byte[] prepared=cc.ataglace.molebutter.imaging.internal.render.SizeGuideUploadImage.prepare(original);
+        when(workspace.prepareExport(anyLong(),any())).thenReturn(()->List.of(
+                new ExportImageDto("사이즈.png","image/png",".png",prepared,ExportImageCategory.PROCESSED)));
+        String id=id();uploads.start(42L,request(id,1));queue.getFirst().run();
+        assertThat(uploads.get(42L,id).status()).isEqualTo("SUCCEEDED");
+        var bytes=ArgumentCaptor.forClass(byte[].class);
+        verify(storage).create(eq(StorageArea.PUBLIC),eq(key(id,"사이즈.png")),bytes.capture(),eq("image/png"),
+                argThat(m->m.get("sha256").equals(java.util.HexFormat.of().formatHex(sha256(prepared)))));
+        var written=javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(bytes.getValue()));
+        assertThat(written.getWidth()).isEqualTo(750);assertThat(written.getHeight()).isEqualTo(490);
+        assertThat(source.getWidth()).isEqualTo(2880);
+    }
     @Test void normalizesDestinationAndUploadsMixedOrderOnceWithoutSourceCodeMutation() {
         String id = id();
         var request = request(id, 3);
@@ -86,6 +106,15 @@ class ProductImageUploadServiceTest {
         verify(storage, times(3)).create(eq(StorageArea.PUBLIC), any(), any(), any(), any());
     }
 
+    @Test void recentCompletedLinkageRetainsSelectionsWithoutReadingOrWritingStorage(){
+        String job=id();var input=request(job,2);uploads.start(42L,input);queue.getFirst().run();
+        clearInvocations(storage);var link=uploads.recent(42L,input.productCode(),input.brandCode(),input.uploadProductCode()).orElseThrow();
+        assertThat(link).hasSize(2);
+        assertThat(uploads.matchesRecent(42L,input.productCode(),input.brandCode(),input.uploadProductCode(),link.get(input.images().getFirst()).key(),images(2).getFirst().bytes())).isTrue();
+        assertThat(uploads.matchesRecent(42L,input.productCode(),input.brandCode(),input.uploadProductCode(),link.get(input.images().getFirst()).key(),new byte[]{99})).isFalse();assertThat(link.get(input.images().getFirst()).key()).endsWith("official/01.jpg");
+        assertThat(uploads.recent(43L,input.productCode(),input.brandCode(),input.uploadProductCode())).isEmpty();
+        assertThat(uploads.recent(42L,"OTHER",input.brandCode(),input.uploadProductCode())).isEmpty();verifyNoInteractions(storage);
+    }
     @Test void duplicateSizeAndNoticeExportsKeepFriendlyNamesAsActualObjectBasenames() {
         String id = id();
         var images = List.of(images(1).getFirst(),
@@ -239,7 +268,7 @@ class ProductImageUploadServiceTest {
         String id = id();
         when(storage.create(eq(StorageArea.PUBLIC), eq(key(id, 2, ".png")), any(), anyString(), anyMap()))
                 .thenThrow(new StorageException(StorageException.Code.WRITE_UNCERTAIN));
-        when(storage.head(StorageArea.PUBLIC, key(id, 2, ".png"))).thenReturn(Optional.of(confirmed(id, 2)));
+        when(storage.head(StorageArea.PUBLIC, key(id, 2, ".png"))).thenReturn(Optional.empty(), Optional.of(confirmed(id, 2)));
         uploads.start(42L, request(id, 2)); queue.getFirst().run();
         var result = uploads.get(42L, id);
         assertThat(result.status()).isEqualTo("SUCCEEDED");
@@ -247,7 +276,7 @@ class ProductImageUploadServiceTest {
         assertThat(result.error()).isNull();
         assertThat(uploads.start(42L, request(id, 2))).isEqualTo(result);
         verify(storage, times(2)).create(eq(StorageArea.PUBLIC), any(), any(), any(), any());
-        verify(storage, times(1)).head(eq(StorageArea.PUBLIC), anyString());
+        verify(storage, times(3)).head(eq(StorageArea.PUBLIC), anyString());
     }
 
     @Test void confirmedUncertainFileWithUnexecutedLaterFilesEndsAsPartialFailureWithoutResuming() throws Exception {
@@ -255,7 +284,7 @@ class ProductImageUploadServiceTest {
         when(workspace.prepareExport(anyLong(), any())).thenReturn(() -> images(3));
         when(storage.create(eq(StorageArea.PUBLIC), eq(key(id, 2, ".png")), any(), anyString(), anyMap()))
                 .thenThrow(new StorageException(StorageException.Code.WRITE_UNCERTAIN));
-        when(storage.head(StorageArea.PUBLIC, key(id, 2, ".png"))).thenReturn(Optional.of(confirmed(id, 2)));
+        when(storage.head(StorageArea.PUBLIC, key(id, 2, ".png"))).thenReturn(Optional.empty(), Optional.of(confirmed(id, 2)));
         uploads.start(42L, request(id, 3)); queue.getFirst().run();
         var result = uploads.get(42L, id);
         assertThat(result.status()).isEqualTo("FAILED");
@@ -267,8 +296,9 @@ class ProductImageUploadServiceTest {
     @Test void providerReadFailureAndMismatchingExistingObjectDoNotClearUnknown() {
         String id = id();
         when(storage.create(eq(StorageArea.PUBLIC), any(), any(), any(), any())).thenThrow(new StorageException(StorageException.Code.CONFLICT));
-        when(storage.head(eq(StorageArea.PUBLIC), any())).thenThrow(new IllegalStateException("provider secret"))
-                .thenReturn(Optional.of(new ObjectMetadata(StorageArea.PUBLIC, key(id, 1, ".jpg"), 3, "image/jpeg", "etag", null, Map.of("sha256","different"))));
+        when(storage.head(eq(StorageArea.PUBLIC), eq(key(id, 1, ".jpg")))).thenReturn(Optional.empty())
+                .thenThrow(new IllegalStateException("provider secret"))
+                .thenReturn(Optional.of(new ObjectMetadata(StorageArea.PUBLIC, key(id, 1, ".jpg"), 3, "image/jpeg", "etag", null, Map.of("sha256", "different"))));
         uploads.start(42L, request(id, 2)); queue.getFirst().run();
         assertThat(uploads.get(42L, id).status()).isEqualTo("UNKNOWN");
         assertThat(uploads.get(42L, id).status()).isEqualTo("UNKNOWN");
@@ -293,7 +323,7 @@ class ProductImageUploadServiceTest {
         verify(storage, never()).create(any(), any(), any(), any(), any());
     }
 
-    @Test void unexpiredFinishedIdsAreRetainedAndExpiredReplayIsBlockedByStoredProduct() {
+    @Test void unexpiredFinishedIdsAreRetainedAndExpiredReplaySkipsStoredFile() {
         when(workspace.prepareExport(anyLong(), any())).thenReturn(() -> images(1));
         ProductImageUploadRequest first = null;
         for (int i = 0; i < 32; i++) {
@@ -306,34 +336,35 @@ class ProductImageUploadServiceTest {
         assertThat(uploads.start(42L, original).status()).isEqualTo("SUCCEEDED");
         clock.advance(Duration.ofHours(4));
         assertThatThrownBy(() -> uploads.get(42L, original.requestId())).hasMessageContaining("찾을 수 없습니다");
-        when(storage.list(StorageArea.PUBLIC, "products/TEST0000/", null, 1)).thenReturn(
-                new ObjectPage(List.of(stored("products/TEST0000/01.jpg")), null));
-        assertDuplicate(() -> uploads.start(42L, original));
+        when(storage.head(StorageArea.PUBLIC, "products/TEST0000/official/01.jpg"))
+                .thenReturn(Optional.of(stored("products/TEST0000/official/01.jpg")));
+        uploads.start(42L, original); queue.getLast().run();
+        assertThat(uploads.get(42L, original.requestId()).result().skippedFiles()).hasSize(1);
         verify(storage, times(1)).create(eq(StorageArea.PUBLIC), eq("products/TEST0000/official/01.jpg"), any(), any(), any());
     }
 
-    @Test void existingOfficialProcessedFlatOrLegacyNestedProductIsRejectedBeforePreparingOrWriting() {
-        for (String existing : List.of("products/HIHO861W2/official/01.jpg", "products/HIHO861W2/processed/상품정보.png",
-                "products/HIHO861W2/01.jpg", "products/HIHO861W2/9b198650-68ba-43cc-8306-eccbbda296d9/01.jpg")) {
-            when(storage.list(StorageArea.PUBLIC, "products/HIHO861W2/", null, 1)).thenReturn(
-                    new ObjectPage(List.of(stored(existing)), null));
-            assertDuplicate(() -> uploads.start(42L, request(id(), 2)));
-        }
-        verifyNoInteractions(workspace);
-        verify(storage, never()).create(any(), any(), any(), any(), any());
-        verify(storage, never()).replace(any(), any(), any(), any(), any(), any());
-        assertThat(queue).isEmpty();
+    @Test void skipsOnlyExactExistingKeysAndUploadsMissingSizeImage() {
+        String id = id();
+        when(storage.head(StorageArea.PUBLIC, key(id, 1, ".jpg"))).thenReturn(Optional.of(stored(key(id, 1, ".jpg"))));
+        uploads.start(42L, request(id, 2)); queue.getFirst().run();
+        var result = uploads.get(42L, id);
+        assertThat(result.status()).isEqualTo("SUCCEEDED");
+        assertThat(result.result().files()).extracting(ProductImageUploadJob.File::fileName).containsExactly("사이즈.png");
+        assertThat(result.result().skippedFiles()).extracting(ProductImageUploadJob.SkippedFile::key).containsExactly(key(id, 1, ".jpg"));
+        assertThat(result.result().skippedFiles().getFirst().reason()).isEqualTo("EXISTS");
+        verify(storage, never()).create(eq(StorageArea.PUBLIC), eq(key(id, 1, ".jpg")), any(), any(), any());
+        verify(storage).create(eq(StorageArea.PUBLIC), eq(key(id, 2, ".png")), any(), any(), any());
+        verify(storage, never()).list(any(), any(), any(), anyInt());
     }
 
-    @Test void destinationLookupUsesExactTrailingSlashAndNeverAssumesAReadFailureMeansEmpty() {
-        when(storage.list(StorageArea.PUBLIC, "products/HIHO861W2/", null, 1))
+    @Test void readFailureOnAnyDestinationStopsBeforeAllPublicWrites() {
+        when(storage.head(StorageArea.PUBLIC, key("", 2, ".png")))
                 .thenThrow(new StorageException(StorageException.Code.ACCESS_DENIED));
-        assertThatThrownBy(() -> uploads.start(42L, request(id(), 2)))
-                .isInstanceOfSatisfying(ProductImageUploadFailure.class,
-                        e -> assertThat(e.kind()).isEqualTo(ProductImageUploadFailure.Kind.CHECK_FAILED));
-        verifyNoInteractions(workspace);
-        verify(storage).list(StorageArea.PUBLIC, "products/HIHO861W2/", null, 1);
-        verify(storage, never()).create(any(), any(), any(), any(), any());
+        String id = id(); uploads.start(42L, request(id, 2)); queue.getFirst().run();
+        var result = uploads.get(42L, id);
+        assertThat(result.status()).isEqualTo("FAILED");
+        assertThat(result.error()).contains("권한");
+        verify(storage, never()).create(eq(StorageArea.PUBLIC), any(), any(), any(), any());
     }
 
     @Test void differentActorsCannotQueueTheSameNormalizedProductEvenWithDifferentSelections() {
@@ -341,21 +372,19 @@ class ProductImageUploadServiceTest {
         uploads.start(42L, first);
         var next = new ProductImageUploadRequest(id(), first.productCode(), first.brandCode(), " hiho861w2 ",
                 List.of(new DownloadImageItemDto(null, id())));
-        assertDuplicate(() -> uploads.start(43L, next));
+        assertBusy(() -> uploads.start(43L, next));
         assertThat(queue).hasSize(1);
         verify(workspace, times(1)).prepareExport(any(), any());
     }
 
-    @Test void productAppearingWhileImagesArePreparedStopsBeforePublicWrites() {
-        when(storage.list(StorageArea.PUBLIC, "products/HIHO861W2/", null, 1))
-                .thenReturn(new ObjectPage(List.of(), null))
-                .thenReturn(new ObjectPage(List.of(stored("products/HIHO861W2/other.png")), null));
+    @Test void unrelatedLegacyAndFlatPathsNeverParticipateInDuplicateDetection() {
         String id = id();
         uploads.start(42L, request(id, 2)); queue.getFirst().run();
-        var result = uploads.get(42L, id);
-        assertThat(result.status()).isEqualTo("FAILED");
-        assertThat(result.error()).contains("중복 업로드");
-        verify(storage, never()).create(eq(StorageArea.PUBLIC), any(), any(), any(), any());
+        assertThat(uploads.get(42L, id).status()).isEqualTo("SUCCEEDED");
+        verify(storage).head(StorageArea.PUBLIC, key(id, 1, ".jpg"));
+        verify(storage).head(StorageArea.PUBLIC, key(id, 2, ".png"));
+        verify(storage, never()).list(any(), any(), any(), anyInt());
+        verify(storage, never()).head(StorageArea.PUBLIC, "products/HIHO861W2/01.jpg");
     }
 
     @Test void publicObjectsFromAnotherRequestCannotConfirmAnUncertainWriteEvenWhenBytesMatch() throws Exception {
@@ -363,10 +392,10 @@ class ProductImageUploadServiceTest {
         when(storage.create(eq(StorageArea.PUBLIC), eq(key(id, 1, ".jpg")), any(), any(), any()))
                 .thenThrow(new StorageException(StorageException.Code.WRITE_UNCERTAIN));
         var matchingBytes = confirmed(id(), 1);
-        when(storage.head(StorageArea.PUBLIC, key(id, 1, ".jpg"))).thenReturn(Optional.of(matchingBytes));
+        when(storage.head(StorageArea.PUBLIC, key(id, 1, ".jpg"))).thenReturn(Optional.empty(), Optional.of(matchingBytes));
         uploads.start(42L, request(id, 2)); queue.getFirst().run();
         assertThat(uploads.get(42L, id).status()).isEqualTo("UNKNOWN");
-        assertDuplicate(() -> uploads.start(43L, request(id(), 2)));
+        assertBusy(() -> uploads.start(43L, request(id(), 2)));
         verify(storage, times(1)).create(eq(StorageArea.PUBLIC), any(), any(), any(), any());
     }
 
@@ -381,14 +410,21 @@ class ProductImageUploadServiceTest {
         verify(storage, never()).create(any(), any(), any(), any(), any());
     }
 
-    @Test void partialSuccessBlocksNewRequestsWithoutSendingTheRemainingImages() {
+    @Test void partialSuccessAllowsNewRequestToSkipStoredFilesAndUploadRemainingFiles() {
         String first = id();
         when(storage.create(eq(StorageArea.PUBLIC), eq(key(first, 2, ".png")), any(), any(), any()))
                 .thenThrow(new StorageException(StorageException.Code.ACCESS_DENIED));
         uploads.start(42L, request(first, 2)); queue.getFirst().run();
         assertThat(uploads.get(42L, first).status()).isEqualTo("FAILED");
-        assertDuplicate(() -> uploads.start(43L, request(id(), 2)));
-        verify(storage, times(2)).create(eq(StorageArea.PUBLIC), any(), any(), any(), any());
+        when(storage.head(StorageArea.PUBLIC, key(first, 1, ".jpg"))).thenReturn(Optional.of(stored(key(first, 1, ".jpg"))));
+        when(storage.create(eq(StorageArea.PUBLIC), eq(key(first, 2, ".png")), any(), any(), any()))
+                .thenReturn(stored(key(first, 2, ".png")));
+        String next = id(); uploads.start(43L, request(next, 2)); queue.getLast().run();
+        var result = uploads.get(43L, next);
+        assertThat(result.status()).isEqualTo("SUCCEEDED");
+        assertThat(result.result().files()).extracting(ProductImageUploadJob.File::fileName).containsExactly("사이즈.png");
+        assertThat(result.result().skippedFiles()).hasSize(1);
+        verify(storage, times(1)).create(eq(StorageArea.PUBLIC), eq(key(first, 1, ".jpg")), any(), any(), any());
     }
 
     @Test void uncertainPrivateReservationNeverSendsImagesAndCanBeSafelyReleasedAfterConfirmation() {
@@ -402,7 +438,7 @@ class ProductImageUploadServiceTest {
                 });
         uploads.start(42L, request(first, 2)); queue.getFirst().run();
         assertThat(uploads.get(42L, first).status()).isEqualTo("UNKNOWN");
-        assertDuplicate(() -> uploads.start(43L, request(id(), 2)));
+        assertBusy(() -> uploads.start(43L, request(id(), 2)));
         when(storage.head(StorageArea.PRIVATE, claimKey)).thenReturn(Optional.of(
                 new ObjectMetadata(StorageArea.PRIVATE, claimKey, 1, "application/json", "other-generation-etag", null,
                         Map.of("request-id",first,"state","held","generation",id()))));
@@ -430,9 +466,183 @@ class ProductImageUploadServiceTest {
         String next = id();
         restarted.start(43L, request(next, 2)); queue.getFirst().run();
         assertThat(restarted.get(43L, next).status()).isEqualTo("FAILED");
-        assertThat(restarted.get(43L, next).error()).contains("이미 업로드");
+        assertThat(restarted.get(43L, next).error()).contains("예약이 사용 중");
         verify(storage, never()).create(eq(StorageArea.PUBLIC), any(), any(), any(), any());
         verify(storage, never()).replace(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test void completedHistoryDoesNotBlockDeletedFilesAndSameRequestNeverReuploads() {
+        var objects = statefulStorage();
+        String first = id(); uploads.start(42L, request(first, 2)); queue.getLast().run();
+        var result = uploads.get(42L, first);
+        objects.keySet().removeIf(key -> key.startsWith("PUBLIC:")); // Simulated manual public-folder deletion.
+        assertThat(uploads.start(42L, request(first, 2))).isEqualTo(result);
+        assertThat(queue).hasSize(1);
+        String next = id(); uploads.start(42L, request(next, 2)); queue.getLast().run();
+        assertThat(uploads.get(42L, next).status()).isEqualTo("SUCCEEDED");
+        assertThat(uploads.get(42L, next).result().files()).hasSize(2);
+        verify(storage, times(4)).create(eq(StorageArea.PUBLIC), any(), any(), any(), any());
+    }
+
+    @Test void allExistingFilesAreSkippedWithoutPublicWritesIncludingAfterRestart() {
+        var objects = statefulStorage();
+        for (var image : images(2)) {
+            String key = key("", image.fileName());
+            objects.put("PUBLIC:" + key, stored(key));
+        }
+        for (int i = 0; i < 2; i++) {
+            if (i == 1) uploads = new ProductImageUploadService(workspace, storage, queue::add, 32 * 1024 * 1024L, clock);
+            String next = id(); uploads.start(42L, request(next, 2)); queue.getLast().run();
+            var result = uploads.get(42L, next);
+            assertThat(result.status()).isEqualTo("SUCCEEDED");
+            assertThat(result.result().files()).isEmpty();
+            assertThat(result.result().skippedFiles()).hasSize(2);
+        }
+        verify(storage, never()).create(eq(StorageArea.PUBLIC), any(), any(), any(), any());
+    }
+
+    @Test void sameBasenameInDifferentCategoriesOrExtensionsIsNotDuplicate() {
+        when(workspace.prepareExport(anyLong(), any())).thenReturn(() -> List.of(
+                new ExportImageDto("01.jpg", "image/jpeg", ".jpg", new byte[]{1}, ExportImageCategory.OFFICIAL),
+                new ExportImageDto("01.jpg", "image/jpeg", ".jpg", new byte[]{2}, ExportImageCategory.PROCESSED),
+                new ExportImageDto("01.png", "image/png", ".png", new byte[]{3}, ExportImageCategory.OFFICIAL)));
+        String next = id(); uploads.start(42L, request(next, 3)); queue.getLast().run();
+        assertThat(uploads.get(42L, next).status()).isEqualTo("SUCCEEDED");
+        assertThat(uploads.get(42L, next).result().files()).extracting(ProductImageUploadJob.File::key).containsExactly(
+                "products/HIHO861W2/official/01.jpg", "products/HIHO861W2/processed/01.jpg", "products/HIHO861W2/official/01.png");
+    }
+
+    @Test void objectCreatedAfterPreflightIsSkippedOnConditionalConflictWithoutOverwrite() {
+        String next = id(), key = key(next, 1, ".jpg");
+        when(storage.head(StorageArea.PUBLIC, key)).thenReturn(Optional.empty(), Optional.of(stored(key)));
+        when(storage.create(eq(StorageArea.PUBLIC), eq(key), any(), any(), any()))
+                .thenThrow(new StorageException(StorageException.Code.CONFLICT));
+        uploads.start(42L, request(next, 2)); queue.getLast().run();
+        var result = uploads.get(42L, next);
+        assertThat(result.status()).isEqualTo("SUCCEEDED");
+        assertThat(result.result().files()).hasSize(1);
+        assertThat(result.result().skippedFiles()).extracting(ProductImageUploadJob.SkippedFile::key).containsExactly(key);
+        verify(storage, times(1)).create(eq(StorageArea.PUBLIC), eq(key), any(), any(), any());
+        verify(storage, never()).replace(eq(StorageArea.PUBLIC), any(), any(), any(), any(), any());
+    }
+
+    @Test void conditionalConflictWithoutConfirmableObjectRemainsUnknownAndDoesNotExpire() {
+        String next = id();
+        when(storage.create(eq(StorageArea.PUBLIC), any(), any(), any(), any()))
+                .thenThrow(new StorageException(StorageException.Code.CONFLICT));
+        uploads.start(42L, request(next, 2)); queue.getLast().run();
+        assertThat(uploads.get(42L, next).status()).isEqualTo("UNKNOWN");
+        clock.advance(Duration.ofHours(5)); uploads.cleanup();
+        assertThat(uploads.start(42L, request(next, 2)).status()).isEqualTo("UNKNOWN");
+        assertBusy(() -> uploads.start(43L, request(id(), 2)));
+        verify(storage, times(1)).create(eq(StorageArea.PUBLIC), any(), any(), any(), any());
+    }
+
+    @Test void uncertainFinalWriteCountsSkippedFilesWhenDeterminingCompletion() throws Exception {
+        String next = id();
+        when(storage.head(StorageArea.PUBLIC, key(next, 1, ".jpg"))).thenReturn(Optional.of(stored(key(next, 1, ".jpg"))));
+        when(storage.head(StorageArea.PUBLIC, key(next, 2, ".png"))).thenReturn(Optional.empty(), Optional.of(confirmed(next, 2)));
+        when(storage.create(eq(StorageArea.PUBLIC), eq(key(next, 2, ".png")), any(), any(), any()))
+                .thenThrow(new StorageException(StorageException.Code.WRITE_UNCERTAIN));
+        uploads.start(42L, request(next, 2)); queue.getLast().run();
+        var result = uploads.get(42L, next);
+        assertThat(result.status()).isEqualTo("SUCCEEDED");
+        assertThat(result.result().files()).hasSize(1);
+        assertThat(result.result().skippedFiles()).hasSize(1);
+        verify(storage, times(1)).create(eq(StorageArea.PUBLIC), any(), any(), any(), any());
+    }
+
+    @Test void releaseFailureAfterConfirmedUploadsIsRecoverableWithoutRepeatingPublicWrites() {
+        statefulStorage();
+        var failRelease = new java.util.concurrent.atomic.AtomicBoolean(true);
+        doAnswer(call -> {
+            if (failRelease.get()) throw new StorageException(StorageException.Code.WRITE_UNCERTAIN);
+            return stored("released");
+        }).when(storage).replace(eq(StorageArea.PRIVATE), any(), any(), any(), any(), any());
+        String next = id(); uploads.start(42L, request(next, 2)); queue.getLast().run();
+        var pending = uploads.get(42L, next);
+        assertThat(pending.status()).isEqualTo("UNKNOWN");
+        assertThat(pending.result().files()).hasSize(2);
+        assertThat(pending.error()).contains("예약 해제");
+        assertBusy(() -> uploads.start(43L, request(id(), 2)));
+        failRelease.set(false);
+        assertThat(uploads.get(42L, next).status()).isEqualTo("SUCCEEDED");
+        verify(storage, times(2)).create(eq(StorageArea.PUBLIC), any(), any(), any(), any());
+    }
+
+    @Test void releaseFailureAfterPartialFailureRestoresFailureAndConfirmedFiles() {
+        statefulStorage();
+        var failRelease = new java.util.concurrent.atomic.AtomicBoolean(true);
+        doAnswer(call -> {
+            if (failRelease.get()) throw new StorageException(StorageException.Code.UNAVAILABLE);
+            return stored("released");
+        }).when(storage).replace(eq(StorageArea.PRIVATE), any(), any(), any(), any(), any());
+        doThrow(new StorageException(StorageException.Code.ACCESS_DENIED))
+                .when(storage).create(eq(StorageArea.PUBLIC), eq(key("", 2, ".png")), any(), any(), any());
+        String next = id(); uploads.start(42L, request(next, 2)); queue.getLast().run();
+        assertThat(uploads.get(42L, next).status()).isEqualTo("UNKNOWN");
+        failRelease.set(false);
+        var result = uploads.get(42L, next);
+        assertThat(result.status()).isEqualTo("FAILED");
+        assertThat(result.result().files()).hasSize(1);
+        assertThat(result.error()).contains("권한");
+        verify(storage, times(2)).create(eq(StorageArea.PUBLIC), any(), any(), any(), any());
+    }
+
+    @Test void missingSizeOnlyCanBeAddedDespiteCompletedHistoryAndExistingOtherImages() {
+        var objects = statefulStorage();
+        String first = id(); uploads.start(42L, request(first, 2)); queue.getLast().run();
+        objects.remove("PUBLIC:" + key(first, "사이즈.png"));
+        when(workspace.prepareExport(anyLong(), any())).thenReturn(() -> List.of(images(2).getLast()));
+        String next = id();
+        var selection = new ProductImageUploadRequest(next, "HIHO6F861W2", "HAZZYS", "HIHO861W2",
+                List.of(new DownloadImageItemDto(null, id())));
+        uploads.start(42L, selection); queue.getLast().run();
+        var result = uploads.get(42L, next);
+        assertThat(result.status()).isEqualTo("SUCCEEDED");
+        assertThat(result.result().files()).extracting(ProductImageUploadJob.File::fileName).containsExactly("사이즈.png");
+        assertThat(result.result().skippedFiles()).isEmpty();
+        verify(storage, times(1)).create(eq(StorageArea.PUBLIC), eq(key(first, "01.jpg")), any(), any(), any());
+        verify(storage, times(2)).create(eq(StorageArea.PUBLIC), eq(key(first, "사이즈.png")), any(), any(), any());
+    }
+
+    @Test void lostReleaseResponseAfterCommitRestoresAllSkippedSuccessWithoutPublicWrites() {
+        var objects = statefulStorage();
+        for (var image : images(2)) {
+            String key = key("", image.fileName()); objects.put("PUBLIC:" + key, stored(key));
+        }
+        doAnswer(call -> {
+            String key = call.getArgument(1); byte[] content = call.getArgument(3);
+            objects.put("PRIVATE:" + key, new ObjectMetadata(StorageArea.PRIVATE, key, content.length,
+                    call.getArgument(4), id(), clock.instant(), call.getArgument(5)));
+            throw new StorageException(StorageException.Code.WRITE_UNCERTAIN);
+        }).when(storage).replace(eq(StorageArea.PRIVATE), any(), any(), any(), any(), any());
+        String next = id(); uploads.start(42L, request(next, 2)); queue.getLast().run();
+        var result = uploads.get(42L, next);
+        assertThat(result.status()).isEqualTo("SUCCEEDED");
+        assertThat(result.result().files()).isEmpty();
+        assertThat(result.result().skippedFiles()).hasSize(2);
+        verify(storage, never()).create(eq(StorageArea.PUBLIC), any(), any(), any(), any());
+        verify(storage, times(1)).replace(eq(StorageArea.PRIVATE), any(), any(), any(), any(), any());
+    }
+
+    private Map<String, ObjectMetadata> statefulStorage() {
+        Map<String, ObjectMetadata> objects = new HashMap<>();
+        when(storage.head(any(), anyString())).thenAnswer(call -> Optional.ofNullable(objects.get(call.getArgument(0) + ":" + call.getArgument(1))));
+        when(storage.create(any(), anyString(), any(), anyString(), anyMap())).thenAnswer(call -> {
+            StorageArea area = call.getArgument(0); String key = call.getArgument(1); byte[] content = call.getArgument(2);
+            if (objects.containsKey(area + ":" + key)) throw new StorageException(StorageException.Code.CONFLICT);
+            ObjectMetadata object = new ObjectMetadata(area, key, content.length, call.getArgument(3), id(), clock.instant(), call.getArgument(4));
+            objects.put(area + ":" + key, object); return object;
+        });
+        when(storage.replace(any(), anyString(), anyString(), any(), anyString(), anyMap())).thenAnswer(call -> {
+            StorageArea area = call.getArgument(0); String key = call.getArgument(1); byte[] content = call.getArgument(3);
+            ObjectMetadata current = objects.get(area + ":" + key);
+            if (current == null || !current.eTag().equals(call.getArgument(2))) throw new StorageException(StorageException.Code.CONFLICT);
+            ObjectMetadata object = new ObjectMetadata(area, key, content.length, call.getArgument(4), id(), clock.instant(), call.getArgument(5));
+            objects.put(area + ":" + key, object); return object;
+        });
+        return objects;
     }
 
     private ProductImageUploadRequest destination(ProductImageUploadRequest source, String code) {
@@ -441,9 +651,9 @@ class ProductImageUploadServiceTest {
     private static ObjectMetadata stored(String key) {
         return new ObjectMetadata(StorageArea.PUBLIC, key, 3, "image/jpeg", "etag", Instant.EPOCH, Map.of());
     }
-    private static void assertDuplicate(Runnable action) {
+    private static void assertBusy(Runnable action) {
         assertThatThrownBy(action::run).isInstanceOfSatisfying(ProductImageUploadFailure.class,
-                e -> assertThat(e.kind()).isEqualTo(ProductImageUploadFailure.Kind.DUPLICATE));
+                e -> assertThat(e.kind()).isEqualTo(ProductImageUploadFailure.Kind.BUSY));
     }
 
     private static ObjectMetadata confirmed(String id, int sequence) throws Exception {

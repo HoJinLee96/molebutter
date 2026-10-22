@@ -166,6 +166,43 @@ class DownloadServiceTest {
         }
         verifyNoInteractions(images,sizes);
     }
+    @Test void uploadResizesOnlyOwnedSizeGuidesTo750AndPreservesEditingZipNoticeAndPhoto() throws Exception {
+        var p=product();
+        byte[] photo=solidPng(Color.RED,20,30), notice=solidPng(Color.GREEN,780,900);
+        when(images.downloadProductImage(p.imageUrls().getFirst(),p.productCode())).thenReturn(
+                new ImageDownloadClient.DownloadedImage(photo,"image/png",".png"));
+        String noticeId=generated.put(1L,p,notice,GeneratedImageStore.ImageKind.NOTICE);
+        for (int[] dimensions:List.of(new int[]{2880,1880},new int[]{780,509},new int[]{750,490},new int[]{375,245})) {
+            byte[] original=solidPng(Color.BLUE,dimensions[0],dimensions[1]);
+            String sizeId=generated.put(1L,p,original,GeneratedImageStore.ImageKind.SIZE);
+            var snapshot=service.capture(1L,request(List.of(new DownloadImageItemDto(null,sizeId),
+                    new DownloadImageItemDto(null,noticeId),new DownloadImageItemDto(0,null),new DownloadImageItemDto(null,sizeId)),false),p);
+            var upload=service.exportUploadImages(snapshot);
+            assertThat(upload).extracting(ExportImageDto::fileName).containsExactly("사이즈.png","상품정보.png","03.png","사이즈_2.png");
+            var size=ImageIO.read(new ByteArrayInputStream(upload.getFirst().bytes()));
+            assertThat(size.getWidth()).isEqualTo(750);
+            assertThat(size.getHeight()).isEqualTo((int)Math.round(dimensions[1]*750.0/dimensions[0]));
+            assertThat(size.getRGB(375,size.getHeight()/2)).isEqualTo(Color.BLUE.getRGB());
+            assertThat(upload.get(3).bytes()).isEqualTo(upload.getFirst().bytes());
+            assertThat(upload.get(1).bytes()).isEqualTo(notice);
+            assertThat(ImageIO.read(new ByteArrayInputStream(upload.get(2).bytes())).getWidth()).isEqualTo(20);
+            assertThat(generated.get(1L,sizeId,p)).isEqualTo(original);
+            assertThat(unzip(service.downloadImages(snapshot).archive()).get("BAG1/processed/사이즈.png")).isEqualTo(original);
+            if(dimensions[0]==750)assertThat(upload.getFirst().bytes()).isEqualTo(original);
+        }
+    }
+    @Test void legacySizeUploadAlsoUses750AndUnreadableSizeFailsInsteadOfPassingThrough() throws Exception {
+        var p=product();byte[] size=solidPng(Color.BLUE,780,509);
+        when(sizes.render(p,null)).thenReturn(new SizeGuideService.RenderedSizeGuide(
+                cc.ataglace.molebutter.imaging.internal.policy.SizeGuidePolicy.SizeGuideTemplate.TOTE,size,null));
+        var legacy=service.capture(1L,new DownloadRequestDto("BAG1","DAKS",List.of(),false,true,null),p);
+        var upload=service.exportUploadImages(legacy);
+        assertThat(ImageIO.read(new ByteArrayInputStream(upload.getFirst().bytes())).getWidth()).isEqualTo(750);
+        String invalid=generated.put(1L,p,new byte[]{1,2,3},GeneratedImageStore.ImageKind.SIZE);
+        var snapshot=service.capture(1L,request(List.of(new DownloadImageItemDto(null,invalid)),false),p);
+        assertThatThrownBy(()->service.exportUploadImages(snapshot)).isInstanceOf(ImagingFailure.class).hasMessageContaining("다시 추가");
+        assertThat(generated.get(1L,invalid,p)).containsExactly(1,2,3);
+    }
     private static byte[] solidPng(Color color,int width,int height)throws Exception{var image=new BufferedImage(width,height,BufferedImage.TYPE_INT_RGB);var g=image.createGraphics();g.setColor(color);g.fillRect(0,0,width,height);g.dispose();var bytes=new ByteArrayOutputStream();ImageIO.write(image,"png",bytes);return bytes.toByteArray();}
     private static Map<String,byte[]> unzip(byte[] bytes)throws IOException{var result=new LinkedHashMap<String,byte[]>();try(var zip=new ZipInputStream(new ByteArrayInputStream(bytes))){ZipEntry entry;while((entry=zip.getNextEntry())!=null)result.put(entry.getName(),zip.readAllBytes());}return result;}
 }

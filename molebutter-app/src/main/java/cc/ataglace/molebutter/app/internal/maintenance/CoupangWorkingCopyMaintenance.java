@@ -10,6 +10,7 @@ import org.springframework.boot.*;
 import org.springframework.context.annotation.Configuration;
 import db.migration.V47__coupang_working_copies;
 import db.migration.V48__coupang_intent_and_audit;
+import db.migration.V49__coupang_registered_products;
 
 /**
  * Offline domain upgrade with a verified full restore; never resets sales data
@@ -72,14 +73,15 @@ public final class CoupangWorkingCopyMaintenance {
                         return;
                     }
                 }
-                if (target == 48)
+                if (target >= 48)
                     try (var st = connection.createStatement();
                             var r = st.executeQuery(
-                                    "SELECT COUNT(*) FROM flyway_schema_history WHERE version='47' AND success=TRUE")) {
+                                    "SELECT COUNT(*) FROM flyway_schema_history WHERE version='"+(target-1)+"' AND success=TRUE")) {
                         r.next();
                         if (r.getLong(1) != 1)
-                            throw new IllegalStateException("V47 적용 후 V48 전환 명령을 사용하세요.");
+                            throw new IllegalStateException("이전 버전 전환을 완료한 뒤 V"+target+" 전환 명령을 사용하세요.");
                     }
+                Integer failedProductsRank = target == 49 ? CoupangProductsRecovery.failedRank(connection) : null;
                 Files.createDirectory(backup);
                 String vendor = env.getProperty("coupang.vendor-id", "").trim();
                 if (target == 47 && vendor.isEmpty())
@@ -142,6 +144,22 @@ public final class CoupangWorkingCopyMaintenance {
                     Files.writeString(backup.resolve("preflight.txt"),
                             "V48; obsolete history is archived; previous row-list inputs remain stored and require explicit re-preparation\n");
                     System.setProperty("molebutter.intent.verified", "true");
+                } else if(target==49) {
+                    V49__coupang_registered_products.check(connection);
+                    Files.writeString(backup.resolve("preflight.txt"),"V49; additive registered product storage; no existing business data rewritten\n");
+                    System.setProperty("molebutter.products.verified","true");
+                } else if(target==52) {
+                    db.migration.V52__coupang_recent_product_collections.check(connection);
+                    Files.writeString(backup.resolve("preflight.txt"),"V52; additive recent collection checkpoints and candidates; existing rows preserved\n");
+                    System.setProperty("molebutter.recent-products.verified","true");
+                } else if(target==51) {
+                    db.migration.V51__coupang_registration_defaults.check(connection);
+                    Files.writeString(backup.resolve("preflight.txt"),"V51; additive account registration defaults; existing rows preserved\n");
+                    System.setProperty("molebutter.registration.verified","true");
+                } else if(target==50) {
+                    db.migration.V50__coupang_pricing_settings.check(connection);
+                    Files.writeString(backup.resolve("preflight.txt"),"V50; additive shared pricing settings; existing rows preserved\n");
+                    System.setProperty("molebutter.pricing.verified","true");
                 } else
                     throw new IllegalStateException("지원하지 않는 전환 버전입니다.");
                 Callable<Void> verification = () -> {
@@ -170,6 +188,8 @@ public final class CoupangWorkingCopyMaintenance {
                                 "V47 observation preparation (no user changes): "
                                         + prepared.stream().map(CoupangV47Preparation.Observation::id).toList() + "\n",
                                 StandardOpenOption.APPEND);
+                    if (failedProductsRank != null)
+                        CoupangProductsRecovery.recover(connection, verify, backup, failedProductsRank);
                     SalesDataMaintenance.migrate(env.getProperty("spring.flyway.url", url),
                             env.getProperty("spring.flyway.user", user),
                             env.getProperty("spring.flyway.password", password), Integer.toString(target));
@@ -180,7 +200,7 @@ public final class CoupangWorkingCopyMaintenance {
                 } finally {
                     for (String property : List.of("molebutter.working-copy.account",
                             "molebutter.working-copy.verified", "molebutter.working-copy.public-base",
-                            "molebutter.intent.verified"))
+                            "molebutter.intent.verified", "molebutter.products.verified", "molebutter.pricing.verified", "molebutter.registration.verified", "molebutter.recent-products.verified"))
                         System.clearProperty(property);
                 }
                 Files.writeString(backup.resolve("UPGRADE_COMPLETE"), "V" + target
@@ -191,7 +211,7 @@ public final class CoupangWorkingCopyMaintenance {
     }
     private static Map<String, String> preservationEvidence(Map<String, String> values, int target) {
         var out = new TreeMap<String, String>();
-        var renamed = target == 48
+        Map<String,String> renamed = target>=49 ? Map.of() : target == 48
                 ? Map.of("coupang_listing_history", "legacy_coupang_listing_history", "coupang_listing_history_asset",
                         "legacy_coupang_listing_history_asset", "coupang_editor_history_link",
                         "legacy_coupang_editor_history_link")
@@ -203,7 +223,7 @@ public final class CoupangWorkingCopyMaintenance {
                         "coupang_media_comparison", "legacy_coupang_media_comparison");
         values.forEach((k, v) -> {
             if ((k.startsWith("coupang_") || k.startsWith("legacy_coupang_"))
-                    && !Set.of("coupang_edit_session", "coupang_submission_preview").contains(k))
+                    && (target>=49 || !Set.of("coupang_edit_session", "coupang_submission_preview").contains(k)))
                 out.put(renamed.getOrDefault(k, k), v);
         });
         return out;

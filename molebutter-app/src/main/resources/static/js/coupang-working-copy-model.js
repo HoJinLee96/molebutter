@@ -1,6 +1,7 @@
 "use strict";
 (() => {
   const clone = value => structuredClone(value), same = (a,b) => JSON.stringify(a) === JSON.stringify(b);
+  const price=typeof module!=='undefined'?require('./app-ui.js').normalizeCoupangPrice:AppUI.normalizeCoupangPrice;
   const basicKeys=['sellerProductName','displayProductName','generalProductName','brand','productGroup','displayCategoryCode'];
   function inflate(entry){
     const d=clone(entry.document), source=entry.observation;
@@ -12,8 +13,9 @@
   function flatten(d){
     const uuid=typeof module!=='undefined'?require('./app-ui.js').uuid:AppUI.uuid;
     return {basic:Object.fromEntries(basicKeys.filter(k=>d.basic[k]!=null).map(k=>[k,String(d.basic[k])])),options:d.options.map(o=>{
-      const registration={...o.registration};if(o.currentChanges?.salePrice!=null)registration.salePrice=String(o.currentChanges.salePrice);if(o.currentChanges?.amountInStock!=null)registration.maximumBuyCount=String(o.currentChanges.amountInStock);
-      return {id:o.id,itemName:o.itemName||'',registration,attributes:(o.attributes||[]).filter(a=>!a._automatic||String(a.value||'').length>0).map(a=>({name:a.name,value:a.value,exposed:a.exposed})),images:(o.images||[]).map((i,n)=>({id:i.id||(i.id=uuid()),assetId:i.assetId||null,url:i.url||null,type:i.type||'DETAIL',order:i.order??n})),contents:(o.contents||[]).map(c=>({id:c.id||(c.id=uuid()),type:c.type,detailType:c.detailType||'TEXT',content:c.content||'',assetId:c.assetId||null})),notices:clone(o.notices||[]),certifications:clone(o.certifications||[]),noticeCategory:o.notices?.[0]?.category||null};
+      const noticeCategory=o.noticeCategory||o.notices?.[0]?.category||null,notices=(o.notices||[]).filter(n=>n.category===noticeCategory);
+      const registration={...o.registration};for(const k of ['originalPrice','salePrice'])if(registration[k]!=null)registration[k]=price(registration[k]);if(o.currentChanges?.salePrice!=null)registration.salePrice=price(o.currentChanges.salePrice);if(o.currentChanges?.amountInStock!=null)registration.maximumBuyCount=String(o.currentChanges.amountInStock);
+      return {id:o.id,itemName:o.itemName||'',registration,attributes:(o.attributes||[]).filter(a=>!a._automatic||String(a.value||'').length>0).map(a=>({name:a.name,value:a.value,exposed:a.exposed})),images:(o.images||[]).map((i,n)=>({id:i.id||(i.id=uuid()),assetId:i.assetId||null,url:i.url||null,type:i.type||'DETAIL',order:i.order??n})),contents:(o.contents||[]).map(c=>({id:c.id||(c.id=uuid()),type:c.type,detailType:c.detailType||'TEXT',content:c.content||'',assetId:c.assetId||null,...(c.purpose?{purpose:c.purpose}:{})})),notices:clone(notices),certifications:clone(o.certifications||[]),noticeCategory};
     }),delivery:clone(d.delivery),settings:clone(d.settings),documents:(d.documents||[]).map(v=>({templateName:v.templateName,path:v.path??null,vendorPath:v.vendorPath??null}))};
   }
   const rowSpecs={attributes:{keys:['name','exposed'],fields:['value']},notices:{keys:['category','name'],fields:['content']},certifications:{keys:['type'],fields:['code']},documents:{keys:['templateName'],fields:['path','vendorPath']}};
@@ -37,7 +39,7 @@
     for(const group of ['basic','settings','delivery'])for(const key of Object.keys(after[group]))if(!same(before[group]?.[key],after[group][key]))add(group+'.'+key,null,after[group][key]);
     for(const o of after.options){const old=before.options.find(v=>v.id===o.id);if(!old)continue;
       if(o.itemName!==old.itemName)add('options.itemName',o.id,o.itemName);
-      for(const key of Object.keys(o.registration))if(!same(old.registration[key],o.registration[key]))add('options.registration.'+key,o.id,o.registration[key]);
+      for(const key of Object.keys(o.registration)){const amount=['originalPrice','salePrice'].includes(key),next=amount?price(o.registration[key]):o.registration[key],prior=amount&&old.registration[key]!=null?price(old.registration[key]):old.registration[key];if(!same(prior,next))add('options.registration.'+key,o.id,next);}
       for(const key of ['images','contents'])if(!same(old[key],o[key]))add('options.'+key,o.id,o[key]);
       for(const key of ['attributes','notices','certifications'])rows('options.'+key,o.id,old[key]||[],o[key]||[],rowSpecs[key]);
     }

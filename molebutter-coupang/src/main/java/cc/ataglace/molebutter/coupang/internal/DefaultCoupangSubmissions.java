@@ -17,6 +17,12 @@ import static cc.ataglace.molebutter.coupang.api.CoupangSubmissionFailure.Kind.*
 
 @Service
 public class DefaultCoupangSubmissions implements CoupangSubmissions {
+    private CoupangProductSource registeredSource;
+    @org.springframework.beans.factory.annotation.Autowired void registeredSource(CoupangProductSource source){this.registeredSource=source;}
+    private RegisteredProductStore registered;
+    @org.springframework.beans.factory.annotation.Autowired void registered(RegisteredProductStore registered){this.registered=registered;}
+    private QuickEditGuard quickGuard;
+    @org.springframework.beans.factory.annotation.Autowired void quickGuard(QuickEditGuard guard){this.quickGuard=guard;this.worker.quickGuard=guard;}
     private final BusinessAccess access;
 
     private final WorkingCopyStore copyStore;
@@ -38,7 +44,21 @@ public class DefaultCoupangSubmissions implements CoupangSubmissions {
         worker = new SubmissionWorker(access, store, writer, transactions, enabled);
     }
     @Override
-    public Preview prepare(Long actor, CoupangEditing.PrepareRequest input) {
+    public Preview prepare(Long actor, CoupangEditing.PrepareRequest input) {return prepare(actor,input,null,null,null);}
+    public Preview prepareAction(Long actor,CoupangEditing.PrepareRequest input,String action,String vendorItem) {
+        return prepare(actor,input,action,vendorItem,null);
+    }
+    public Preview prepareSelected(Long actor,CoupangEditing.PrepareRequest input,CoupangOptionEdits.Basis basis){
+        if(basis==null||input.changes()==null||input.changes().size()!=1||!Set.of("options.registration.salePrice","options.registration.maximumBuyCount").contains(input.changes().getFirst().path()))throw new InputValidationFailure("단일 옵션 수정 항목을 확인해 주세요.");
+        quickGuard.check(actor,basis);return prepare(actor,input,null,null,basis);
+    }
+    public Preview prepareSelectedStored(Long actor,CoupangEditing.PrepareRequest input,CoupangOptionEdits.Basis basis){
+        if(basis==null||input==null||input.changes()==null||input.changes().size()!=1||!Set.of("options.registration.salePrice","options.registration.maximumBuyCount").contains(input.changes().getFirst().path()))throw new InputValidationFailure("단일 옵션 수정 항목을 확인해 주세요.");
+        quickGuard.check(actor,basis);return prepare(actor,input,null,null,basis,true);
+    }
+    private Preview prepare(Long actor,CoupangEditing.PrepareRequest input,String action,String vendorItem,CoupangOptionEdits.Basis basis) {return prepare(actor,input,action,vendorItem,basis,false);}
+    private Preview prepare(Long actor,CoupangEditing.PrepareRequest rawInput,String action,String vendorItem,CoupangOptionEdits.Basis basis,boolean storedOnly) {
+        var input=rawInput==null?null:new CoupangEditing.PrepareRequest(rawInput.workingCopyId(),rawInput.revision(),rawInput.sessionId(),CoupangPrices.changes(rawInput.changes()));
         access.productActor(actor, true);
         if (input == null || input.revision() == null || input.changes() == null || input.changes().size() > 500)
             throw new InputValidationFailure("작업본과 수정 항목을 확인해 주세요.");
@@ -54,13 +74,25 @@ public class DefaultCoupangSubmissions implements CoupangSubmissions {
             return s;
         });
         var copy = copyStore.find(workingCopy, false);
-        if (!copy.changes().equals(input.changes()))
+        if (basis==null?!copy.changes().equals(input.changes()):!copy.changes().containsAll(input.changes()))
             throw new CoupangSubmissionFailure(CONFLICT);
         var issues = new ArrayList<CoupangWorkingCopies.Issue>();
         CoupangWriteGateway.Prepared prepared = null;
         try {
-            prepared = writer.prepare(actor, copy.document(), session.binding().mapping(), session.session().document(),
-                    input.changes()).withListingVersion(session.binding().listingVersion());
+            if(action!=null && action.equals("DELETE") && !copy.changes().isEmpty())throw new InputValidationFailure("저장된 수정값을 먼저 반영하거나 취소한 뒤 삭제해 주세요.");
+            if(action==null && registered!=null && copy.product()!=null) {
+                var state=registered.optional(copy.account(),copy.product());
+                if(state!=null && state.row().deleted())throw new InputValidationFailure("삭제된 상품입니다.");
+            }
+            prepared = (action==null?(storedOnly?writer.prepareStoredOption(actor,copy.document(),session.binding().mapping(),session.session().document(),input.changes()):writer.prepare(actor, copy.document(), session.binding().mapping(), session.session().document(),input.changes())):writer.prepareAction(actor,session.binding().mapping(),session.session().document(),action,vendorItem))
+                .withListingVersion(session.binding().listingVersion());
+            if(action==null && registered!=null && copy.product()!=null) {
+                var state=registered.optional(copy.account(),copy.product());
+                var source=registeredSource;
+                if(state!=null && source!=null && registered.conflicts(state,copy,source).stream().filter(c->input.changes().stream().anyMatch(change->RegisteredProductStore.key(change).equals(c.key()))).anyMatch(c->Set.of("CONFLICT","UNVERIFIED","BASELINE_MISSING").contains(c.state())))
+                    throw new InputValidationFailure("최신 쿠팡값과 저장된 수정값을 확인하고 사용할 값을 선택해 주세요.");
+            }
+            if(basis!=null)prepared=new CoupangWriteGateway.Prepared(prepared.accountKey(),prepared.mapping(),prepared.steps(),prepared.changes(),prepared.preparedAt(),prepared.expectedSkus(),new CoupangWriteGateway.EditIntent(prepared.editIntent().observed(),prepared.editIntent().changes(),basis),prepared.schemaVersion(),prepared.listingVersion());
             checkPrepared(prepared);
             if (!Objects.equals(prepared.accountKey(), writer.accountKey())
                     || !compatiblePreparedMapping(session.binding().mapping(), prepared))
@@ -81,7 +113,7 @@ public class DefaultCoupangSubmissions implements CoupangSubmissions {
                         ? List.of()
                         : prepared.changes().stream().map(c -> new Change(c.path(), c.before(), c.after())).toList(),
                 List.copyOf(issues), copy.document().options().stream().collect(java.util.stream.Collectors
-                        .toMap(CoupangWorkingCopies.Option::id, o -> Objects.toString(o.itemName(), "옵션"))));
+                        .toMap(CoupangWorkingCopies.Option::id, o -> Objects.toString(o.itemName(), "옵션"))), imageWarnings(actor,copy.document(),session.session().mode().equals("CREATE"),input.changes()), store.creationRulesCheckedAt(prepared));
         var preview = new Preview(Long.toString(previewId), copy.id(), copy.revision(), session.session().expiresAt(),
                 prepared != null && !prepared.steps().isEmpty() && issues.isEmpty(), true, proposal);
         var immutable = prepared;
@@ -96,6 +128,24 @@ public class DefaultCoupangSubmissions implements CoupangSubmissions {
             store.completePreview(previewId, immutable, preview);
         });
         return preview;
+    }
+    @org.springframework.beans.factory.annotation.Autowired private cc.ataglace.molebutter.media.api.ImageInspection imageInspection;
+    private List<CoupangWorkingCopies.Issue> imageWarnings(Long actor,CoupangWorkingCopies.Document document,boolean create,List<CoupangEditing.Change> changes){
+        if(imageInspection==null)return List.of();
+        var changed=changes.stream().filter(c->c.path().equals("options.images")).map(CoupangEditing.Change::optionId).collect(java.util.stream.Collectors.toSet());
+        if(!create&&changed.isEmpty())return List.of();
+        var inputs=new ArrayList<cc.ataglace.molebutter.media.api.ImageInspection.Input>();
+        for(var o:document.options())if(create||changed.contains(o.id()))for(var i:o.images())inputs.add(new cc.ataglace.molebutter.media.api.ImageInspection.Input(i.imageType(),o.id(),i.id(),i.url(),i.assetId(),!create));
+        // Shared photos across options need one warning check. Keep the inspection
+        // API's 500-input bound even for an existing large option structure.
+        record Key(String role,String url,String asset,boolean existing) {}
+        var unique=new LinkedHashMap<Key,cc.ataglace.molebutter.media.api.ImageInspection.Input>();
+        for(var i:inputs)unique.putIfAbsent(new Key(i.role(),i.url(),i.assetId(),i.existing()),i);
+        var selected=new ArrayList<>(unique.values());var warnings=new LinkedHashSet<CoupangWorkingCopies.Issue>();
+        for(int offset=0;offset<selected.size();offset+=500)
+            for(var check:imageInspection.inspect(actor,selected.subList(offset,Math.min(offset+500,selected.size()))))
+                for(var warning:check.warnings())warnings.add(new CoupangWorkingCopies.Issue("images",warning));
+        return List.copyOf(warnings);
     }
     private void checkPrepared(CoupangWriteGateway.Prepared p) {
         if (p == null || p.schemaVersion() < 4 || !p.supported() || p.accountKey() == null
@@ -150,6 +200,7 @@ public class DefaultCoupangSubmissions implements CoupangSubmissions {
                     throw new CoupangSubmissionFailure(CONFLICT);
                 if (store.active(preview.workingCopyId(), preview.prepared().accountKey(), -1))
                     throw new CoupangSubmissionFailure(CONFLICT);
+                if(quickGuard!=null)quickGuard.check(actor,preview.prepared().editIntent().quickEditBasis());
                 long execution = store.createExecution(actor, preview, key);
                 return store.execution(execution, false);
             });

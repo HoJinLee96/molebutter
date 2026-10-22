@@ -1,0 +1,5 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+const window={};vm.runInNewContext(fs.readFileSync('molebutter-app/src/main/resources/static/js/coupang-pricing.js','utf8'),{window});const {calculate}=window.CoupangPricing;
+const settings={shippingCost:4000,commissionPercent:10.5,marginPercent:7};
+test('user pricing formula and thousand/ten-thousand boundaries',()=>{const a=calculate(settings,115170);assert.equal(a.calculatedPrice,147579);assert.equal(a.suggestedPrice,147000);assert(a.marginPercent<7);const b=calculate(settings,206080);assert.equal(b.calculatedPrice,260161);assert.equal(b.suggestedPrice,259000);assert.equal(calculate({shippingCost:0,commissionPercent:0,marginPercent:0},150000).suggestedPrice,149000);});
+test('manual price uses actual profit and rejects invalid inputs',()=>{assert(calculate(settings,115170,148000).marginPercent>7);for(const value of [-1,NaN,Infinity,.5])assert.throws(()=>calculate(settings,value));assert.throws(()=>calculate({...settings,commissionPercent:91},115170));assert.throws(()=>calculate(settings,115170,147001));});

@@ -104,6 +104,9 @@ const server = http.createServer((req, res) => {
                     { templateKey: 'bag-tote', displayName: '토트백', widthLabel: '가로', depthLabel: '폭', heightLabel: '높이', twoDimensional: false },
                     { templateKey: 'belt', displayName: '벨트', widthLabel: '총길이', depthLabel: '폭(잠금)', heightLabel: '너비', twoDimensional: true }
                 ]);
+                if (p === '/api/product-images/size-guide/comparisons') return ok([
+                    { id: 'samdasoo-500', version: 1, name: '삼다수 500ml', widthCm: null, heightCm: 21, aspectRatio: .3, kind: 'BOTTLE' }
+                ]);
                 if (p.endsWith('/size-guide/preview')) {
                     const body = request.postDataJSON(); previews.push(body);
                     return ok({ displayName: '토트백', imageDataUrl, layout: body.layout || layout });
@@ -152,7 +155,7 @@ const server = http.createServer((req, res) => {
                         else assert.deepEqual(Object.keys(item), ['generatedImageId']);
                     }
                     if (uploadMode === 'forbidden') return route.fulfill({ status: 403, json: { code: 'FORBIDDEN', message: '합성 업로드 권한 없음' } });
-                    if (uploadMode === 'duplicate') return route.fulfill({ status: 409, json: { code: 'IMAGING_UPLOAD_DUPLICATE', message: '이미 업로드된 상품입니다. 저장할 상품코드를 변경해주세요.' } });
+                    if (uploadMode === 'busy') return route.fulfill({ status: 409, json: { code: 'IMAGING_UPLOAD_BUSY', message: '이 상품의 업로드가 진행 중이거나 결과 확인이 필요합니다.' } });
                     if (uploadMode === 'check-failed') return route.fulfill({ status: 503, json: { code: 'IMAGING_UPLOAD_CHECK_FAILED', message: '기존 업로드 확인에 실패했습니다. 잠시 후 다시 시도해주세요.' } });
                     if (uploadMode === 'csrf' && !lostUploadOnce) {
                         lostUploadOnce = true;
@@ -170,6 +173,11 @@ const server = http.createServer((req, res) => {
                         const key = `products/${body.uploadProductCode}/${folder}/${fileName}`;
                         return { fileName, key, url: 'https://assets.molebutter.link/' + key.split('/').map(encodeURIComponent).join('/') };
                     }) };
+                    result.skippedFiles = [];
+                    if (['mixed-duplicates', 'all-duplicates'].includes(uploadMode)) {
+                        const count = uploadMode === 'all-duplicates' ? result.files.length : result.files.length - 1;
+                        result.skippedFiles = result.files.splice(0, count).map(file => ({ ...file, reason: 'EXISTS' }));
+                    }
                     if (['failed', 'unknown'].includes(uploadMode)) result.files = result.files.slice(0, 1);
                     const job = { id: body.requestId, status: uploadMode === 'failed' ? 'FAILED' : uploadMode === 'unknown' ? 'UNKNOWN' : 'SUCCEEDED', result,
                         message: '합성 상태 안내', error: uploadMode === 'failed' ? '합성 부분 실패' : uploadMode === 'unknown' ? '합성 응답 유실' : null };
@@ -649,12 +657,12 @@ const server = http.createServer((req, res) => {
             assert.equal(await page.evaluate(() => sessionStorage.getItem('product-images.pending-upload')), null);
 
             // A duplicate folder keeps its immutable code and selected images until the dialog is cancelled.
-            uploadMode = 'duplicate';
+            uploadMode = 'busy';
             const beforeDuplicate = uploadPosts.length;
             await openUpload('TEST-FOLDER');
             await page.waitForFunction(() => document.querySelector('#imageUploadDialog').open && !document.querySelector('#uploadDialogError').hidden);
             assert.equal(uploadPosts.length, beforeDuplicate + 1);
-            assert.match(await page.locator('#uploadDialogError').textContent(), /이미 업로드된 상품/);
+            assert.match(await page.locator('#uploadDialogError').textContent(), /업로드가 진행 중/);
             assert.equal(await page.locator('#storageProductCodeInput').inputValue(), 'TEST-FOLDER');
             assert.equal(await page.locator('#storageProductCodeInput').isDisabled(), true);
             assert.equal(await page.locator('#uploadSelectedCode').textContent(), 'TEST-FOLDER');
@@ -754,10 +762,21 @@ const server = http.createServer((req, res) => {
             }
             assert.equal(csrfCount, 2);
             assert.equal(refreshCount, 3);
+            for (const [mode, uploaded, skipped] of [['mixed-duplicates', 1, 3], ['all-duplicates', 0, 4]]) {
+                uploadMode = mode;
+                await openUpload('SAME-FOLDER'); await waitUploadDone();
+                assert.match(await page.locator('#uploadStatus').textContent(), new RegExp(`업로드 ${uploaded}개 · 중복 제외 ${skipped}개`));
+                assert.equal(await page.locator('#uploadFiles li').count(), 4);
+                assert.equal((await page.locator('#uploadFiles li').allTextContents()).filter(text => text.startsWith('중복 제외 · ')).length, skipped);
+                assert.equal(await page.evaluate(() => sessionStorage.getItem('product-images.pending-upload')), null);
+                const box = await page.evaluate(() => ({ viewport: innerWidth, page: document.documentElement.scrollWidth }));
+                assert(box.page <= box.viewport + 1, 'upload results must wrap on mobile');
+                assert.deepEqual(await order(), beforeUploadOrder);
+            }
             uploadMode = 'failed';
             await openUpload('PARTIAL');
             await page.waitForFunction(() => document.querySelector('#uploadStatus').textContent.includes('합성 부분 실패') && !document.querySelector('#lookupButton').disabled);
-            assert.match(await page.locator('#uploadStatus').textContent(), /1\/4개 저장.*같은 상품코드로 다시 업로드할 수 없습니다/);
+            assert.match(await page.locator('#uploadStatus').textContent(), /업로드 1개 · 중복 제외 0개.*새 요청에서는 기존 파일을 제외/);
             assert.equal(await page.locator('#uploadFiles a').count(), 1);
             assert.deepEqual(await order(), beforeUploadOrder);
             await page.locator('#restoreAllImages').click();
@@ -791,7 +810,7 @@ const server = http.createServer((req, res) => {
             await page.locator('h1').click();
             fs.mkdirSync(path.join(root, 'target/ui-check'), { recursive: true });
             await page.screenshot({ path: path.join(root, `target/ui-check/product-images-${width}.png`), fullPage: true });
-            console.log(`PASS product information tool ${width}px: shared UI/mobile modal, mixed snapshots/order/trash, shared storage code, official/processed archive and public paths, immutable upload confirmation/Enter blocking, duplicate folder rejection/cancel/new code, preflight outage/manual retry, upload locks/duplicate click, stable-ID lost-response/reload recovery, partial failure/UNKNOWN links, auth refresh/CSRF`);
+            console.log(`PASS product information tool ${width}px: shared UI/mobile modal, mixed snapshots/order/trash, shared storage code, official/processed archive and public paths, immutable upload confirmation/Enter blocking, active reservation rejection, exact-file duplicate skips/all-skipped counts, preflight outage/manual retry, upload locks/duplicate click, stable-ID lost-response/reload recovery, partial failure/UNKNOWN links, auth refresh/CSRF`);
             await context.close();
         }
     } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }

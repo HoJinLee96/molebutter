@@ -47,7 +47,7 @@ class ProductLookupServiceTest {
         server.expect(requestTo(startsWith(BASE + "/product/v1/notifications/DCBA6E370BK")))
                 .andRespond(withSuccess("""
                         {"body":{"productNotificationDTOList":[{"value":
-                        "<table><tr><th>종류</th><td>여성 가방</td></tr><tr><th>크기</th><td>30 X 25 X 12(가로X세로X폭)</td></tr></table>"}]}}
+                        "<table><tr><th>제조사(공식수입/병행수입)</th><td>LF</td></tr><tr><th>종류</th><td>여성 가방</td></tr><tr><th>크기</th><td>30 X 25 X 12(가로X세로X폭)</td></tr></table>"}]}}
                         """, MediaType.APPLICATION_JSON));
         server.expect(requestTo(startsWith(BASE + "/product/v1/contents/DCBA6E370BK")))
                 .andRespond(withSuccess("""
@@ -79,6 +79,7 @@ class ProductLookupServiceTest {
                 "https://nimg.lfmall.co.kr/a.jpg", "https://nimg.lfmall.co.kr/b.jpg");
         assertThat(product.categoryNames()).containsExactly("토트백", "여성가방");
         assertThat(product.notificationFields())
+                .containsEntry("제조사(공식수입/병행수입)", "LF")
                 .containsEntry("종류", "여성 가방")
                 .containsEntry("크기", "30 X 25 X 12(가로X세로X폭)");
         assertThat(product.sizeLabel()).isEqualTo("L(large)");

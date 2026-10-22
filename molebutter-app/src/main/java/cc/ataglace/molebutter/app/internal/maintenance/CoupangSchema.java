@@ -16,7 +16,9 @@ public final class CoupangSchema {
             "coupang_execution_asset", "coupang_asset_publication", "coupang_edit_session", "coupang_order",
             "coupang_order_item", "coupang_order_claim", "coupang_order_job", "coupang_order_checkpoint",
             "coupang_order_job_order", "coupang_order_cursor", "coupang_order_account_lock",
-            "coupang_order_failed_detail", "coupang_order_job_claim", "coupang_image_edit", "coupang_listing_state");
+            "coupang_order_failed_detail", "coupang_order_job_claim", "coupang_image_edit", "coupang_listing_state", "coupang_registered_product", "coupang_registered_option",
+            "coupang_product_snapshot", "coupang_product_change", "coupang_product_read", "coupang_product_collection",
+            "coupang_product_collection_item", "coupang_product_intent_base", "coupang_product_asset_pin", "coupang_pricing_settings", "coupang_registration_defaults", "coupang_collection_recent", "coupang_collection_candidate");
     public static List<String> existing(Connection connection) throws SQLException {
         var found = new ArrayList<String>();
         try (var s = connection.createStatement();

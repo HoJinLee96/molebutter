@@ -56,8 +56,11 @@ public final class R2ImageLibrary implements R2Images {
     private String key(String value){
         try{
             URI uri=URI.create(value);if(!"https".equals(uri.getScheme())||uri.getHost()==null||uri.getRawUserInfo()!=null||uri.getRawQuery()!=null||uri.getRawFragment()!=null)throw invalid("설정된 R2 공개 이미지 주소를 입력해 주세요.");
-            String path=uri.getPath();int at=path.indexOf("/products/");if(at<0)throw invalid("R2 상품 이미지 경로를 확인해 주세요.");
-            String key=path.substring(at+1);String[] parts=key.split("/",-1);if(parts.length<3||!parts[1].equals(code(parts[1])))throw invalid("R2 상품코드를 확인해 주세요.");
+            String path=uri.getPath();int at=path.indexOf("/products/");boolean common=at<0;
+            if(common)at=path.indexOf("/common/");if(at<0)throw invalid("R2 상품 또는 공통 이미지 경로를 확인해 주세요.");
+            String key=path.substring(at+1);String[] parts=key.split("/",-1);
+            if(common){if(parts.length<2||!parts[parts.length-1].toLowerCase(Locale.ROOT).matches(".+\\.(jpg|jpeg|png)"))throw invalid("R2 공통 이미지 경로를 확인해 주세요.");}
+            else if(parts.length<3||!parts[1].equals(code(parts[1])))throw invalid("R2 상품코드를 확인해 주세요.");
             for(String part:parts)if(part.isBlank()||part.equals(".")||part.equals("..")||part.contains("\\")||part.chars().anyMatch(c->c<32||c==127))throw invalid("R2 이미지 경로를 확인해 주세요.");
             URI canonical=URI.create(url(key));if(!uri.equals(canonical)&&!uri.toASCIIString().equals(canonical.toASCIIString()))throw invalid("설정된 R2 공개 이미지 주소를 입력해 주세요.");
             return key;

@@ -19,7 +19,17 @@ public record ProductLookupDto(
         boolean sizeGuideSupported,
         String sizeGuideTypeName,
         String sizeGuideTemplateKey,
-        SizeDimensionsDto sizeDimensions) {
+        SizeDimensionsDto sizeDimensions,
+        String sourceProductName) {
+    public ProductLookupDto(String productCode, String brandCode, String brandName, String productName,
+            Integer originalPrice, Integer salePrice, List<String> imageUrls, List<String> categoryNames,
+            Map<String,String> notificationFields, String sizeLabel, String sizeDescription,
+            Map<String,String> sizeMeasurements, boolean sizeGuideSupported, String sizeGuideTypeName,
+            String sizeGuideTemplateKey, SizeDimensionsDto sizeDimensions) {
+        this(productCode,brandCode,brandName,productName,originalPrice,salePrice,imageUrls,categoryNames,
+                notificationFields,sizeLabel,sizeDescription,sizeMeasurements,sizeGuideSupported,sizeGuideTypeName,
+                sizeGuideTemplateKey,sizeDimensions,null);
+    }
     public ProductLookupDto {
         imageUrls = List.copyOf(imageUrls);
         categoryNames = List.copyOf(categoryNames);

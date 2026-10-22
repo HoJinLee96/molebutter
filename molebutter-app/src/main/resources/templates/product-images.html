@@ -5,7 +5,7 @@
 <header th:replace="~{fragments/header :: header(${userName}, ${menuItems})}"></header>
 <main id="main-content" tabindex="-1" class="page product-images-page">
     <h1>상품 정보 도구</h1>
-    <link rel="stylesheet" th:href="@{/css/product-images.css}" href="/css/product-images.css">
+    <link rel="stylesheet" th:href="@{/css/product-images.css(v=20261021-multi-comparison)}" href="/css/product-images.css?v=20261021-multi-comparison">
     <div class="product-image-workspace">
         <div class="lookup-shell">
             <div class="workspace-toolbar panel">
@@ -137,6 +137,11 @@
                         <p class="upload-hint" id="storageProductCodeHint">영문·숫자·밑줄(_)·하이픈(-) 4~40자. 조회 상품정보는 바뀌지 않습니다.</p>
                         <p class="form-error" id="storageProductCodeError" role="alert" hidden></p>
                     </div>
+                    <div class="product-registration-actions" th:classappend="${!productAdmin} ? 'hidden'">
+                        <p id="registrationPrepareStatus" role="status"></p>
+                        <a id="registrationPreparedLink" class="btn" target="_blank" rel="noopener" hidden>준비한 등록 화면 열기</a>
+                        <button th:if="${productAdmin}" id="registerCoupangProduct" class="btn primary" type="button">상품 등록</button>
+                    </div>
                     <div class="download-result hidden" id="downloadResult">
                         <p class="download-status" id="downloadStatus" role="status"></p>
                         <button class="copy-button" type="button" data-copy-target="downloadStatus" aria-label="다운로드 결과 복사">복사</button>
@@ -174,6 +179,6 @@
     </div>
 </main>
 <script th:src="@{/js/api.js}" src="/js/api.js"></script>
-<script type="module" th:src="@{/js/product-images/app.js}" src="/js/product-images/app.js"></script>
+<script type="module" th:src="@{/js/product-images/app.js(v=20261021-multi-comparison)}" src="/js/product-images/app.js?v=20261021-multi-comparison"></script>
 </body>
 </html>

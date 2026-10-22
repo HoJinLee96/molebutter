@@ -15,6 +15,9 @@ import cc.ataglace.molebutter.imaging.api.SizeGuidePreviewRequestDto;
 import cc.ataglace.molebutter.imaging.api.SizeGuidePreviewResponseDto;
 import cc.ataglace.molebutter.imaging.api.SizeGuideSelectionDto;
 import cc.ataglace.molebutter.imaging.api.SizeGuideTemplateDto;
+import cc.ataglace.molebutter.imaging.api.SizeGuideComparisonDto;
+import cc.ataglace.molebutter.imaging.api.SizeGuideSceneTransformDto;
+import cc.ataglace.molebutter.imaging.internal.policy.SizeGuideComparisons;
 import cc.ataglace.molebutter.imaging.internal.parse.SizeDimensionParser;
 import cc.ataglace.molebutter.imaging.internal.policy.SizeGuidePolicy.SizeGuideTemplate;
 import cc.ataglace.molebutter.imaging.internal.render.PhotoSizeGuideRenderer;
@@ -43,6 +46,8 @@ public class SizeGuideService {
     }
 
     /** 자동 분류가 실패한 상품도 직접 고를 수 있도록 지원 템플릿 전부를 내려준다. */
+    public List<SizeGuideComparisonDto> listComparisons() { return SizeGuideComparisons.list(); }
+
     public List<SizeGuideTemplateDto> listTemplates() {
         return SizeGuideTemplate.supportedTemplates().stream()
                 .map(template -> new SizeGuideTemplateDto(template.key(), template.displayName(),
@@ -57,9 +62,9 @@ public class SizeGuideService {
                 rendered.template().key(),
                 rendered.template().displayName(),
                 "data:image/png;base64," + Base64.getEncoder().encodeToString(rendered.png()),
-                RenderSupport.OUTPUT_IMAGE_WIDTH,
-                RenderSupport.outputHeight(RenderSupport.SIZE_IMAGE_WIDTH, RenderSupport.SIZE_IMAGE_HEIGHT),
-                rendered.layout());
+                rendered.layout() == null ? RenderSupport.OUTPUT_IMAGE_WIDTH : RenderSupport.PHOTO_OUTPUT_WIDTH,
+                rendered.layout() == null ? RenderSupport.outputHeight(RenderSupport.SIZE_IMAGE_WIDTH, RenderSupport.SIZE_IMAGE_HEIGHT) : RenderSupport.PHOTO_OUTPUT_HEIGHT,
+                rendered.layout(), rendered.sceneTransform(), rendered.photoView());
     }
 
     /** selection 에 따라 최종 사이즈 이미지 PNG 를 렌더한다. 다운로드 잡과 프리뷰가 공유. */
@@ -84,12 +89,12 @@ public class SizeGuideService {
             BufferedImage baseImage = lookupCacheService.baseImage(selection.baseImageUrl(), product.productCode());
             PhotoSizeGuideRenderer.PhotoRender render = photoSizeGuideRenderer.render(
                     template, dimensions, sizeLabel, baseImage, selection.layout(),
-                    RenderSupport.OUTPUT_SCALE);
-            return new RenderedSizeGuide(template, RenderSupport.encodePng(render.image()), render.layout());
+                    RenderSupport.PHOTO_OUTPUT_SCALE);
+            return new RenderedSizeGuide(template, RenderSupport.encodePng(render.image()), render.layout(), render.sceneTransform(), render.photoView());
         }
 
         byte[] png = templateSizeGuideRenderer.renderPng(template, dimensions, sizeLabel);
-        return new RenderedSizeGuide(template, png, null);
+        return new RenderedSizeGuide(template, png, null, SizeGuideSceneTransformDto.IDENTITY);
     }
 
     private SizeGuideTemplate resolveTemplate(ProductLookupDto product, SizeGuideSelectionDto selection) {
@@ -112,6 +117,13 @@ public class SizeGuideService {
                 "미지원 카테고리 상품입니다. 사이즈 템플릿을 직접 선택해주세요.");
     }
 
-    public record RenderedSizeGuide(SizeGuideTemplate template, byte[] png, SizeGuideLayoutDto layout) {
+    public record RenderedSizeGuide(SizeGuideTemplate template, byte[] png, SizeGuideLayoutDto layout, SizeGuideSceneTransformDto sceneTransform,
+            cc.ataglace.molebutter.imaging.api.SizeGuidePhotoViewDto photoView) {
+        public RenderedSizeGuide(SizeGuideTemplate template, byte[] png, SizeGuideLayoutDto layout, SizeGuideSceneTransformDto sceneTransform) {
+            this(template, png, layout, sceneTransform, null);
+        }
+        public RenderedSizeGuide(SizeGuideTemplate template, byte[] png, SizeGuideLayoutDto layout) {
+            this(template, png, layout, SizeGuideSceneTransformDto.IDENTITY);
+        }
     }
 }

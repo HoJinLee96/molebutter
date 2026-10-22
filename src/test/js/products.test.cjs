@@ -2,13 +2,13 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {readFileSync}=require('node:fs');
 const vm=require('node:vm');
-const template=readFileSync('molebutter-app/src/main/resources/templates/products.html','utf8');
+const template=readFileSync('molebutter-app/src/main/resources/templates/products.html','utf8')+readFileSync('molebutter-app/src/main/resources/templates/fragments/product-detail.html','utf8');
 const source=readFileSync('molebutter-app/src/main/resources/static/js/products.js','utf8');
 const product={id:'42',brand:'헤지스',brandId:'1',brandKey:'HAZZYS',productCode:'ABCD6F123BK',comparisonCode:'ABCD123',searchQuery:'ABCD123',searchMode:'AUTO',suggestedQuery:'ABCD123',codeType:'LF_ACCESSORY',managed:true,revision:0,lookupRevision:0,latestStatus:'NOT_CHECKED',latestResult:null};
 const pageOf=(items=[product],page=0)=>({items,page,totalElements:41,totalPages:3});
 const settle=async()=>{for(let i=0;i<4;i++)await new Promise(r=>setImmediate(r));};
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
-function node(){return {tagName:'DIV',value:'',textContent:'',innerHTML:'',hidden:true,disabled:false,checked:false,open:false,options:[],dataset:{},attrs:{},listeners:{},classList:{toggle(){}},addEventListener(n,fn){this.listeners[n]=fn;},setAttribute(n,v){this.attrs[n]=v;},getAttribute(n){return this.attrs[n]??null;},hasAttribute(n){return n in this.attrs;},matches(){return this.disabled;},reportValidity(){return this.valid!==false;},click(){const ev={currentTarget:this,target:this,preventDefault(){this.defaultPrevented=true;}};const result=this.listeners.click?.(ev);if(this.type==='submit'&&!ev.defaultPrevented)this.form?.listeners.submit?.({...ev,currentTarget:this.form,target:this.form,submitter:this,stopImmediatePropagation(){}});return result;},showModal(){this.open=true;},close(){this.open=false;this.listeners.close?.();},reset(){}};}
+function node(){return {tagName:'DIV',value:'',textContent:'',innerHTML:'',hidden:true,disabled:false,checked:false,open:false,options:[],dataset:{},querySelectorAll(selector){if(selector!=='[data-select]')return[];if(this.checkHtml!==this.innerHTML){this.checkHtml=this.innerHTML;this.checks=[...this.innerHTML.matchAll(/<input\b[^>]*data-select="([^"]+)"[^>]*>/g)].map(([tag,id])=>({dataset:{select:id},checked:/\bchecked\b/.test(tag),disabled:/\bdisabled\b/.test(tag)}));}return this.checks;},attrs:{},listeners:{},classList:{toggle(){}},addEventListener(n,fn){this.listeners[n]=fn;},setAttribute(n,v){this.attrs[n]=v;},getAttribute(n){return this.attrs[n]??null;},hasAttribute(n){return n in this.attrs;},matches(){return this.disabled;},reportValidity(){return this.valid!==false;},click(){const ev={currentTarget:this,target:this,preventDefault(){this.defaultPrevented=true;}};const result=this.listeners.click?.(ev);if(this.type==='submit'&&!ev.defaultPrevented)this.form?.listeners.submit?.({...ev,currentTarget:this.form,target:this.form,submitter:this,stopImmediatePropagation(){}});return result;},showModal(){this.open=true;},close(){this.open=false;this.listeners.close?.();},reset(){}};}
 function fixture({load=async()=>pageOf(),post=async()=>null,brandFailure=false,legacy=false,page='products'}={}) {
  const nodes=new Map([...template.matchAll(/\bid="([^"]+)"/g)].map(([,id])=>[id,node()]));const $=id=>nodes.get(id)||null;
  for(const [,tag,attrs,id] of template.matchAll(/<(input|button|form)\b([^>]*?\bid="([^"]+)"[^>]*)>/g)){const el=$(id);el.tagName=tag.toUpperCase();el.type=/\btype="([^"]+)"/.exec(attrs)?.[1]||(tag==='button'?'submit':'text');if(tag==='button'||tag==='form')el.hidden=false;}
@@ -21,8 +21,8 @@ function fixture({load=async()=>pageOf(),post=async()=>null,brandFailure=false,l
  AppUI:{$,escape:v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'),stamp:v=>v,pager(id,data,change,options){pagers[id]={data,change,options};}},ProductSourceSearch:{webUrl:()=>''},
  setError(id,message){if($(id)){$(id).textContent=message||'';$(id).hidden=!message;}},
  apiGet:async url=>{calls.push(url);if(url.startsWith('/api/products/change-counts'))return {selected:0,all:0};if(url==='/api/settings/brands'){if(brandFailure)throw Error('설정 조회 실패');return [{id:'1',name:'헤지스'}];}return load(url);},
- apiPost:async(url,body)=>{posts.push({url,body});return post(url,body);}});vm.runInContext(readFileSync('molebutter-app/src/main/resources/static/js/form-actions.js','utf8'),ctx);ctx.FormActions=ctx.window.FormActions;vm.runInContext(readFileSync('molebutter-app/src/main/resources/static/js/product-refresh-watch.js','utf8'),ctx);vm.runInContext(readFileSync('molebutter-app/src/main/resources/static/js/mall-tag.js','utf8'),ctx);vm.runInContext(source,ctx);
- return {$,calls,posts,pagers,events,timers,async tick(){const next=timers.entries().next().value;if(next){timers.delete(next[0]);next[1]();}await settle();},submit(id='product-filter'){return $(id).listeners.submit({preventDefault(){},submitter:node(),stopImmediatePropagation(){}});},enter(id){const ev={key:'Enter',target:$(id),preventDefault(){this.defaultPrevented=true;}};keyListeners.keydown(ev);return ev;},click(id){return $(id).click();},select(){ $('product-rows').listeners.change({target:{dataset:{select:'42'},checked:true}}); },mode(mode){const b=tabs.find(t=>t.dataset.mode===mode);$('management-tabs').listeners.click({target:{closest:()=>b}});},row(dataset){$('product-rows').listeners.click({target:{closest:()=>({...node(),dataset})}});}};
+ apiPost:async(url,body)=>{posts.push({url,body});return post(url,body);}});vm.runInContext(readFileSync('molebutter-app/src/main/resources/static/js/table-selection.js','utf8'),ctx);vm.runInContext(readFileSync('molebutter-app/src/main/resources/static/js/form-actions.js','utf8'),ctx);ctx.FormActions=ctx.window.FormActions;vm.runInContext(readFileSync('molebutter-app/src/main/resources/static/js/product-refresh-watch.js','utf8'),ctx);vm.runInContext(readFileSync('molebutter-app/src/main/resources/static/js/mall-tag.js','utf8'),ctx);vm.runInContext(readFileSync('molebutter-app/src/main/resources/static/js/product-supplier-summary.js','utf8'),ctx);vm.runInContext(source,ctx);
+ return {$,calls,posts,pagers,events,timers,async tick(){const next=timers.entries().next().value;if(next){timers.delete(next[0]);next[1]();}await settle();},submit(id='product-filter'){return $(id).listeners.submit({preventDefault(){},submitter:node(),stopImmediatePropagation(){}});},enter(id){const ev={key:'Enter',target:$(id),preventDefault(){this.defaultPrevented=true;}};keyListeners.keydown(ev);return ev;},click(id){return $(id).click();},select(id='42',checked=true){ $('product-rows').listeners.change({target:{dataset:{select:id},checked}}); },mode(mode){const b=tabs.find(t=>t.dataset.mode===mode);$('management-tabs').listeners.click({target:{closest:()=>b}});},row(dataset){$('product-rows').listeners.click({target:{closest:()=>({...node(),dataset})}});}};
 }
 test('entry and back navigation reset filters and load immediately without settings dependency',async()=>{const f=fixture({brandFailure:true});await settle();assert.equal(f.calls[0],'/api/products?q=&mode=ALL&status=&page=0&size=100&change=ALL');assert.match(f.$('product-rows').innerHTML,/ABCD6F123BK/);f.mode('MANUAL');await settle();f.$('product-q').value='X';f.events.pageshow({persisted:true});await settle();assert.equal(f.calls.filter(u=>u.startsWith('/api/products?')).at(-1),f.calls[0]);});
 test('numbered pager and size changes preserve query and clear selections',async()=>{const f=fixture();await settle();f.select();f.$('product-q').value='ABCD';f.$('product-page-size').value='50';f.$('product-page-size').listeners.change();await settle();assert.match(f.calls.filter(u=>u.startsWith('/api/products?')).at(-1),/q=ABCD&mode=ALL&status=&page=0&size=50/);assert.match(f.$('product-selection').textContent,/선택 0개/);assert.equal(f.pagers['product-pager'].options.numbered,true);f.pagers['product-pager'].change(2);await settle();assert.match(f.calls.filter(u=>u.startsWith('/api/products?')).at(-1),/page=2&size=50/);});
@@ -31,6 +31,17 @@ test('failed request can be retried; incompatible html does not touch missing co
 test('management switch sends displayed revision once and keeps state on failure',async()=>{const wait=deferred();const f=fixture({post:()=>wait.promise});await settle();f.row({managed:'42'});f.row({managed:'42'});assert.equal(f.posts.length,1);assert.equal(JSON.stringify(f.posts[0].body),JSON.stringify({products:[{id:'42',revision:0}],managed:false}));wait.reject(Error('저장 실패'));await settle();assert.match(f.$('page-error').textContent,/저장 실패/);assert.match(f.$('product-rows').innerHTML,/aria-checked="true"/);});
 test('deletion requires confirmation and blocks duplicate submits',async()=>{const wait=deferred();const f=fixture({post:()=>wait.promise});await settle();f.row({delete:'42'});assert.equal(f.posts.length,0);assert.equal(f.$('product-delete-dialog').open,true);f.submit('product-delete-form');assert.equal(f.posts.length,0);f.click('product-delete-confirm');f.click('product-delete-confirm');assert.equal(f.posts.length,1);assert.equal(f.posts[0].url,'/api/products/delete');wait.resolve({});await settle();assert.equal(f.$('product-delete-dialog').open,false);});
 test('selected refresh is allowed with no supplier links and uses product ids',async()=>{const f=fixture({post:async()=>({id:'run'})});await settle();assert.doesNotMatch(f.$('product-rows').innerHTML,/data-refresh="42" disabled/);f.select();f.click('refresh-selected');await settle();assert.equal(JSON.stringify(f.posts[0].body),JSON.stringify({scope:'SELECTED',ids:['42']}));});
+test('page replacement cannot carry hidden products into deletion, management or brand inference',async()=>{
+ for(const button of ['product-delete-selected','bulk-on','bulk-off','bulk-brand-infer']){
+  let second=false;const f=fixture({load:async()=>pageOf(second?[{...product,id:'43',revision:3}]:[product]),post:async()=>({assigned:1,preserved:0,unresolved:0})});await settle();f.select();second=true;f.pagers['product-pager'].change(1);await settle();assert.match(f.$('product-selection').textContent,/선택 0개/);f.select('43');f.click(button);if(button==='product-delete-selected')f.click('product-delete-confirm');await settle();assert.deepEqual(f.posts[0].body.products.map(p=>({...p})),[{id:'43',revision:3}]);
+ }
+});
+test('visually unchecked product never falls back to all-managed refresh',async()=>{
+ const f=fixture();await settle();f.select();f.$('product-rows').querySelectorAll('[data-select]')[0].checked=false;f.click('refresh-selected');await settle();assert.equal(f.posts.length,0);assert.match(f.$('page-error').textContent,/현재 목록/);assert.match(f.$('product-selection').textContent,/선택 0개/);
+});
+test('brand confirmation uses the reviewed snapshot even if the underlying page changes',async()=>{
+ let second=false;const f=fixture({load:async()=>pageOf(second?[{...product,id:'43',revision:3}]:[product])});await settle();f.select();f.click('bulk-brand');assert.match(f.$('brand-targets').textContent,/1개 상품/);second=true;f.pagers['product-pager'].change(1);await settle();f.select('43');f.click('brand-submit');await settle();assert.deepEqual(f.posts[0].body.products.map(p=>({...p})),[{id:'42',revision:0}]);
+});
 
 const detailOf=p=>({product:{...p},suppliers:[],history:pageOf([]),lastGoodResult:null});
 const historyPage=(marker,page=0)=>pageOf([{createdAt:marker,payload:{status:'SUCCESS',suppliers:[]}}],page);
@@ -203,7 +214,7 @@ test('list inventory badges require confirmed current stock and do not collapse 
  for(const c of cases){
   const listing={id:'L1',mall:'LFMALL',branchRequired:false,preferred:true,current:c.current!==false,referencePrice:40680,inventoryState:c.inventoryState||(c.options.length>1?'MULTIPLE':c.options[0].state),result:{match:{state:'SEARCH_RESULT'},state:c.resultState||'CONFIRMED',options:c.options}};
   const f=fixture({load:async()=>pageOf([{...product,selectedSupplier:listing}])});await settle();
-  const html=f.$('product-rows').innerHTML;assert(html.includes(c.expect),JSON.stringify(c));assert.doesNotMatch(html,c.absent);
+  const html=f.$('product-rows').innerHTML;assert(html.includes(c.expect),JSON.stringify(c));assert.doesNotMatch(html,c.absent);assert.match(html,/<span class="mall-tag mall-tag--lfmall">LF몰<\/span>/);
  }
 });
 
@@ -227,7 +238,8 @@ test('stale listings show previous stock as reference in summaries and cards',as
  const cards=f.$('supplier-results').innerHTML;
  assert.match(cards,/is-reference/);assert.match(cards,/조회 중 - 이전 가격 및 재고/);
  assert.doesNotMatch(cards,/product-badge good">구매 가능|이전 재고|이전 확인|참고용/);
- Object.assign(listing,{current:true,priceStatus:'CONFIRMED',inventoryState:'AVAILABLE'});f.row({detail:'42'});await settle();
+ Object.assign(listing,{selectedMissing:true});f.row({detail:'42'});await settle();assert.match(f.$('supplier-results').innerHTML,/lookup-supplier[^"]*is-selected-missing/);
+ Object.assign(listing,{selectedMissing:false,current:true,priceStatus:'CONFIRMED',inventoryState:'AVAILABLE'});f.row({detail:'42'});await settle();assert.doesNotMatch(f.$('supplier-results').innerHTML,/is-selected-missing/);
  assert.match(f.$('detail-summary').innerHTML,/재고 6개 · 구매 가능/);assert.doesNotMatch(f.$('supplier-results').innerHTML,/is-reference|이전 가격 및 재고/);
 });
 
@@ -285,6 +297,10 @@ test('login retry and search cooldown stop spinner but keep polling until actual
  const f=fixture({load:async url=>url.endsWith('/refresh-status')?status:url.endsWith('/duplicates')?[]:url==='/api/products/42'?detailOf({...product,latestStatus:'PENDING'}):pageOf()});
  await settle();f.row({detail:'42'});await settle();await f.tick();
  assert.equal(f.$('detail-spinner').hidden,true);assert.match(f.$('detail-progress-text').textContent,/로그인 감지.*01:30/);assert.equal(f.$('detail-run-link').hidden,false);
+ status={...status,searchFailureCode:'SECURITY_CHECK'};await f.tick();
+ assert.match(f.$('detail-progress-text').textContent,/보안 확인·자동입력 방지.*01:30/);assert.doesNotMatch(f.$('detail-progress-text').textContent,/로그인/);
+ status={...status,searchFailureCode:'ACCESS_RESTRICTED'};await f.tick();
+ assert.match(f.$('detail-progress-text').textContent,/접속 제한.*01:30/);assert.equal(f.$('detail-spinner').hidden,true);
  status={...status,runStatus:'RUNNING',nextRetryAt:null,nextSearchAt:'2026-09-28T01:31:00'};await f.tick();
  assert.equal(f.$('detail-spinner').hidden,true);assert.match(f.$('detail-progress-text').textContent,/다음 검색.*01:31/);assert.equal(f.$('detail-run-link').hidden,false);
  status={...status,status:'CHECKING',nextSearchAt:null};await f.tick();assert.equal(f.$('detail-spinner').hidden,false);

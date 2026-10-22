@@ -39,6 +39,7 @@
         } catch(err){failure(err.message);} finally{loading=false;more.disabled=false;if(resetPending){resetPending=false;page();}}
     }
     function popup(notices) {
+        notices=notices.filter(n=>n.type!=='COUPANG_COLLECTION_RESULT');
         if(!notices.length)return;
         if([...document.querySelectorAll('dialog[open]')].some(modal=>modal!==dialog))return;
         document.body.append(toast);

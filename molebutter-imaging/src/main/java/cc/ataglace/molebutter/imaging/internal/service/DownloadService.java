@@ -14,6 +14,7 @@ import cc.ataglace.molebutter.imaging.api.*;
 import cc.ataglace.molebutter.imaging.internal.client.ImageDownloadClient;
 import cc.ataglace.molebutter.imaging.internal.render.NoticeImageRenderer;
 import cc.ataglace.molebutter.imaging.internal.render.ProductPhotoMargin;
+import cc.ataglace.molebutter.imaging.internal.render.SizeGuideUploadImage;
 import lombok.RequiredArgsConstructor;
 
 /** Keeps the mixed image order and creates a bounded ZIP with server-owned source categories. */
@@ -72,6 +73,15 @@ public class DownloadService {
     }
 
     public List<ExportImageDto> exportImages(ExportSnapshot selection) {
+        return exportImages(selection, false);
+    }
+
+    /** R2 uses a 750px size-guide rendition, while ZIP/editing keeps the captured original. */
+    public List<ExportImageDto> exportUploadImages(ExportSnapshot selection) {
+        return exportImages(selection, true);
+    }
+
+    private List<ExportImageDto> exportImages(ExportSnapshot selection, boolean upload) {
         DownloadRequestDto request = selection.request();
         ProductLookupDto product = selection.product();
         List<ExportImageDto> files = new ArrayList<>();
@@ -82,7 +92,8 @@ public class DownloadService {
         for (DownloadImageItemDto item : selection.items()) {
             GeneratedImageStore.StoredImage snapshot = item.generatedImageId() == null ? null : selection.generated().get(item.generatedImageId());
             ImageDownloadClient.DownloadedImage image = snapshot != null
-                    ? new ImageDownloadClient.DownloadedImage(snapshot.png(), "image/png", ".png")
+                    ? new ImageDownloadClient.DownloadedImage(upload && snapshot.kind() == GeneratedImageStore.ImageKind.SIZE
+                            ? SizeGuideUploadImage.prepare(snapshot.png()) : snapshot.png(), "image/png", ".png")
                     : ProductPhotoMargin.apply(imageDownloadClient.downloadProductImage(
                             product.imageUrls().get(item.imageIndex()), product.productCode()));
             contentBytes = checkedContentSize(contentBytes, image.bytes().length);
@@ -105,6 +116,7 @@ public class DownloadService {
             boolean chosen = sizeSelection != null && sizeSelection.templateKey() != null && !sizeSelection.templateKey().isBlank();
             if (chosen || product.sizeGuideSupported()) {
                 byte[] png = sizeGuideService.render(product, sizeSelection).png();
+                if (upload) png = SizeGuideUploadImage.prepare(png);
                 checkedContentSize(contentBytes, png.length);
                 files.add(export(sizeFilename(++sizeSequence), new ImageDownloadClient.DownloadedImage(png, "image/png", ".png"), ExportImageCategory.PROCESSED));
             }

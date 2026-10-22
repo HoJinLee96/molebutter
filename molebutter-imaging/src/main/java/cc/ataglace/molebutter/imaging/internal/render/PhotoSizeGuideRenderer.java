@@ -12,6 +12,9 @@ import org.springframework.stereotype.Component;
 
 import cc.ataglace.molebutter.imaging.api.SizeDimensionsDto;
 import cc.ataglace.molebutter.imaging.api.SizeGuideLayoutDto;
+import cc.ataglace.molebutter.imaging.api.SizeGuideSceneTransformDto;
+import cc.ataglace.molebutter.imaging.api.SizeGuidePhotoViewDto;
+import java.awt.geom.Rectangle2D;
 import cc.ataglace.molebutter.imaging.api.ImagingFailure;
 import cc.ataglace.molebutter.imaging.internal.parse.SizeDimensionParser;
 import cc.ataglace.molebutter.imaging.internal.policy.PhotoSizeGuidePolicy;
@@ -21,7 +24,7 @@ import lombok.RequiredArgsConstructor;
 /**
  * 상품 사진 위에 치수를 얹는 사이즈 이미지(1440×940) 렌더러.
  * 원본(at-a-glance) 산출물과 구분되도록 자체 스타일을 쓴다:
- * 흰 배경, 반투명 사진, 화살촉 없는 검은 점선, 숫자만 표기(한글 라벨 없음),
+ * 흰 배경, 원래 선명도의 사진, 화살촉 없는 검은 점선, 숫자만 표기(한글 라벨 없음),
  * 세로선 없는 미니멀 표, Nanum Gothic + Avenir Next 폰트.
  * layout 이 null 이면 템플릿 기본 배치로 그리고 그 레이아웃을 함께 반환한다(프리뷰 핸들 seed 용).
  */
@@ -34,11 +37,6 @@ public class PhotoSizeGuideRenderer {
     // 작은 글자는 780px 출력에서 획이 1px 남짓이라 옅은 회색이면 끊겨 보인다 → 대비를 올린다.
     private static final Color MUTED = new Color(110, 110, 110);
     private static final Color RULE = new Color(203, 200, 194);
-    /**
-     * 사진 투명도. 곱셈 블렌딩과 함께 적용해 흰 배경 상품컷의 배경은 캔버스에 완전히 녹아들고
-     * 제품만 은은하게 비친다(점선·숫자가 제품 위에서도 읽히도록).
-     */
-    private static final float PHOTO_ALPHA = 0.65f;
     private static final BasicStroke DASHED_STROKE = new BasicStroke(
             3f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[] { 12f, 9f }, 0f);
 
@@ -54,7 +52,7 @@ public class PhotoSizeGuideRenderer {
 
     private final FontResolver fontResolver;
 
-    public record PhotoRender(BufferedImage image, SizeGuideLayoutDto layout) {
+    public record PhotoRender(BufferedImage image, SizeGuideLayoutDto layout, SizeGuideSceneTransformDto sceneTransform, SizeGuidePhotoViewDto photoView) {
     }
 
     /** 1440×940 작업 캔버스(테스트·레이아웃 기준). */
@@ -68,8 +66,8 @@ public class PhotoSizeGuideRenderer {
     }
 
     /**
-     * scale 배율로 직접 그린다(저장·미리보기는 OUTPUT_SCALE → 780×509). 레이아웃 비율과 1440 기준 좌표는 그대로이고,
-     * 글자·점선은 출력 해상도에서 래스터화되며 사진도 최종 크기로 한 번만 리샘플링된다.
+     * scale 배율로 직접 그린다(저장·미리보기는 PHOTO_OUTPUT_SCALE → 2880×1880). 레이아웃 비율과 1440 기준 좌표는 그대로이고,
+     * 글자·점선은 출력 해상도에서 래스터화되며 사진도 원본에서 목표 해상도로 리샘플링된다.
      */
     public PhotoRender render(
             SizeGuideTemplate template,
@@ -87,49 +85,195 @@ public class PhotoSizeGuideRenderer {
         int width = RenderSupport.SIZE_IMAGE_WIDTH;
         int height = RenderSupport.SIZE_IMAGE_HEIGHT;
 
-        BufferedImage image = RenderSupport.newScaledCanvas(width, height, scale);
-        Graphics2D graphics = RenderSupport.createScaledGraphics(image, scale);
-
-        graphics.setColor(BACKGROUND);
-        graphics.fillRect(0, 0, width, height);
-
         PhotoSizeGuidePolicy.PhotoLayout photoLayout = PhotoSizeGuidePolicy.resolve(template);
         boolean twoDimensionSizeGuide = SizeDimensionParser.isTwoDimensionSizeGuide(template, dimensions);
         SizeGuideLayoutDto effectiveLayout = layoutOverride != null
                 ? layoutOverride
                 : buildDefaultPhotoLayout(photoLayout, baseImage, twoDimensionSizeGuide);
 
-        drawPhotoFromLayout(image, baseImage, photoLayout, effectiveLayout.photo(), scale);
-        drawPhotoMeasurementsFromLayout(graphics, effectiveLayout, twoDimensionSizeGuide,
-                dimensions.width(), dimensions.depth(), dimensions.height());
-        drawPhotoSizeTable(graphics, template, twoDimensionSizeGuide, sizeLabel,
-                dimensions.width(), dimensions.depth(), dimensions.height());
+        BufferedImage image = RenderSupport.newScaledCanvas(width, height, scale);
+        Graphics2D graphics = RenderSupport.createScaledGraphics(image, scale);
+        try {
+            SourceBounds subject = detectSourceSubjectBounds(baseImage);
+            effectiveLayout = normalizeComparison(effectiveLayout, dimensions, baseImage, photoLayout, subject, graphics, twoDimensionSizeGuide);
+            boolean outputSpace = effectiveLayout.comparison() != null || effectiveLayout.outputSpace();
+            if (outputSpace) effectiveLayout = fitOutputLayout(effectiveLayout, dimensions, baseImage, photoLayout, subject, graphics, twoDimensionSizeGuide);
+            SizeGuideLayoutDto displayed = effectiveLayout;
+            var comparisons = displayed.comparisons().stream().map(c -> SizeGuideComparisonRenderer.geometry(displayed, dimensions, c)).toList();
+            var subjectBounds = subjectBounds(baseImage, photoLayout, displayed.photo(), subject);
+            double maximum = outputSpace ? maximumOutputScale(displayed, dimensions, baseImage, photoLayout, subject, graphics, twoDimensionSizeGuide) : 2.5;
+            var photoView = new SizeGuidePhotoViewDto(maximum, subjectBounds.getCenterX() / 1440 - displayed.photo().centerXRatio(),
+                    subjectBounds.getCenterY() / 940 - displayed.photo().centerYRatio());
 
-        graphics.dispose();
-        return new PhotoRender(image, effectiveLayout);
+            graphics.setColor(BACKGROUND);
+            graphics.fillRect(0, 0, width, height);
+
+            drawPhotoFromLayout(image, baseImage, photoLayout, displayed.photo(), scale);
+            drawPhotoMeasurementsFromLayout(graphics, displayed, twoDimensionSizeGuide,
+                    dimensions.width(), dimensions.depth(), dimensions.height());
+            for (var comparison : comparisons) SizeGuideComparisonRenderer.draw(graphics, comparison, SizeGuideSceneTransformDto.IDENTITY, fontResolver,
+                    measurementBounds(graphics, displayed, twoDimensionSizeGuide, dimensions));
+            drawPhotoSizeTable(graphics, template, twoDimensionSizeGuide, sizeLabel,
+                    dimensions.width(), dimensions.depth(), dimensions.height());
+
+            return new PhotoRender(image, effectiveLayout, SizeGuideSceneTransformDto.IDENTITY, photoView);
+        } finally {
+            graphics.dispose();
+        }
+    }
+
+    private java.util.List<Rectangle2D> measurementBounds(Graphics2D graphics, SizeGuideLayoutDto layout,
+            boolean twoDimensional, SizeDimensionsDto dimensions) {
+        var bounds = new java.util.ArrayList<Rectangle2D>();
+        FontMetrics metrics = graphics.getFontMetrics(fontResolver.numberFont(Font.BOLD, 42));
+        var arrows = new SizeGuideLayoutDto.ArrowPlacement[]{layout.width(), layout.height(), twoDimensional ? null : layout.depth()};
+        var values = new String[]{dimensions.width(), dimensions.height(), dimensions.depth()};
+        for (int i = 0; i < arrows.length; i++) {
+            var arrow = arrows[i];
+            if (arrow == null) continue;
+            double x1 = arrow.startXRatio() * 1440, y1 = arrow.startYRatio() * 940;
+            double x2 = arrow.endXRatio() * 1440, y2 = arrow.endYRatio() * 940;
+            int width = metrics.stringWidth(values[i]);
+            var position = calculateMeasurementValuePosition(x1, y1, x2, y2,
+                    (int) Math.round(layout.photo().centerXRatio() * 1440), (int) Math.round(layout.photo().centerYRatio() * 940),
+                    width, metrics.getHeight(), MEASUREMENT_VALUE_GAP);
+            bounds.add(new Rectangle2D.Double(position.centerX() - width / 2.0, position.centerY() - metrics.getHeight() / 2.0,
+                    width, metrics.getHeight()));
+            bounds.add(new Rectangle2D.Double(Math.min(x1, x2) - 4, Math.min(y1, y2) - 4, Math.abs(x2 - x1) + 8, Math.abs(y2 - y1) + 8));
+        }
+        return bounds;
+    }
+
+    private SizeGuideLayoutDto normalizeComparison(SizeGuideLayoutDto layout, SizeDimensionsDto dimensions,
+            BufferedImage source, PhotoSizeGuidePolicy.PhotoLayout policy, SourceBounds subject, Graphics2D graphics, boolean twoDimensional) {
+        if (layout.comparisons().isEmpty()) return layout;
+        cc.ataglace.molebutter.imaging.internal.policy.SizeGuideComparisons.validate(layout.comparisons());
+        var height = layout.height();
+        if (height != null && height.startXRatio() != height.endXRatio()) {
+            double x = (height.startXRatio() + height.endXRatio()) / 2;
+            height = new SizeGuideLayoutDto.ArrowPlacement(x, height.startYRatio(), x, height.endYRatio(),
+                    x, (height.startYRatio() + height.endYRatio()) / 2);
+        }
+        var effective = new SizeGuideLayoutDto(layout.photo(), layout.width(), height, layout.depth(), null, layout.outputSpace(), layout.comparisons());
+        double right = subjectBounds(source, policy, layout.photo(), subject).getMaxX();
+        for (var label : measurementBounds(graphics, effective, twoDimensional, dimensions)) right = Math.max(right, label.getMaxX());
+        for (var placement : layout.comparisons()) if (placement.centerXRatio() != null)
+            right = Math.max(right, SizeGuideComparisonRenderer.geometry(effective, dimensions, placement).bounds().getMaxX());
+        var placements = new java.util.ArrayList<SizeGuideLayoutDto.ComparisonPlacement>();
+        for (var placement : layout.comparisons()) {
+            if (placement.centerXRatio() == null) {
+                var origin = new SizeGuideLayoutDto.ComparisonPlacement(placement.presetId(), placement.version(), 0.0, 0.0);
+                var geometry = SizeGuideComparisonRenderer.geometry(effective, dimensions, origin);
+                placement = new SizeGuideLayoutDto.ComparisonPlacement(placement.presetId(), placement.version(),
+                        (right + 40 + geometry.bounds().width / 2) / 1440, Math.max(height.startYRatio(), height.endYRatio()));
+                right = SizeGuideComparisonRenderer.geometry(effective, dimensions, placement).bounds().getMaxX();
+            }
+            placements.add(placement);
+        }
+        return new SizeGuideLayoutDto(layout.photo(), layout.width(), height, layout.depth(), null, layout.outputSpace(), placements);
+    }
+
+    private Rectangle2D.Double rawPhotoBounds(BufferedImage source, PhotoSizeGuidePolicy.PhotoLayout policy,
+            SizeGuideLayoutDto.PhotoPlacement photo) {
+        double scale = Math.min(policy.photoBoxWidth() / (double) source.getWidth(),
+                policy.photoBoxHeight() / (double) source.getHeight()) * photo.scale();
+        double width = source.getWidth() * scale, height = source.getHeight() * scale;
+        return new Rectangle2D.Double(photo.centerXRatio() * 1440 - width / 2,
+                photo.centerYRatio() * 940 - height / 2, width, height);
+    }
+
+    private Rectangle2D.Double subjectBounds(BufferedImage source, PhotoSizeGuidePolicy.PhotoLayout policy,
+            SizeGuideLayoutDto.PhotoPlacement photo, SourceBounds subject) {
+        var raw = rawPhotoBounds(source, policy, photo);
+        return new Rectangle2D.Double(raw.x + subject.x() * raw.width / source.getWidth(),
+                raw.y + subject.y() * raw.height / source.getHeight(), subject.width() * raw.width / source.getWidth(),
+                subject.height() * raw.height / source.getHeight());
+    }
+
+    private Rectangle2D.Double sceneBounds(SizeGuideLayoutDto layout, SizeDimensionsDto dimensions, BufferedImage source,
+            PhotoSizeGuidePolicy.PhotoLayout policy, SourceBounds subject, Graphics2D graphics, boolean twoDimensional) {
+        var bounds = subjectBounds(source, policy, layout.photo(), subject);
+        var measurements = measurementBounds(graphics, layout, twoDimensional, dimensions);
+        measurements.forEach(bounds::add);
+        for (var placement : layout.comparisons()) {
+            var body = SizeGuideComparisonRenderer.geometry(layout, dimensions, placement);
+            bounds.add(body.bounds());
+            bounds.add(SizeGuideComparisonRenderer.caption(graphics, body, SizeGuideSceneTransformDto.IDENTITY, fontResolver, measurements).bounds());
+        }
+        return bounds;
+    }
+
+    // Current visible content only. Bake any necessary fit into the returned layout so the slider
+    // and a subsequent preview/PNG all use the same final photo scale, with no hidden camera factor.
+    private SizeGuideLayoutDto fitOutputLayout(SizeGuideLayoutDto layout, SizeDimensionsDto dimensions, BufferedImage source,
+            PhotoSizeGuidePolicy.PhotoLayout policy, SourceBounds subject, Graphics2D graphics, boolean twoDimensional) {
+        var current = transformLayout(layout, SizeGuideSceneTransformDto.IDENTITY);
+        for (int pass = 0; pass < 24; pass++) {
+            var bounds = sceneBounds(current, dimensions, source, policy, subject, graphics, twoDimensional);
+            var fit = SizeGuideComparisonRenderer.fit(bounds);
+            if (Math.abs(fit.scale() - 1) < 1e-9 && Math.abs(fit.offsetXRatio()) < 1e-9 && Math.abs(fit.offsetYRatio()) < 1e-9) return current;
+            current = transformLayout(current, fit);
+            if (current.photo().scale() < .01) throw new ImagingFailure(ImagingFailure.Kind.INVALID_INPUT,
+                    "비교 대상과 상품의 크기 차이가 너무 큽니다. 높이와 높이 점선을 확인해주세요.");
+        }
+        throw new ImagingFailure(ImagingFailure.Kind.INVALID_INPUT, "비교 대상 배치를 맞추지 못했습니다. 점선과 비교 대상 위치를 확인해주세요.");
+    }
+
+    private double maximumOutputScale(SizeGuideLayoutDto layout, SizeDimensionsDto dimensions, BufferedImage source,
+            PhotoSizeGuidePolicy.PhotoLayout policy, SourceBounds subject, Graphics2D graphics, boolean twoDimensional) {
+        double low = layout.photo().scale(), high = 2.5;
+        for (int pass = 0; pass < 20; pass++) {
+            double middle = (low + high) / 2;
+            double factor = middle / layout.photo().scale();
+            var p = layout.photo();
+            var candidate = transformLayout(layout, new SizeGuideSceneTransformDto(factor,
+                    p.centerXRatio() * (1 - factor), p.centerYRatio() * (1 - factor)));
+            var bounds = sceneBounds(candidate, dimensions, source, policy, subject, graphics, twoDimensional);
+            if (bounds.getWidth() <= SizeGuideComparisonRenderer.SCENE_WIDTH + .01 && bounds.getHeight() <= SizeGuideComparisonRenderer.SCENE_HEIGHT + .01) low = middle;
+            else high = middle;
+        }
+        return low;
+    }
+
+    private SizeGuideLayoutDto transformLayout(SizeGuideLayoutDto layout, SizeGuideSceneTransformDto transform) {
+        var p = layout.photo();
+        var comparisons = layout.comparisons().stream().map(c -> new SizeGuideLayoutDto.ComparisonPlacement(c.presetId(), c.version(),
+                c.centerXRatio() * transform.scale() + transform.offsetXRatio(), c.baseYRatio() * transform.scale() + transform.offsetYRatio())).toList();
+        return new SizeGuideLayoutDto(new SizeGuideLayoutDto.PhotoPlacement(p.scale() * transform.scale(),
+                p.centerXRatio() * transform.scale() + transform.offsetXRatio(), p.centerYRatio() * transform.scale() + transform.offsetYRatio()),
+                transformArrow(layout.width(), transform), transformArrow(layout.height(), transform), transformArrow(layout.depth(), transform), null, true, comparisons);
+    }
+
+    private SizeGuideLayoutDto.ArrowPlacement transformArrow(SizeGuideLayoutDto.ArrowPlacement arrow, SizeGuideSceneTransformDto t) {
+        if (arrow == null) return null;
+        return new SizeGuideLayoutDto.ArrowPlacement(arrow.startXRatio() * t.scale() + t.offsetXRatio(),
+                arrow.startYRatio() * t.scale() + t.offsetYRatio(), arrow.endXRatio() * t.scale() + t.offsetXRatio(),
+                arrow.endYRatio() * t.scale() + t.offsetYRatio(), arrow.labelXRatio() * t.scale() + t.offsetXRatio(),
+                arrow.labelYRatio() * t.scale() + t.offsetYRatio());
     }
 
     private void validateLayout(SizeGuideLayoutDto layout) {
         if (layout == null) {
             return;
         }
+        cc.ataglace.molebutter.imaging.internal.policy.SizeGuideComparisons.validate(layout.comparisons());
         SizeGuideLayoutDto.PhotoPlacement photo = layout.photo();
-        if (photo == null || !Double.isFinite(photo.scale()) || photo.scale() < 0.3 || photo.scale() > 2.5) {
-            throw new ImagingFailure(ImagingFailure.Kind.INVALID_INPUT, "상품 사진 배율은 0.3~2.5 범위여야 합니다.");
+        if (photo == null || !Double.isFinite(photo.scale()) || photo.scale() < (layout.outputSpace() ? .01 : .3) || photo.scale() > 2.5) {
+            throw new ImagingFailure(ImagingFailure.Kind.INVALID_INPUT, "상품 사진 배율을 확인해주세요.");
         }
-        validateRatios(photo.centerXRatio(), photo.centerYRatio());
+        validateCoordinates(layout.outputSpace(), photo.centerXRatio(), photo.centerYRatio());
         for (SizeGuideLayoutDto.ArrowPlacement arrow : new SizeGuideLayoutDto.ArrowPlacement[] {
                 layout.width(), layout.height(), layout.depth() }) {
             if (arrow != null) {
-                validateRatios(arrow.startXRatio(), arrow.startYRatio(), arrow.endXRatio(), arrow.endYRatio(),
+                validateCoordinates(layout.outputSpace(), arrow.startXRatio(), arrow.startYRatio(), arrow.endXRatio(), arrow.endYRatio(),
                         arrow.labelXRatio(), arrow.labelYRatio());
             }
         }
     }
 
-    private void validateRatios(double... ratios) {
+    private void validateCoordinates(boolean outputSpace, double... ratios) {
         for (double ratio : ratios) {
-            if (!Double.isFinite(ratio) || ratio < 0 || ratio > 1) {
+            if (!Double.isFinite(ratio) || (outputSpace ? Math.abs(ratio) > 10000 : ratio < 0 || ratio > 1)) {
                 throw new ImagingFailure(ImagingFailure.Kind.INVALID_INPUT, "이미지 배치 좌표는 0~1 범위여야 합니다.");
             }
         }
@@ -337,7 +481,7 @@ public class PhotoSizeGuideRenderer {
         float autofit = Math.min(
                 photoLayout.photoBoxWidth() / (float) source.getWidth(),
                 photoLayout.photoBoxHeight() / (float) source.getHeight());
-        // 픽셀 블렌딩은 변환이 걸리지 않는 캔버스 픽셀 좌표에서 하므로 1440 기준 값에 canvasScale 을 직접 곱한다.
+        // 최종 캔버스 픽셀 좌표에서 사진을 그리므로 1440 기준 값에 canvasScale 을 직접 곱한다.
         double scale = autofit * placement.scale() * canvasScale;
         long requestedWidth = Math.max(1, Math.round(source.getWidth() * scale));
         long requestedHeight = Math.max(1, Math.round(source.getHeight() * scale));
@@ -354,10 +498,10 @@ public class PhotoSizeGuideRenderer {
         RenderSupport.applyQualityHints(scaledGraphics);
         scaledGraphics.setColor(Color.WHITE);
         scaledGraphics.fillRect(0, 0, drawnWidth, drawnHeight);
-        scaledGraphics.drawImage(source, 0, 0, drawnWidth, drawnHeight, null);
+        scaledGraphics.drawImage(RenderSupport.resampleImage(source, drawnWidth, drawnHeight), 0, 0, null);
         scaledGraphics.dispose();
 
-        // 클립 밴드(제목/표 보호)와 캔버스 경계로 잘라 곱셈+투명도 블렌딩.
+        // 제목·표 보호와 캔버스 경계 클립을 유지하고 사진 색상을 그대로 복사한다.
         int top = Math.max(imageY, (int) Math.round(RenderSupport.SIZE_PHOTO_CLIP_TOP * canvasScale));
         int bottom = Math.min(imageY + drawnHeight, (int) Math.round(RenderSupport.SIZE_PHOTO_CLIP_BOTTOM * canvasScale));
         int left = Math.max(imageX, 0);
@@ -367,26 +511,9 @@ public class PhotoSizeGuideRenderer {
         }
         int regionWidth = right - left;
         for (int y = top; y < bottom; y++) {
-            int[] canvasRow = canvas.getRGB(left, y, regionWidth, 1, null, 0, regionWidth);
             int[] photoRow = scaled.getRGB(left - imageX, y - imageY, regionWidth, 1, null, 0, regionWidth);
-            for (int index = 0; index < regionWidth; index++) {
-                canvasRow[index] = multiplyMix(canvasRow[index], photoRow[index]);
-            }
-            canvas.setRGB(left, y, regionWidth, 1, canvasRow, 0, regionWidth);
+            canvas.setRGB(left, y, regionWidth, 1, photoRow, 0, regionWidth);
         }
-    }
-
-    /** out = (1-α)·bg + α·(src×bg/255) — 흰 픽셀은 배경 그대로, 어두운 픽셀만 은은하게 얹힌다. */
-    private int multiplyMix(int backgroundRgb, int sourceRgb) {
-        int red = mixChannel((backgroundRgb >> 16) & 0xFF, (sourceRgb >> 16) & 0xFF);
-        int green = mixChannel((backgroundRgb >> 8) & 0xFF, (sourceRgb >> 8) & 0xFF);
-        int blue = mixChannel(backgroundRgb & 0xFF, sourceRgb & 0xFF);
-        return (red << 16) | (green << 8) | blue;
-    }
-
-    private int mixChannel(int background, int source) {
-        int multiplied = source * background / 255;
-        return Math.round((1 - PHOTO_ALPHA) * background + PHOTO_ALPHA * multiplied);
     }
 
     private void drawPhotoMeasurementsFromLayout(

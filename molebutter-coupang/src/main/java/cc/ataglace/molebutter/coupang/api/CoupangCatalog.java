@@ -15,6 +15,8 @@ public interface CoupangCatalog {
     record Notice(String category,String name,String content) {}
     record Certification(String type,String code,List<Image> attachments) {}
     ProductDetail product(Long actor, String sellerProductId);
+    /** Collection reads must propagate blocking inventory failures instead of returning partial UI errors. */
+    ProductDetail productForCollection(Long actor, String sellerProductId);
     record ProductDetail(Product product, String displayProductName, String generalProductName,
                          String productGroup, String displayCategoryCode, String categoryId,
                          String saleStartedAt, String saleEndedAt, List<ProductOption> items,List<Field> delivery,List<Field> settings) {

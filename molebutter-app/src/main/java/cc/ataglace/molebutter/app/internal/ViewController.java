@@ -52,6 +52,7 @@ public class ViewController {
     public String productImages(@AuthenticationPrincipal UserPrincipal principal, Model model) {
         if (addLayoutModel(principal, model) == null)
             return "redirect:/signin";
+        model.addAttribute("productAdmin", principal.userRole() == cc.ataglace.molebutter.identity.api.UserRole.ADMIN);
         return "product-images";
     }
 
@@ -80,7 +81,7 @@ public class ViewController {
         return "coupang-orders";
     }
 
-    @GetMapping("/coupang")
+    @GetMapping("/coupang/products")
     public String coupang(@AuthenticationPrincipal UserPrincipal principal, Model model) {
         if (addLayoutModel(principal, model) == null)
             return "redirect:/signin";

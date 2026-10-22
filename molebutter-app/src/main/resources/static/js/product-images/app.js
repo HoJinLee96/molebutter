@@ -1,6 +1,7 @@
 import { copyText, escapeAttribute, escapeHtml, formatWon, sendJson, showToast, sleep, downloadZip } from './util.js';
-import { openSizeGuideEditor } from './size-guide-editor.js';
+import { openSizeGuideEditor } from './size-guide-editor.js?v=20261021-multi-comparison';
 import { ImageOrder } from './image-order.js';
+import { enableCoupangPrefill } from './coupang-prefill.js';
 import { enableImageDragging } from './image-drag.js';
 import { enableImageUploading, normalizeStorageProductCode } from './upload-dialog.js';
 
@@ -41,6 +42,11 @@ const previousTrashPage = document.getElementById('previousTrashPage');
 const nextTrashPage = document.getElementById('nextTrashPage');
 const restoreAllImages = document.getElementById('restoreAllImages');
 
+let registrationPreparing=false;
+enableCoupangPrefill({button:document.getElementById('registerCoupangProduct'),status:document.getElementById('registrationPrepareStatus'),link:document.getElementById('registrationPreparedLink'),
+    canStart:()=>Boolean(currentProduct)&&!workspaceBusy(),onBusy:value=>{registrationPreparing=value;syncBusyControls();},
+    snapshot:()=>({productCode:currentProduct.productCode,brandCode:currentProduct.brandCode||brandSelect.value,storageProductCode:readStorageProductCode(),images:selectedImageItems(imageOrder.order)}),
+    post:(url,input)=>sendJson(url,'POST',input)});
 let currentProduct = null;
 let imageOrder = new ImageOrder();
 let imageEntries = new Map();
@@ -311,11 +317,13 @@ async function generateAndAppendSizeImage(selection) {
 }
 
 function workspaceBusy() {
-    return lookupInProgress || downloadInProgress || generationInProgress || uploadInProgress;
+    return registrationPreparing || lookupInProgress || downloadInProgress || generationInProgress || uploadInProgress;
 }
 
 function syncBusyControls() {
     const busy = workspaceBusy();
+    const registrationButton=document.getElementById('registerCoupangProduct');
+    if(registrationButton)registrationButton.disabled=busy;
     downloadImagesButton.disabled = busy;
     uploadImagesButton.disabled = busy && !uploadCheckingAvailable;
     downloadArchiveButton.disabled = busy;
@@ -449,6 +457,8 @@ function setDownloadLoading(isLoading) {
 }
 
 function renderProduct(product) {
+    document.getElementById('registrationPreparedLink').hidden=true;
+    document.getElementById('registrationPrepareStatus').textContent='';
     currentProduct = product;
     storageProductCodeInput.value = product.productCode || '';
     storageProductCodeError.hidden = true;

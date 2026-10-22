@@ -27,6 +27,7 @@
     imageReading = false,
     ruleError = '';
 
+  let searchTagContext=null, searchTagColorsBase='', searchColorEdited=false, generatedSearchTags=null, searchTagsEdited=false, tagMessage='', tagGenerating=false, tagRequestSequence=0;
   let editRead = null,
     categoryRead = null;
   const startRead = (url, options) => window.CoupangRead.start(url, options);
@@ -47,6 +48,7 @@
   function field(path, label, type = 'text', value = '', required = false, readonly = false, choices = [], max = null, compact = false) {
     const attrs = `id="${e(id(path))}" data-field="${e(path)}" aria-label="${e(label)}" ${required ? 'aria-required="true"' : ''} ${max ? `maxlength="${max}"` : ''} ${readonly ? 'disabled' : ''}`;
     const text = String(value ?? '');
+    if (type === 'datetime-local' && text && !M.validDateTime(text)) type = 'text';
     const plainNumber = type === 'number' && /^options\.\d+\.(registration\.(originalPrice|salePrice|maximumBuyCount)|currentChanges\.(salePrice|amountInStock))$/.test(path);
     const labelFor = c => path.endsWith('.taxType') && c === 'FREE' ? '면세' : path === 'delivery.deliveryCompanyCode' ? courierNames[c] || c : codeNames[c] || c;
     const control = type === 'textarea' ? `<textarea ${attrs} rows="4">${e(text)}</textarea>` : type === 'select' ? `<select ${attrs}><option value="">선택</option>${[...new Set([...choices, ...(text ? [text] : [])])].map(c => `<option value="${e(c)}" ${c === text ? 'selected' : ''}>${e(labelFor(c))}</option>`).join('')}</select>` : `<input ${attrs} type="${type === 'id' || plainNumber ? 'text' : type}" ${['id', 'number'].includes(type) ? 'inputmode="numeric"' : ''} ${plainNumber ? 'data-plain-number="true"' : type === 'number' ? 'min="0" step="1"' : ''} ${type === 'datetime-local' ? 'step="1"' : ''} value="${e(text)}">`;
@@ -61,7 +63,6 @@
   const grid = F.grid,
     row = F.row;
   let purchaseLimitMode = null,
-    salePeriodMode = null,
     certificationSelection = null;
   const certificationBackups = new WeakMap();
   let certificationEntryType = "",
@@ -87,14 +88,6 @@
       if (value === 'OFF') for (const o of draft.options) {
         o.registration.maximumBuyForPerson = '0';
         o.registration.maximumBuyForPersonPeriod = '1';
-      }
-    } else if (action === 'sale-period') {
-      salePeriodMode = value;
-      if (value === 'OFF') {
-        if (!draft.settings.saleStartedAt) {
-          draft.settings.saleStartedAt = M.longSalePeriod().saleStartedAt;
-        }
-        draft.settings.saleEndedAt = M.longSalePeriod().saleEndedAt;
       }
     } else if (action === 'certification') {
       if (value !== 'TARGET' && (!rules?.certifications.some(c => c.type === value) || rules.certifications.some(c => c.required === 'MANDATORY'))) return;
@@ -125,10 +118,11 @@
     const a = o.attributes[k],
       r = rules?.attributes.find(v => M.sameAttribute(v, a)),
       locked = !['NONE', 'EXPOSED'].includes(a.exposed) || mode === 'edit' && M.isPurchase(a) && !M.canEditPurchase(o, a.name, true);
+    if(M.colorToneAttribute(a)){
+      const legacy=a.value&&!M.colorToneChoices.includes(a.value);
+      return field(`options.${n}.attributes.${k}.value`,a.name,'select',a.value,r?.required==='MANDATORY',locked,M.colorToneChoices)+`<div><button type="button" class="btn" data-color-tone-path="options.${n}.attributes.${k}.value" ${locked?'disabled':''}>제목으로 색상계열 선택</button><small id="color-tone-status-${n}-${k}" class="product-meta" role="status">${legacy?'기존 값이 선택 목록과 다릅니다. 변경할 때 목록에서 선택해 주세요.':''}</small></div>`;
+    }
     return field(`options.${n}.attributes.${k}.value`, a.name === 'Manufacturer Part Number' ? '품번 (MPN)' : a.name === 'Global Trade Item Number' ? '바코드 (GTIN)' : a.name || '속성', 'text', a.value, r?.required === 'MANDATORY' && (!r.groupNumber || r.groupNumber === 'NONE'), locked, [], 30, compact);
-  }
-  function attrs(o, n, exposed) {
-    return grid(o.attributes.map((a, k) => a.exposed === exposed && !M.productIdentity(a.name) ? attributeField(o, n, k) : '').join('') || '<p class="empty">등록된 속성이 없습니다.</p>');
   }
   function syncOptionPickers() {
     $('editor-option-tabs').innerHTML = draft.options.map((o, n) => `<button type="button" role="tab" id="editor-option-tab-${n}" aria-controls="editor-option-panel" aria-selected="${n === selected}" tabindex="${n === selected ? 0 : -1}" data-option-tab="${n}">${e(o.itemName || '옵션 ' + (n + 1))}</button>`).join('');
@@ -141,6 +135,7 @@
     renderMedia();
   }
   function render() {
+    $('editor-load-working-copy').hidden=mode!=='new';
     const b = draft.basic;
     $('editor-mode').textContent = mode === 'edit' ? `상품 수정 · ${b.sellerProductId} · ${b.statusName || '미확인'}` : '상품 등록';
     $('editor-title').textContent = mode === 'edit' ? b.sellerProductName || '쿠팡 상품 수정' : '쿠팡 상품 등록';
@@ -219,7 +214,7 @@
       return field(`options.${n}.registration.${k}`, label || defaultLabel, type, o.registration[k], required, false, choices, max, true);
     };
     const liveInput = (o, n, key, label) => o.separateCurrentChanges ? field(`options.${n}.currentChanges.${key}`, label, 'number', o.currentChanges[key] ?? o.current?.[key], false, o.current?.[key] == null, [], undefined, true) + (o.current?.[key] == null ? '<small class="form-error">미확인</small>' : '') : tableInput(o, n, key === 'amountInStock' ? 'maximumBuyCount' : key, label);
-    const columns = [['옵션 아이디', o => `<span class="coupang-option-id">${e(o.vendorItemId || (mode === 'new' ? '등록 후 발급' : '미확인'))}</span>${o.currentError ? `<small class="form-error">${e(o.currentError)}</small>` : ''}`, 144], ...M.purchaseColumns(rules, draft.options).map(column => [column.name, (o, n) => purchaseCell(o, n, column), 140]), ['품번 (MPN)', (o, n) => identity(o, n, 'Manufacturer Part Number', '품번 (MPN)'), 176], ['바코드 (GTIN)', (o, n) => identity(o, n, 'Global Trade Item Number', '바코드 (GTIN)'), 176], ['정상가', (o, n) => tableInput(o, n, 'originalPrice', '등록 정상가'), 126], ['판매가', (o, n) => liveInput(o, n, 'salePrice', '판매가'), 126], ['재고', (o, n) => liveInput(o, n, 'amountInStock', '재고'), 96], ['판매자상품코드', (o, n) => tableInput(o, n, 'externalVendorSku'), 176]];
+    const columns = [['옵션 아이디', o => `<span class="coupang-option-id">${AppUI.coupangOptionLink(draft.basic.productId,o.vendorItemId,mode === 'new' ? '등록 후 발급' : '미확인')}</span>${o.currentError ? `<small class="form-error">${e(o.currentError)}</small>` : ''}`, 144], ...M.purchaseColumns(rules, draft.options).map(column => [column.name, (o, n) => purchaseCell(o, n, column), 140]), ['품번 (MPN)', (o, n) => identity(o, n, 'Manufacturer Part Number', '품번 (MPN)'), 176], ['바코드 (GTIN)', (o, n) => identity(o, n, 'Global Trade Item Number', '바코드 (GTIN)'), 176], ['정상가', (o, n) => tableInput(o, n, 'originalPrice', '등록 정상가'), 126], ['판매가', (o, n) => liveInput(o, n, 'salePrice', '판매가'), 126], ['재고', (o, n) => liveInput(o, n, 'amountInStock', '재고'), 96], ['판매자상품코드', (o, n) => tableInput(o, n, 'externalVendorSku'), 176]];
     if (mode === 'new') columns.push(['작업', (o, n) => `<button class="btn small" type="button" data-remove-option="${n}" ${draft.options.length === 1 ? 'disabled' : ''}>삭제</button>`, 80]);
     $('editor-option-list').innerHTML = F.optionTable({
       headers: columns.map(([label]) => label),
@@ -395,6 +390,53 @@
     renderDelivery();
     closeAddressBook();
   });
+  let logoSettings=null,logoBusy=false,logoStatus='',logoSequence=0,logoUrlInputs=new Map();
+  const logoContext=()=>draft&&entry?JSON.stringify([entry.accountKey,entry.workingCopyId,entry.revision,mode,draft.options[selected]?.id,draft.basic.displayProductName,draft.options[selected]?.contents]):'';
+  function renderLogo(){
+    const panel=$('editor-brand-logo');if(!panel)return;panel.hidden=mode!=='new'||!draft;if(panel.hidden)return;
+    const row=window.CoupangBrandLogo.current(draft.options[selected]),logos=logoSettings?.brandLogos||[],matches=logos.map((v,i)=>v.imageUrl===row?.content?i:-1).filter(i=>i>=0),value=!row?'':matches.length===1?String(matches[0]):'custom';
+    panel.innerHTML=`<h3>브랜드 로고</h3><p class="product-meta">현재 옵션에만 적용합니다. 공통 안내 → 로고 → 상품 이미지 순서이며, 제목 수정만으로 바꾸지 않습니다.</p>
+      <label class="field"><span>브랜드 로고 선택</span><select id="editor-logo-select"><option value="">로고 없음</option>${logos.map((v,i)=>`<option value="${i}" ${value===String(i)?'selected':''}>${e(v.brandName)}</option>`).join('')}<option value="custom" ${value==='custom'?'selected':''}>직접 지정</option></select></label>
+      <label class="field"><span>로고 이미지 URL</span><input type="url" id="editor-logo-url" maxlength="2048" placeholder="https://assets.molebutter.link/common/daks_logo.png" value="${e(logoUrlInputs.get(draft.options[selected].id)??row?.content??'')}"></label>
+      <div class="toolbar"><button type="button" class="btn" id="editor-logo-apply">URL 적용</button><button type="button" class="btn" id="editor-logo-find">제목으로 로고 찾기</button><button type="button" class="btn" id="editor-logo-reload">로고 목록 다시 조회</button></div>
+      <p id="editor-logo-status" role="status">${e(logoStatus)}</p>${row?`<p class="product-meta">아래 ‘브랜드 로고’ 설명 행에서 미리보기를 확인할 수 있습니다.</p>`:''}`;
+    $('editor-logo-url').addEventListener('input',ev=>{logoUrlInputs.set(draft.options[selected].id,ev.target.value);cacheInput();});
+    $('editor-logo-select').addEventListener('change',ev=>{if(ev.target.value==='custom'){$('editor-logo-url').focus();return;}void chooseLogo(ev.target.value===''?'':logos[Number(ev.target.value)].imageUrl);});
+    FormActions.bindExplicitSubmit($('coupang-editor-form'),$('editor-logo-apply'),()=>chooseLogo($('editor-logo-url').value.trim()));
+    FormActions.bindExplicitSubmit($('coupang-editor-form'),$('editor-logo-find'),findLogo);
+    FormActions.bindExplicitSubmit($('coupang-editor-form'),$('editor-logo-reload'),loadLogoSettings);
+  }
+  function logoControls(){for(const id of ['editor-logo-select','editor-logo-url','editor-logo-apply','editor-logo-find','editor-logo-reload'])if($(id))$(id).disabled=logoBusy||loading||saveBusy||imageReading||!!entry?.recoveryMessage;}
+  async function loadLogoSettings(){
+    if(mode!=='new'||!entry||logoBusy)return;const seq=++logoSequence,account=entry.accountKey;logoBusy=true;logoStatus='브랜드 로고 설정 조회 중…';renderLogo();logoControls();
+    try{const result=await apiGet('/api/settings/coupang-registration');if(seq!==logoSequence||entry?.accountKey!==account)return;if(result.accountKey!==account)throw Error('쿠팡 계정이 변경되었습니다. 다시 진입해 주세요.');logoSettings=result;logoStatus='저장된 로고 '+(result.brandLogos||[]).length+'개 · 자동 변경하지 않습니다.';}
+    catch(err){if(seq===logoSequence)logoStatus=err.message||'로고 목록을 읽지 못했습니다. 입력은 유지했습니다.';}
+    finally{if(seq===logoSequence){logoBusy=false;renderLogo();updateBusy();}}
+  }
+  async function checkedLogo(url){if(!url)return '';const image=await apiGet('/api/coupang/r2-images/resolve?'+new URLSearchParams({url}));if(typeof image?.url!=='string'||!image.url||!image?.key?.startsWith('common/'))throw Error('브랜드 로고는 설정된 R2 공개 버킷의 common/ 이미지를 지정해 주세요.');return image.url;}
+  function commitLogo(url){
+    const option=draft.options[selected],old=window.CoupangBrandLogo.current(option);
+    if(old&&old.content!==url&&!confirm(url?'현재 브랜드 로고를 교체할까요?':'현재 브랜드 로고를 제거할까요?')){logoStatus='기존 로고와 입력을 유지했습니다.';return;}
+    if(window.CoupangBrandLogo.apply(option,url,AppUI.uuid)){logoUrlInputs.delete(option.id);changed();logoStatus=url?'현재 옵션의 브랜드 로고를 적용했습니다.':'현재 옵션의 브랜드 로고를 제거했습니다.';}else logoStatus='현재 로고와 같습니다.';
+  }
+  async function chooseLogo(url){
+    if(mode!=='new'||logoBusy||loading||saveBusy||imageReading||entry?.recoveryMessage)return;
+    const context=logoContext(),seq=++logoSequence;logoBusy=true;logoStatus='R2 로고 확인 중…';$('editor-logo-status').textContent=logoStatus;logoControls();
+    try{const checked=await checkedLogo(url);if(seq!==logoSequence)return;if(context!==logoContext()||loading||saveBusy||imageReading||entry?.recoveryMessage){logoStatus='옵션이나 입력이 바뀌어 적용하지 않았습니다. 다시 선택해 주세요.';return;}commitLogo(checked);renderMedia();}
+    catch(err){if(seq===logoSequence){logoStatus=err.message||'로고를 확인하지 못했습니다. 입력은 유지했습니다.';renderLogo();}}
+    finally{if(seq===logoSequence){logoBusy=false;if($('editor-logo-status'))$('editor-logo-status').textContent=logoStatus;updateBusy();}}
+  }
+  async function findLogo(){
+    if(mode!=='new'||logoBusy||loading||saveBusy||imageReading||entry?.recoveryMessage)return;
+    const context=logoContext(),seq=++logoSequence;logoBusy=true;logoStatus='제목으로 로고 찾는 중…';$('editor-logo-status').textContent=logoStatus;logoControls();
+    try{const result=await apiPost('/api/coupang/working-copies/brand-logo',{title:draft.basic.displayProductName||''});if(seq!==logoSequence)return;if(result.accountKey!==entry.accountKey)throw Error('쿠팡 계정이 변경되었습니다. 다시 진입해 주세요.');
+      if(!['MATCHED','AMBIGUOUS','NOT_FOUND'].includes(result.status)||result.status==='MATCHED'&&!result.logo?.imageUrl||result.status==='NOT_FOUND'&&result.logo)throw Error('로고 조회 응답을 확인하지 못했습니다. 입력은 유지했습니다.');
+      if(result.status==='AMBIGUOUS'){logoStatus='여러 브랜드가 일치합니다. 기존 로고는 유지했습니다. 직접 선택해 주세요.';return;}
+      const url=await checkedLogo(result.logo?.imageUrl||'');if(seq!==logoSequence)return;if(context!==logoContext()||loading||saveBusy||imageReading||entry?.recoveryMessage){logoStatus='제목·옵션·설명이 바뀌어 적용하지 않았습니다. 다시 찾아 주세요.';return;}
+      if(result.status==='NOT_FOUND'&&!window.CoupangBrandLogo.current(draft.options[selected]))logoStatus='제목과 일치하는 브랜드 로고가 없습니다.';else commitLogo(url);renderMedia();
+    }catch(err){if(seq===logoSequence)logoStatus=err.message||'로고를 찾지 못했습니다. 입력은 유지했습니다.';}
+    finally{if(seq===logoSequence){logoBusy=false;if($('editor-logo-status'))$('editor-logo-status').textContent=logoStatus;updateBusy();}}
+  }
   function renderMedia() {
     const o = draft.options[selected],
       p = 'options.' + selected;
@@ -407,7 +449,7 @@
     }) + `<div data-error-for="${p}.images" class="editor-field-error" hidden></div>`;
     $('editor-description-fields').innerHTML = F.description({
       cards: o.contents.map((c, n) => F.contentCard({
-        label: c.type === 'HTML' ? 'HTML 설명' : c.detailType === 'IMAGE' ? '설명 이미지' : c.type || c.detailType || '콘텐츠',
+        label: c.purpose==='BRAND_LOGO'?'브랜드 로고':c.type === 'HTML' ? 'HTML 설명' : c.detailType === 'IMAGE' ? '설명 이미지' : c.type || c.detailType || '콘텐츠',
         index: n,
         field: field(`${p}.contents.${n}.content`, c.detailType === 'IMAGE' ? '설명 이미지 주소' : '설명 원문', c.detailType === 'IMAGE' ? 'text' : 'textarea', c.content),
         preview: `<div class="editor-preview" data-preview="${n}"></div>`,
@@ -416,7 +458,7 @@
       error: `<div data-error-for="${p}.contents" class="editor-field-error" hidden></div>`
     });
     FormActions.bindEnter($('editor-image-url'), $('editor-media-fields').querySelector('[data-add-image]'));
-    previews();
+    renderLogo();previews();
     updateBusy();
   }
   const noticeReference = '상품 상세페이지 참조',
@@ -429,18 +471,28 @@
     $('editor-notice-reference').checked = noticeReferenceChecked();
   }
   function renderNotices() {
-    const o = draft.options[0],
-      p = 'options.0';
+    const o = draft.options[0], p = 'options.0';
+    const available = rules?.categoryCode === draft.basic.displayCategoryCode && !ruleError;
+    const mixed = draft.options.some(option => option.noticeCategory !== o.noticeCategory);
+    const missing = available && draft.options.some(option => option.noticeCategory && !rules.notices.some(n => n.name === option.noticeCategory));
+    const status = ruleLoading ? '카테고리 규격 조회 중… 현재 입력을 유지합니다.' : ruleError || (!available ? '카테고리 규격을 조회해 주세요.' : missing ? '현재 고시유형이 최신 규격에 없습니다. 기존 입력은 유지되며 유형 변경 시 유효한 항목을 선택해 주세요.' : '');
+    const fields = (option, index) => option.notices.map((v, n) => {
+      if (v.category !== option.noticeCategory) return '';
+      const r = available && rules.notices.find(c => c.name === v.category)?.fields.find(f => f.name === v.name);
+      return field(`options.${index}.notices.${n}.content`, v.name || '고시 항목', 'textarea', v.content, r?.required === 'MANDATORY');
+    }).join('');
     $('editor-notice-fields').innerHTML = F.notices({
       referenceAttrs: 'id="editor-notice-reference"',
       checked: noticeReferenceChecked(),
-      selector: rules?.notices.length ? field(p + '.noticeCategory', '고시 유형', 'select', o.noticeCategory, true, false, rules.notices.map(n => n.name)) : '',
-      fields: o.notices.map((v, n) => {
-        if (v.category !== o.noticeCategory) return '';
-        const r = rules?.notices.find(c => c.name === v.category)?.fields.find(f => f.name === v.name);
-        return field(`${p}.notices.${n}.content`, `${v.category || ''} · ${v.name || ''}`, 'textarea', v.content, r?.required === 'MANDATORY');
-      }).join('')
+      selector: field(p + '.noticeCategory', '고시 유형', 'select', o.noticeCategory, true, ruleLoading || !available || !rules.notices.length, available ? rules.notices.map(n => n.name) : []) +
+        `<div role="status" aria-live="polite">${e(status)}</div><button type="button" class="btn small" id="editor-notice-retry" ${ruleLoading || loading ? 'disabled' : ''}>고시 규격 다시 조회</button>` +
+        (mixed ? '<p class="product-meta">옵션별 고시유형이 다릅니다. 유형을 선택하면 모든 옵션에 적용됩니다.</p>' : ''),
+      fields: mixed ? draft.options.map((option, index) => `<section class="coupang-notice-option"><h3>${e(option.itemName || '옵션 ' + (index + 1))} · ${e(option.noticeCategory || '유형 미선택')}</h3>${fields(option, index)}</section>`).join('') : fields(o, 0)
     });
+    const selector = $('field-options-0-noticeCategory');
+    selector.options[0].disabled = true;
+    for (const option of selector.options) if (option.value && !rules?.notices.some(n => n.name === option.value)) option.disabled = true;
+    FormActions.bindExplicitSubmit($('coupang-editor-form'), $('editor-notice-retry'), category);
   }
   function previews() {
     const o = draft.options[selected];
@@ -450,8 +502,39 @@
       el.innerHTML = c.type === 'HTML' ? `<iframe class="coupang-html" sandbox="" referrerpolicy="no-referrer" title="상품 설명 미리보기" srcdoc="${e(M.preview(c.content))}"></iframe>` : c.detailType === 'IMAGE' && M.descriptionUrl(c.content) ? `<img src="${e(M.descriptionUrl(c.content))}" alt="상품 설명 이미지" referrerpolicy="no-referrer">` : `<p class="coupang-content-text">${e(c.content || '')}</p>`;
     });
   }
+  const colorName=name=>['색상','컬러','제품색상','색상계열'].includes(String(name||'').replace(/[^가-힣A-Za-z]/g,''));
+  function colorRows(){return draft.options.flatMap(o=>{
+    const attributes=(o.attributes||[]).filter(a=>colorName(a.name));
+    return attributes.length?attributes.map(a=>({option:o.id,name:a.name,value:a.value||''})):(o.notices||[]).filter(n=>n.category===o.noticeCategory&&colorName(n.name)).map(n=>({option:o.id,name:n.name,value:n.content||''}));
+  }).filter(r=>r.value.trim());}
+  function tagInput(){
+    const rows=colorRows(),same=JSON.stringify(rows)===searchTagColorsBase;
+    const colors=rows.length||!same||searchColorEdited||draft.basic.displayCategoryCode!==initialDocument?.basic?.displayCategoryCode?rows.flatMap(r=>r.value.split(/[,/;|]/).map(v=>v.trim()).filter(Boolean)):[...(searchTagContext?.colors||[])];
+    return {title:draft.basic.displayProductName||'',brand:draft.basic.brand||'',context:{gender:searchTagContext?.gender||'',material:searchTagContext?.material||'',category:draft.basic.displayCategoryCode===initialDocument?.basic?.displayCategoryCode?searchTagContext?.category||'':'',colors:[...new Set(colors)]}};
+  }
+  const tagValues=()=>draft.options.map(o=>o.registration.searchTags||'');
+  const tagFingerprint=()=>JSON.stringify({input:tagInput(),tags:tagValues(),account:entry?.accountKey,session:entry?.sessionId,revision:entry?.revision,workingCopy:entry?.workingCopyId});
+  async function regenerateTags(){
+    if(!draft||loading||saveBusy||imageReading||ruleLoading||tagGenerating||entry?.recoveryMessage)return;
+    const current=tagValues();
+    if((searchTagsEdited||(generatedSearchTags==null?current.some(Boolean):current.some((v,i)=>v!==generatedSearchTags[i])))&&!confirm('직접 작성한 검색어 또는 옵션별 검색어를 새 검색어로 교체할까요? 다른 입력은 유지됩니다.'))return;
+    const seq=++tagRequestSequence,load=loadSequence,before=tagFingerprint();
+    tagGenerating=true;tagMessage='검색어 생성 중…';renderTags();updateBusy();
+    try{
+      const result=await apiRequest('/api/coupang/working-copies/search-tags',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(tagInput())});
+      if(seq!==tagRequestSequence||load!==loadSequence)return;
+      if(before!==tagFingerprint()){tagMessage='생성 중 입력이 변경되어 결과를 적용하지 않았습니다. 다시 만들어 주세요.';return;}
+      if(!Array.isArray(result.tags)||result.tags.length>20||result.tags.some(t=>typeof t!=='string'||Array.from(t).length>20)||!Array.isArray(result.excluded))throw Error('검색어 생성 응답을 확인할 수 없습니다.');
+      M.setSharedValue(draft,'options.0.registration.searchTags',result.tags.join(', '));generatedSearchTags=tagValues();searchTagsEdited=false;
+      tagMessage='검색어 '+result.tags.length+'개를 만들었습니다.'+(result.excluded.length?' 제외: '+result.excluded.map(v=>v.value+' ('+(v.reason==='OVER_COUNT'?'20개 한도 초과':'20자 초과')+')').join(', '):'');
+      $('field-options-0-registration-searchTags').value=draft.options[0].registration.searchTags;delete $('field-options-0-registration-searchTags').dataset.mixed;
+      changed();
+    }catch(error){if(seq===tagRequestSequence&&load===loadSequence)tagMessage=error.message+' 기존 검색어는 유지했습니다.';}
+    finally{if(seq===tagRequestSequence&&load===loadSequence){tagGenerating=false;renderTags();markSharedFields();updateBusy();}}
+  }
   function renderTags() {
     const state = F.tagState(draft.options[0].registration.searchTags);
+    if($('editor-tag-generation-status'))$('editor-tag-generation-status').textContent=tagMessage;
     $('editor-tag-list').innerHTML = state.html;
     $('editor-tag-count').textContent = state.count;
     $('editor-tag-limit').hidden = !state.invalid;
@@ -468,16 +551,13 @@
       certMixed = certificationSelection === null && draft.options.some(v => certificationMode(v) !== certMode),
       types = rules?.certifications || [];
     const limit = purchaseLimitMode ?? (draft.options.some(v => String(v.registration.maximumBuyForPerson ?? '') !== String(o.registration.maximumBuyForPerson ?? '')) ? '' : o.registration.maximumBuyForPerson == null ? '' : Number(o.registration.maximumBuyForPerson) === 0 ? 'OFF' : 'ON');
-    const period = salePeriodMode ?? (!draft.settings.saleEndedAt ? '' : draft.settings.saleEndedAt.startsWith('2099-') ? 'OFF' : 'ON');
     $('editor-settings-fields').innerHTML = F.settings({
       mode,
       types,
       certMode,
       certMixed,
       limit,
-      period,
       bundle: draft.settings['bundleInfo.bundleType'],
-      saleEndedAt: draft.settings.saleEndedAt,
       extraId: 'editor-extra-settings',
       choice: choices,
       configured: (scope, keys) => configured(scope === 'settings' ? 'settings' : p + '.registration', keys, scope === 'settings' ? draft.settings : o.registration),
@@ -492,6 +572,11 @@
       }),
       extra: configured('settings', ['extraInfoMessage'], draft.settings) + configured(p + '.registration', ['unitCount', 'overseasPurchased', 'pccNeeded', ...additional], o.registration) + extras.map(k => field(p + '.registration.' + k, k, 'text', o.registration[k], false, true)).join('') + Object.keys(draft.settings).filter(k => !M.settingsKeys.includes(k) && k !== 'bundleInfo.bundleType' && k !== 'brandId' && k !== 'vendorUserId').map(k => field('settings.' + k, k, 'text', draft.settings[k], false, true)).join('')
     });
+    FormActions.bindExplicitSubmit($('coupang-editor-form'), document.querySelector('[data-coupang-long-period]'), () => {
+      if (saveBusy || imageReading || loading) return;
+      Object.assign(draft.settings, M.longSalePeriod());
+      changed(); renderSettings(); markSharedFields(); updateBusy();
+    });
     $('editor-document-fields').innerHTML = F.documents({
       items: draft.documents,
       rules: rules?.documents || [],
@@ -502,15 +587,25 @@
     });
     if (extraOpen) $('editor-extra-settings').open = true;
     FormActions.bindEnter($('editor-cert-code'), $('editor-settings-fields').querySelector('[data-add-cert]'));
-    $('editor-search-tags-fields').innerHTML = field(p + '.registration.searchTags', '검색어', 'text', o.registration.searchTags) + `<small id="editor-tag-count" class="product-meta"></small><p id="editor-tag-limit" class="form-error" role="alert" hidden></p><div id="editor-tag-list" class="coupang-tag-list" aria-label="입력한 검색어"></div>`;
+    $('editor-search-tags-fields').innerHTML = field(p + '.registration.searchTags', '검색어', 'text', o.registration.searchTags) + `<button type="button" class="btn" id="editor-regenerate-tags">검색어 다시 만들기</button><p id="editor-tag-generation-status" class="product-meta" role="status"></p><small id="editor-tag-count" class="product-meta"></small><p id="editor-tag-limit" class="form-error" role="alert" hidden></p><div id="editor-tag-list" class="coupang-tag-list" aria-label="입력한 검색어"></div>`;
+    $('editor-regenerate-tags').addEventListener('click',regenerateTags);
+    $('editor-regenerate-tags').disabled=tagGenerating||loading||saveBusy||imageReading||ruleLoading;
     renderTags();
-    $('editor-search-filter-fields').innerHTML = attrs(o, 0, 'NONE') + o.attributes.map((a, n) => !['NONE', 'EXPOSED'].includes(a.exposed) && !M.productIdentity(a.name) ? field(`${p}.attributes.${n}.value`, a.name || '미분류 속성', 'text', a.value, false, true) : '').join('');
+    renderSearchFilters();
+  }
+  function renderSearchFilters(){
+    M.addSearchFields(draft,rules);
+    const o=draft.options[0],p='options.0';
+    const filters=o.attributes.map((a,k)=>a.exposed==='NONE'&&!M.productIdentity(a.name)?attributeField(o,0,k):'').join('')+o.attributes.map((a,n)=>!['NONE','EXPOSED'].includes(a.exposed)&&!M.productIdentity(a.name)?field(`${p}.attributes.${n}.value`,a.name||'미분류 속성','text',a.value,false,true):'').join('');
+    const filterStatus=ruleLoading?'검색필터 규격을 조회 중입니다.':ruleError?'검색필터 규격을 확인하지 못했습니다. 다시 조회해 주세요.':!rules?'카테고리 규격을 조회하면 검색필터를 입력할 수 있습니다.':filters?'쿠팡 카테고리의 검색용 속성입니다. 확인 가능한 값만 입력해 주세요.':'이 카테고리는 API에서 제공하는 검색필터가 없습니다.';
+    $('editor-search-filter-fields').innerHTML='<p id="editor-search-filter-status" class="product-meta" role="status">'+e(filterStatus)+'</p>'+grid(filters)+(ruleError?'<button type="button" class="btn" id="editor-search-filter-retry">검색필터 규격 다시 조회</button>':'');
+    $('editor-search-filter-retry')?.addEventListener('click',()=>{if(!loading&&!saveBusy&&!imageReading)category();});
   }
   const sharedSections = '#editor-settings [data-field],#editor-search-tags [data-field],#editor-search-filters [data-field],#editor-notices [data-field]';
   function markSharedFields() {
     document.querySelectorAll(sharedSections).forEach(input => {
       const path = input.dataset.field;
-      if (input.type === 'radio' || !path.startsWith('options.')) return;
+      if (input.type === 'radio' || !path.startsWith('options.') || input.closest('.coupang-notice-option')) return;
       const values = M.sharedValues(draft, path),
         mixed = values.some(v => String(v ?? '') !== String(values[0] ?? ''));
       if (mixed) {
@@ -527,17 +622,21 @@
     });
   }
   function updateField(input, path) {
+    if(path.endsWith('.registration.searchTags'))searchTagsEdited=true;
+    if (/\.(?:registration\.(?:originalPrice|salePrice)|currentChanges\.salePrice)$/.test(path)) input.value=AppUI.normalizeCoupangPrice(input.value);
     if (path.endsWith('.registration.outboundShippingTimeDay') && (shippingTimeMode || (draft.options.every(o => String(o.registration.outboundShippingTimeDay ?? '') === String(draft.options[0].registration.outboundShippingTimeDay ?? '')) ? 'COMMON' : 'OPTIONS')) === 'COMMON') {
       for (const o of draft.options) o.registration.outboundShippingTimeDay = input.value;
       return;
     }
-    if (input.closest('#editor-settings,#editor-search-tags,#editor-search-filters,#editor-notices') && path.startsWith('options.')) M.setSharedValue(draft, path, input.value);else set(path, input.value);
+    if (!input.closest('.coupang-notice-option') && input.closest('#editor-settings,#editor-search-tags,#editor-search-filters,#editor-notices') && path.startsWith('options.')) M.setSharedValue(draft, path, input.value);else set(path, input.value);
     delete input.dataset.mixed;
   }
-  const cacheKey=e=>'molebutter.coupang.working-copy.input.'+e.accountKey+'.'+(e.workingCopyId||e.productId||'new');
-  function cacheInput(){if(!entry||!draft)return;try{sessionStorage.setItem(cacheKey(entry),JSON.stringify({format:4,revision:entry.revision,appliedRevision:entry.appliedRevision,document:window.CoupangWorkingCopyModel.flatten(draft),baseDocument:initialDocument,changes:window.CoupangWorkingCopyModel.changes(initialDocument,window.CoupangWorkingCopyModel.flatten(draft),rememberedChanges)}));}catch{}}
+  let prefillOwner = null;
+  const prefillToken = new URLSearchParams(location.search).get('prefill');
+  const cacheKey=e=>'molebutter.coupang.working-copy.input.'+e.accountKey+'.'+(e.workingCopyId||e.productId||(prefillToken?'prefill.'+prefillToken:'new'));
+  function cacheInput(){if(!entry||!draft)return;try{sessionStorage.setItem(cacheKey(entry),JSON.stringify({format:4,ownerId:prefillOwner,revision:entry.revision,appliedRevision:entry.appliedRevision,logoUrlInputs:[...logoUrlInputs],searchTagState:{context:searchTagContext,colorsBase:searchTagColorsBase,generated:generatedSearchTags,colorEdited:searchColorEdited,tagsEdited:searchTagsEdited},document:window.CoupangWorkingCopyModel.flatten(draft),baseDocument:initialDocument,changes:window.CoupangWorkingCopyModel.changes(initialDocument,window.CoupangWorkingCopyModel.flatten(draft),rememberedChanges)}));}catch{}}
   function recovery(message,input){recoveryInput=input;entry.recoveryMessage=message;$('editor-load-error').textContent=message;$('editor-load-error').hidden=false;$('editor-recovery').hidden=false;$('editor-reprepare').disabled=!entry.recoveryBase;}
-  function changed(){cacheInput();submissionUI?.changed();dirty=true;$('editor-validation').hidden=true;}
+  function changed(){if(draft&&JSON.stringify(colorRows())!==searchTagColorsBase)searchColorEdited=true;cacheInput();submissionUI?.changed();dirty=true;$('editor-validation').hidden=true;}
   function updateBusy() {
     saveBusy = localSaveBusy || submissionBusy;
     for (const control of $('coupang-editor-form').querySelectorAll('input,select,textarea,button')) {
@@ -549,19 +648,14 @@
         delete control.dataset.editorDisabled;
       }
     }
+    if($('editor-regenerate-tags'))$('editor-regenerate-tags').disabled=tagGenerating||loading||saveBusy||imageReading||ruleLoading||!!entry?.recoveryMessage;
     $('editor-category-load').disabled = ruleLoading || loading || saveBusy || imageReading;
     $('editor-validate').disabled = ruleLoading || loading || saveBusy || imageReading;
     $('editor-save-working-copy').disabled = ruleLoading || loading || saveBusy || imageReading;
+    logoControls();
+    submissionUI?.update();
   }
   let appliedCategory = '';
-  $('coupang-editor-form').addEventListener('change', ev => {
-    if (ev.target.hasAttribute('data-coupang-long-period') && ev.target.checked && !saveBusy && !imageReading) {
-      Object.assign(draft.settings, M.longSalePeriod());
-      salePeriodMode = 'ON';
-      changed();
-      renderSettings();
-    }
-  });
   $('coupang-editor-form').addEventListener('change', ev => {
     const t = ev.target;
     if (!t.hasAttribute('data-purchase-group') || t.disabled || saveBusy) return;
@@ -592,6 +686,7 @@
     }
     const seq = ++ruleSequence;
     ruleLoading = true;
+    renderSearchFilters();renderNotices(); markSharedFields();
     updateBusy();
     if (mode !== 'edit') $('editor-category-status').textContent = '카테고리 규격 조회 중…';
     try {
@@ -617,8 +712,8 @@
       if (mode !== 'edit') $('editor-category-status').textContent = '카테고리 규격 조회 완료';
     } catch (err) {
       if (seq === ruleSequence) {
+        ruleError = err.message;
         if (mode === 'edit') {
-          ruleError = err.message;
           render();
           $('editor-category-status').textContent = err.message;
         } else $('editor-category-status').textContent = err.message;
@@ -627,13 +722,14 @@
       if (seq === ruleSequence) {
         categoryRead = null;
         ruleLoading = false;
+        renderSearchFilters();renderNotices(); markSharedFields();
         updateBusy();
       }
     }
   }
   async function initialize() {
     if (loading) return;
-    const seq = ++loadSequence;
+    const seq = ++loadSequence;++tagRequestSequence;tagGenerating=false;tagMessage='';++logoSequence;logoBusy=false;logoSettings=null;logoStatus='';logoUrlInputs=new Map();
     let restoredInput = false;
     loading = true;
     $('editor-loading').hidden = false;
@@ -641,20 +737,27 @@
     $('editor-retry').hidden = true;
     $('editor-recovery').hidden=true;recoveryInput=null;
     try {
-      const endpoint = copyMatch ? '/api/coupang/working-copies/' + copyMatch[1] : '/api/coupang/working-copies/entry' + (editMatch ? '?productId=' + editMatch[1] : '');
-      editRead = startRead(endpoint);entry = await editRead.promise;
+      const endpoint = prefillToken && !copyMatch && !editMatch ? '/api/coupang/working-copies/prefill/'+encodeURIComponent(prefillToken) : copyMatch ? '/api/coupang/working-copies/' + copyMatch[1] : '/api/coupang/working-copies/entry' + (editMatch ? '?productId=' + editMatch[1] : '');
+      editRead = startRead(endpoint);const loaded = await editRead.promise;
+      if(seq!==loadSequence)return;
+      entry = prefillToken && !copyMatch && !editMatch ? loaded.entry : loaded;prefillOwner=loaded.ownerId||null;
+      const provenance=$('editor-prefill');
+      if(provenance){provenance.hidden=!(prefillToken && loaded.notes);if(!provenance.hidden)provenance.innerHTML='<h2>자동 입력 확인</h2><p>조회 근거로 준비한 입력입니다. 저장·전송 전 확인해 주세요. <a href="/settings?tab=coupang-registration" target="_blank" rel="noopener">쿠팡 등록 기본설정</a></p><details><summary>입력 출처·이전 확인값·누락·확인 항목 '+loaded.notes.length+'개</summary><ul>'+loaded.notes.map(n=>'<li><strong>'+e(M.spec[n.field]?.[0]||n.field)+'</strong> · '+e(n.source)+' · '+e(n.message)+(n.checkedAt?' · 확인 '+e(n.checkedAt):'')+'</li>').join('')+'</ul></details>';}
+
       mode = entry.mode === 'UPDATE' ? 'edit' : 'new';
       rememberedChanges = entry.changes || [];initialDocument = structuredClone(entry.document);
       draft = window.CoupangWorkingCopyModel.inflate(entry);
-      if (!entry.workingCopyId && mode === 'new') {
+      searchTagsEdited=false;searchColorEdited=false;searchTagContext=loaded.searchTagContext||null;searchTagColorsBase=JSON.stringify(colorRows());generatedSearchTags=searchTagContext?tagValues():null;
+      if (!entry.workingCopyId && mode === 'new' && !prefillToken) {
         Object.assign(draft.delivery,{deliveryMethod:'SEQUENCIAL',deliveryCompanyCode:'CJGLS',deliveryChargeType:'FREE',deliveryCharge:'0',freeShipOverAmount:'0',deliveryChargeOnReturn:'0',returnCharge:'0',remoteAreaDeliverable:'N',unionDeliveryType:'NOT_UNION_DELIVERY'});
-        Object.assign(draft.settings,M.longSalePeriod(),{'bundleInfo.bundleType':'SINGLE'});
+        Object.assign(draft.settings,{'bundleInfo.bundleType':'SINGLE'});
         Object.assign(draft.options[0].registration,{maximumBuyForPerson:'0',maximumBuyForPersonPeriod:'1',unitCount:'1',outboundShippingTimeDay:'1',parallelImported:'NOT_PARALLEL_IMPORTED',overseasPurchased:'NOT_OVERSEAS_PURCHASED',pccNeeded:'false',adultOnly:'EVERYONE',taxType:'TAX'});
       }
       let cached;
       try{
         cached=JSON.parse(sessionStorage.getItem(cacheKey(entry)));
         if(cached){
+          if(Array.isArray(cached.logoUrlInputs))logoUrlInputs=new Map(cached.logoUrlInputs);if(cached.searchTagState){searchTagsEdited=!!cached.searchTagState.tagsEdited;searchColorEdited=!!cached.searchTagState.colorEdited;searchTagContext=cached.searchTagState.context||null;searchTagColorsBase=cached.searchTagState.colorsBase||'';generatedSearchTags=cached.searchTagState.generated||null;}
           if(cached.revision!==entry.revision){entry.recoveryBase=entry.document;recovery('다른 작업에서 revision이 변경되었습니다. 보관된 입력을 확인하고 다시 준비해 주세요.',cached.document);draft=window.CoupangWorkingCopyModel.inflate({...entry,document:cached.document});}
           else if((cached.changes||[]).some(window.CoupangWorkingCopyModel.legacyList)){entry.recoveryBase=entry.document;recovery('이전 목록 입력을 자동 추정하지 않았습니다. 입력을 보관한 뒤 다시 준비해 주세요.',cached.document);draft=window.CoupangWorkingCopyModel.inflate({...entry,document:cached.document});}
           else {let delta=[];
@@ -668,15 +771,35 @@
       }catch(error){entry.recoveryBase=entry.document;recovery(error.message,cached?.document||draft&&window.CoupangWorkingCopyModel.flatten(draft));}
       if(entry.recoveryMessage)recovery(entry.recoveryMessage,recoveryInput||entry.document);
       appliedCategory = draft.basic.displayCategoryCode;
+      rules = mode === 'new' && M.currentRules(entry.categoryRules, draft.basic.displayCategoryCode) ? entry.categoryRules : null;
+      ruleError = mode === 'new' && draft.basic.displayCategoryCode && !rules
+        ? '카테고리 규격 확인이 만료되었거나 없습니다. 입력을 유지한 채 규격을 다시 조회해 주세요.' : '';
       $('editor-save-working-copy').hidden=false;
       render();
       dirty = restoredInput;
+      if(mode==='new')void loadLogoSettings();
       $('editor-validate').textContent = '입력 검증';
       if(entry.blocked){$('editor-load-error').textContent=entry.observation?'이전 전송의 결과를 먼저 확인해 주세요. 입력은 유지됩니다.':'쿠팡 최신 상품을 조회하지 못했습니다. 저장 입력을 유지했습니다. 다시 조회해 주세요.';$('editor-load-error').hidden=false;$('editor-retry').hidden=!!entry.observation;}
 
       submissionUI.workingCopy(entry.workingCopyId ? {id:entry.workingCopyId,revision:entry.revision,options:draft.options} : null);
     } catch (err) {
-      if (seq === loadSequence) {
+      // A token cannot restore server inputs after expiry. Recover only this actor's
+      // local draft after fresh authentication and a fresh account-bound CREATE session.
+      if(prefillToken && !copyMatch && !editMatch && !draft){
+        try{
+          const [me,fresh]=await Promise.all([apiGet('/api/auth/me'),apiGet('/api/coupang/working-copies/entry')]);
+          const cached=JSON.parse(sessionStorage.getItem(cacheKey(fresh)));
+          if(seq===loadSequence && cached?.format===4 && cached.ownerId && String(cached.ownerId)===String(me.id)){
+            if(Array.isArray(cached.logoUrlInputs))logoUrlInputs=new Map(cached.logoUrlInputs);if(cached.searchTagState){searchTagsEdited=!!cached.searchTagState.tagsEdited;searchColorEdited=!!cached.searchTagState.colorEdited;searchTagContext=cached.searchTagState.context||null;searchTagColorsBase=cached.searchTagState.colorsBase||'';generatedSearchTags=cached.searchTagState.generated||null;}
+            entry=fresh;prefillOwner=cached.ownerId;mode='new';initialDocument=structuredClone(fresh.document);rememberedChanges=[];
+            draft=window.CoupangWorkingCopyModel.inflate({...fresh,document:cached.document});render();
+            recovery('등록 준비 정보가 만료되거나 사라졌습니다. 동일 사용자·계정의 브라우저 입력을 보존했습니다. 내용을 다시 확인하고 계속해 주세요.',cached.document);
+            const panel=$('editor-prefill');panel.hidden=false;panel.innerHTML='<h2>보관한 등록 입력</h2><p>자동 입력 근거의 유효 시간이 지났습니다. 보관한 값은 바꾸지 않았습니다. 전송 전 가격·재고·필수 항목을 다시 확인해 주세요.</p><button type="button" class="btn" id="editor-prefill-resume">보관한 입력으로 계속</button>';
+            $('editor-prefill-resume').addEventListener('click',()=>{entry.recoveryMessage=null;entry.recoveryBase=null;recoveryInput=null;rememberedChanges=window.CoupangWorkingCopyModel.changes(initialDocument,window.CoupangWorkingCopyModel.flatten(draft),[]);dirty=true;cacheInput();$('editor-recovery').hidden=true;$('editor-load-error').hidden=true;$('editor-prefill-resume').hidden=true;submissionUI.changed();});
+          }
+        }catch{/* Do not expose another actor/account's cache or replace the original error. */}
+      }
+      if (seq === loadSequence && !entry?.recoveryMessage) {
         $('editor-load-error').textContent = err.message;
         $('editor-load-error').hidden = false;
         $('editor-retry').hidden = false;
@@ -692,7 +815,14 @@
     if (draft && seq === loadSequence && (mode === 'edit' || draft.basic.displayCategoryCode)) {
       await new Promise(resolve => setTimeout(resolve, 1100));
       if (seq === loadSequence) {
-        await category();
+        if(mode==='edit')await category();
+        else {
+          if(!M.currentRules(rules,draft.basic.displayCategoryCode)) {
+            rules=null;ruleError='카테고리 규격 확인이 만료되었거나 없습니다. 입력을 유지한 채 규격을 다시 조회해 주세요.';
+          }
+          $('editor-category-status').textContent=ruleError || '카테고리 규격 조회 완료 · 확인 '+rules.checkedAt;
+          renderSearchFilters();renderNotices();markSharedFields();
+        }
         if (seq === loadSequence) await loadOutboundSummary(seq);
       }
     }
@@ -713,6 +843,8 @@
       categoryRead = null;
       ruleLoading = false;
       rules = null;
+      ruleError = '';
+      renderNotices(); markSharedFields();
       updateBusy();
       $('editor-category-status').textContent = '카테고리 규격을 조회해 주세요.';
     }
@@ -907,7 +1039,15 @@
       renderSettings();
       markSharedFields();
     }
+    if(data.colorTonePath){
+      if(loading||saveBusy||ruleLoading||imageReading||target.disabled)return;
+      const path=data.colorTonePath,value=M.suggestColorTone(draft.basic.displayProductName,draft.basic.sellerProductName),keys=split(path),status=$('color-tone-status-'+keys[1]+'-'+keys[3]);
+      if(!value){status.textContent='제목에서 하나의 색상계열을 판단할 수 없습니다. 직접 선택해 주세요.';return;}
+      if(M.sharedValues(draft,path).some(v=>v&&v!==value)&&!confirm('선택한 색상계열을 '+value+'으로 바꿀까요?'))return;
+      M.setSharedValue(draft,path,value);$(id(path)).value=value;delete $(id(path)).dataset.mixed;status.textContent='제목에서 '+value+'을 선택했습니다. 전송 전 확인해 주세요.';changed();
+    }
     if (data.removeTag !== undefined) {
+      searchTagsEdited=true;
       const tags = String(draft.options[0].registration.searchTags || '').split(',').map(t => t.trim()).filter(Boolean);
       tags.splice(Number(data.removeTag), 1);
       M.setSharedValue(draft, 'options.0.registration.searchTags', tags.join(', '));
@@ -1222,7 +1362,7 @@
     if (dirty && !window.confirm('입력한 내용을 버리고 목록으로 돌아갈까요?')) return;
     try{if(entry)sessionStorage.removeItem(cacheKey(entry));}catch{}
     dirty = false;
-    location.assign('/coupang');
+    location.assign('/coupang/products');
   }));
   window.addEventListener('beforeunload', ev => {
     if (dirty) {
@@ -1291,6 +1431,7 @@
       $('editor-save-error').textContent=error.message;$('editor-save-error').hidden=false;return null;
     }finally{localSaveBusy=false;updateBusy();}
   }
+  FormActions.bindExplicitSubmit($('coupang-editor-form'), $('editor-category-load'), category);
   FormActions.bindExplicitSubmit($('coupang-editor-form'), $('editor-save-working-copy'), () => saveLocal());
   submissionUI=window.CoupangSubmissionUI.create({
     canAct:()=>!!draft&&!loading&&!ruleLoading&&!saveBusy&&!entry?.blocked&&!entry?.recoveryMessage,
@@ -1300,14 +1441,14 @@
       if(!['SUCCEEDED','PARTIAL'].includes(result.status)&&!result.revised)return;
       if(result.status==='SUCCEEDED'&&!result.revised&&entry.appliedRevision!=null&&result.revision<=entry.appliedRevision)return;
       const delta=window.CoupangWorkingCopyModel.changes(initialDocument,window.CoupangWorkingCopyModel.flatten(draft),[]);
-      const fresh=await apiGet('/api/coupang/working-copies/'+entry.workingCopyId);
+      const fresh=await apiGet('/api/coupang/working-copies/'+entry.workingCopyId+(result.target?.mode==='CREATE'?'?observed=true':''));
       if(fresh.revision!==entry.revision||fresh.accountKey!==entry.accountKey)throw Error('계정이나 작업본 revision이 변경되었습니다. 작성 중인 입력은 유지됩니다.');
       const input=window.CoupangWorkingCopyModel.apply(fresh.document,delta);
       entry=fresh;initialDocument=structuredClone(fresh.document);rememberedChanges=fresh.changes||[];draft=window.CoupangWorkingCopyModel.inflate({...fresh,document:input});mode=fresh.mode==='UPDATE'?'edit':'new';dirty=delta.length>0;
       if(dirty)cacheInput();else try{sessionStorage.removeItem(cacheKey(entry));}catch{}
       render();submissionUI.workingCopy({id:fresh.workingCopyId,revision:fresh.revision,options:draft.options});
     },
-    beforePrepare:async()=>{const errors=M.validate(draft,rules,mode);if(errors.length){$('editor-validation').hidden=false;$('editor-validation').textContent=errors[0].message;return false;}return true;}
+    beforePrepare:async()=>{if(mode==='new'&&!M.currentRules(rules,draft.basic.displayCategoryCode)){ruleError='카테고리 규격 확인이 만료되었거나 없습니다. 입력을 유지한 채 규격을 다시 조회해 주세요.';$('editor-validation').hidden=false;$('editor-validation').textContent=ruleError;renderSearchFilters();renderNotices();return false;}const errors=M.validate(draft,rules,mode);if(errors.length){$('editor-validation').hidden=false;$('editor-validation').textContent=errors[0].message;return false;}return true;}
   });
   initialize();
 })();

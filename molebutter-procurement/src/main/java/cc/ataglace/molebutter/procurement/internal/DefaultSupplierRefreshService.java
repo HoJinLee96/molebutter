@@ -146,12 +146,14 @@ public class DefaultSupplierRefreshService implements cc.ataglace.molebutter.pro
         if(!List.of("RUNNING","PAUSED").contains(state)){release(worker);return;}
         int count=((Number)run.get("login_retry_count")).intValue();LocalDateTime next=null;
         boolean login="LOGIN_REQUIRED".equals(reason);
-        if(login){count++;int[] minutes={5,30,60,120};if(count<=minutes.length)next=db.time.now().plusMinutes(minutes[count-1]);
+        int[] minutes={5,30,60,120};
+        if(login){count++;if(count<=minutes.length)next=db.time.now().plusMinutes(minutes[count-1]);
             message=next==null?"네이버 로그인 반복 · 자동 재개 중단":"네이버 로그인 감지 · "+next.format(java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm"))+" 재개 예정";}
         String target="PAUSED".equals(state)?"PAUSED":next!=null?"RETRY_WAIT":"BLOCKED";
         if("PAUSED".equals(target))message="네이버 검색 중단 · 자동 재개 중단됨";
         db.jdbc.update("UPDATE product_refresh_run SET status=?,block_reason=?,login_retry_count=?,next_retry_at=?,message=? WHERE id=?",target,reason,count,next,message,w.runId());
-        if(!"PAUSED".equals(target))notifications.refresh(w.runId(),target,message);
+        if(!"PAUSED".equals(target))notifications.refresh(w.runId(),target,next==null?message:
+            ProcurementNotifications.retryWaitReason(message,count,minutes.length,minutes[count-1]));
         db.jdbc.update("UPDATE product_refresh_entry SET status='PENDING' WHERE run_id=? AND product_id=?",w.runId(),w.productId());
         db.jdbc.update("UPDATE procurement_product SET latest_status=?,latest_result=NULL WHERE product_id=? AND lookup_revision=?",next!=null?"PENDING":"SUPPLIER_ACCESS_RESTRICTED".equals(reason)?"PARTIAL":"FAILED",w.productId(),w.revision());release(worker);
     }

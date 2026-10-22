@@ -128,13 +128,13 @@ public final class CoupangInputs {
                 contents.add(old == null
                         ? new Content(
                                 priorContentIds.contains(content.id()) ? UUID.randomUUID().toString() : content.id(),
-                                content.type(), content.detailType(), content.content(), content.assetId())
+                                content.type(), content.detailType(), content.content(), content.assetId(),content.purpose())
                         : new Content(old.id(), content.type(), content.detailType(), content.content(),
                                 Objects.equals(old.detailType(), content.detailType())
                                         && (Objects.equals(old.content(), content.content())
                                                 || Objects.equals(publicUrls.get(old.assetId()), content.content()))
                                                         ? old.assetId()
-                                                        : null));
+                                                        : null,content.purpose()));
             }
             options.add(new Option(o.id(), o.itemName(), o.registration(), o.attributes(), images, contents,
                     o.notices(), o.certifications(), o.noticeCategory()));

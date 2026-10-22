@@ -58,6 +58,12 @@ public class ProductController {
         return ApiResponse.success(products.list(u.userId(), q, mode, status, page, size, change));
     }
 
+    @GetMapping("/api/products/by-code")
+    public ApiResponse<PageResponse<ProcurementProductView>> byCode(@AuthenticationPrincipal UserPrincipal actor,
+            @RequestParam String code,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
+        return ApiResponse.success(products.byCode(actor.userId(),code,page,size));
+    }
+
     @GetMapping("/api/products/{id}")
     public ApiResponse<Map<String, Object>> detail(@AuthenticationPrincipal UserPrincipal u, @PathVariable long id) {
         return ApiResponse.success(products.detail(u.userId(), id));

@@ -82,7 +82,7 @@ class ImageAssetReferencesTest {
         order.verify(db).update("DELETE FROM coupang_execution_asset WHERE submission_id=?", 20L);
         for (String id : List.of(A, B))
             order.verify(db).update(
-                    "UPDATE coupang_asset a SET pending_delete_at=COALESCE(pending_delete_at,CURRENT_TIMESTAMP(6)) WHERE id=? AND NOT EXISTS(SELECT 1 FROM coupang_working_copy_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM coupang_execution_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM legacy_coupang_listing_history_asset h WHERE h.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM legacy_coupang_asset_pin l WHERE l.asset_id=a.id)",
+                    "UPDATE coupang_asset a SET pending_delete_at=COALESCE(pending_delete_at,CURRENT_TIMESTAMP(6)) WHERE id=? AND NOT EXISTS(SELECT 1 FROM coupang_working_copy_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM coupang_execution_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM legacy_coupang_listing_history_asset h WHERE h.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM legacy_coupang_asset_pin l WHERE l.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM coupang_product_asset_pin p WHERE p.asset_id=a.id)",
                     id);
         verify(db, never()).update("DELETE FROM coupang_asset WHERE id=?", A);
     }

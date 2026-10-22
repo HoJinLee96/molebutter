@@ -16,6 +16,8 @@ public final class CoupangFailure extends RuntimeException {
         ORDER_INVALID("쿠팡 주문번호가 유효하지 않습니다. 주문번호를 확인해 주세요."),
         ORDER_ACCOUNT_MISMATCH("다른 판매자의 주문입니다. 연결 계정을 확인해 주세요."),
         ORDER_REJECTED("쿠팡이 주문 조회를 거절했습니다. 거절 사유를 확인하지 못했습니다."),
+        PRODUCT_ABSENT("쿠팡에 해당 상품 데이터가 없습니다. 삭제 여부 확인이 필요합니다."),
+        PRODUCT_PROCESSING("쿠팡이 상품을 등록·수정 처리 중입니다. 잠시 후 확인해 주세요."),
         REJECTED("쿠팡이 상품 조회 요청을 거절했습니다.");
         final String message; Kind(String message){this.message=message;}
     }

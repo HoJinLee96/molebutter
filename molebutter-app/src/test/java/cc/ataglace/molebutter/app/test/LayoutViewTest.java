@@ -24,6 +24,7 @@ class LayoutViewTest {
         assertThat(home).contains("/product-images");
         assertThat(images).contains("상품 정보 도구","id=\"lookupForm\"","id=\"storageProductCodeInput\"","/js/product-images/app.js");
         assertThat(images).doesNotContain("id=\"uploadProductCodeInput\"");
+        if(role==UserRole.ADMIN)assertThat(images).contains("id=\"registerCoupangProduct\"");else assertThat(images).doesNotContain("id=\"registerCoupangProduct\"");
         Files.createDirectories(Path.of("target/ui-fixtures"));
         Files.writeString(Path.of("target/ui-fixtures/product-images-"+role.name()+".html"),images);
         if(role==UserRole.ADMIN) {
@@ -32,7 +33,7 @@ class LayoutViewTest {
                 assertThat(auth).contains("/js/form-actions.js").doesNotContain("id=\"app-sidebar\"");
                 Files.writeString(Path.of("target/ui-fixtures/"+page+"-ADMIN.html"),auth);
             }
-            var coupang=render("coupang","/coupang",role);
+            var coupang=render("coupang","/coupang/products",role);
             assertThat(coupang).contains("쿠팡 상품","coupang-query","/js/coupang.js");
             Files.createDirectories(Path.of("target/ui-fixtures"));
             Files.writeString(Path.of("target/ui-fixtures/coupang-ADMIN.html"),coupang);

@@ -24,14 +24,18 @@ public interface CoupangSubmissions {
         QUEUED, RUNNING, SUCCEEDED, ACCEPTED, PARTIAL, FAILED, UNKNOWN
     }
     enum StepType {
-        CREATE, PRODUCT, DELIVERY, ORIGINAL_PRICE, PRICE, STOCK, APPROVAL, VERIFY
+        CREATE, PRODUCT, DELIVERY, ORIGINAL_PRICE, PRICE, STOCK, SALE_STOP, SALE_RESUME, DELETE, APPROVAL, VERIFY
     }
     record Change(String path, String before, String after) {
     }
     record PlannedStep(String id, StepType type, String optionId, String label) {
     }
     record PreviewTarget(String mode, List<PlannedStep> steps, List<Change> changes,
-            List<CoupangWorkingCopies.Issue> issues, java.util.Map<String, String> optionNames) {
+            List<CoupangWorkingCopies.Issue> issues, java.util.Map<String, String> optionNames, List<CoupangWorkingCopies.Issue> warnings,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) String categoryRulesCheckedAt) {
+        public PreviewTarget { warnings=warnings==null?List.of():List.copyOf(warnings); }
+        public PreviewTarget(String mode,List<PlannedStep> steps,List<Change> changes,List<CoupangWorkingCopies.Issue> issues,java.util.Map<String,String> optionNames,List<CoupangWorkingCopies.Issue> warnings){this(mode,steps,changes,issues,optionNames,warnings,null);}
+        public PreviewTarget(String mode,List<PlannedStep> steps,List<Change> changes,List<CoupangWorkingCopies.Issue> issues,java.util.Map<String,String> optionNames){this(mode,steps,changes,issues,optionNames,List.of());}
     }
     record Preview(String id, String workingCopyId, long revision, String expiresAt, boolean executable,
             boolean requested, PreviewTarget target) {

@@ -35,6 +35,23 @@ class ProductImageControllerTest {
     }
     @AfterEach void clear() { SecurityContextHolder.clearContext(); }
 
+    @Test void comparisonCatalogUsesTheExistingProductPermissionAndFixedReadOnlyContract() throws Exception {
+        var presets = java.util.stream.IntStream.range(0, 8).mapToObj(index ->
+                new cc.ataglace.molebutter.imaging.api.SizeGuideComparisonDto(index == 0 ? "samdasoo-500" : "iphone-16", 1,
+                        index == 0 ? "삼다수 500ml" : "iPhone 16", index == 0 ? null : 7.16, index == 0 ? 21 : 14.76, .3, "PHONE")).toList();
+        when(workspace.listComparisons()).thenReturn(presets);
+        http.perform(get("/api/product-images/size-guide/comparisons")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(8))
+                .andExpect(jsonPath("$.data[0].id").value("samdasoo-500"))
+                .andExpect(jsonPath("$.data[0].heightCm").value(21.0))
+                .andExpect(jsonPath("$.data[0].widthCm").isEmpty())
+                .andExpect(jsonPath("$.data[1].widthCm").value(7.16))
+                .andExpect(jsonPath("$.data[1].version").value(1));
+        verify(access).productActor(42L, false);
+        verify(workspace).listComparisons();
+        verifyNoInteractions(uploads);
+    }
+
     @Test void uploadUsesTrustedActorAndSeparatesSourceCodeFromDestinationCode() throws Exception {
         String id = "801fed42-3ad7-4db4-bd9c-362e6312c009";
         var job = new ProductImageUploadJob(id, "RUNNING", "준비 중", Instant.now(), null,

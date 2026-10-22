@@ -116,7 +116,7 @@ class SizeGuideServiceTest {
         SizeGuidePreviewResponseDto preview = service.preview(product, request);
         byte[] expected = cc.ataglace.molebutter.imaging.internal.render.RenderSupport.encodePng(
                 new PhotoSizeGuideRenderer(fonts).render(cc.ataglace.molebutter.imaging.internal.policy.SizeGuidePolicy.SizeGuideTemplate.TOTE,
-                        product.sizeDimensions(), "S(90)", base, null, cc.ataglace.molebutter.imaging.internal.render.RenderSupport.OUTPUT_SCALE).image());
+                        product.sizeDimensions(), "S(90)", base, null, cc.ataglace.molebutter.imaging.internal.render.RenderSupport.PHOTO_OUTPUT_SCALE).image());
         assertThat(Base64.getDecoder().decode(preview.imageDataUrl().substring("data:image/png;base64,".length()))).isEqualTo(expected);
         GeneratedSizeImageDto generated = service.generate(1L, product, new SizeGuidePreviewRequestDto("DAKS", "PHOTO", "TOTE", baseUrl, preview.layout(), product.sizeDimensions(), "S(90)"));
         assertThat(generated.imageDataUrl()).isEqualTo(preview.imageDataUrl());
@@ -129,6 +129,46 @@ class SizeGuideServiceTest {
                 .hasMessageContaining("100자");
         assertThatThrownBy(() -> service.preview(product, new SizeGuidePreviewRequestDto("DAKS", "TEMPLATE", "TOTE", null, null, product.sizeDimensions(), "M\n95")))
                 .hasMessageContaining("100자");
+    }
+
+    @Test
+    void comparisonPreviewAndStoredPngShareBodyScaleAndOwnedImmutableBytes() throws Exception {
+        BufferedImage base = new BufferedImage(600, 600, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = base.createGraphics(); g.setColor(Color.WHITE); g.fillRect(0, 0, 600, 600);
+        g.setColor(Color.DARK_GRAY); g.fillRect(150, 160, 300, 280); g.dispose();
+        String url = product.imageUrls().getFirst(); when(cache.baseImage(url, "BAG")).thenReturn(base);
+        var seed = service.preview(product, new SizeGuidePreviewRequestDto("DAKS", "PHOTO", "TOTE", url, null, product.sizeDimensions()));
+        var layout = new cc.ataglace.molebutter.imaging.api.SizeGuideLayoutDto(seed.layout().photo(), seed.layout().width(),
+                seed.layout().height(), seed.layout().depth(), new cc.ataglace.molebutter.imaging.api.SizeGuideLayoutDto.ComparisonPlacement("samdasoo-500", 1, null, null));
+        layout = new cc.ataglace.molebutter.imaging.api.SizeGuideLayoutDto(layout.photo(), layout.width(), layout.height(), layout.depth(), null, false,
+                List.of(layout.comparison(), new cc.ataglace.molebutter.imaging.api.SizeGuideLayoutDto.ComparisonPlacement("iphone-16", 2, null, null)));
+        var request = new SizeGuidePreviewRequestDto("DAKS", "PHOTO", "TOTE", url, layout, product.sizeDimensions());
+        var preview = service.preview(product, request);
+        var generated = service.generate(1L, product, new SizeGuidePreviewRequestDto("DAKS", "PHOTO", "TOTE", url, preview.layout(), product.sizeDimensions()));
+        assertThat(generated.imageDataUrl()).isEqualTo(preview.imageDataUrl());
+        assertThat(preview.sceneTransform().scale()).isPositive().isLessThanOrEqualTo(1);
+        assertThat(preview.layout().comparison().presetId()).isEqualTo("samdasoo-500");
+        assertThat(preview.layout().comparisons()).extracting(c -> c.presetId()).containsExactly("samdasoo-500", "iphone-16");
+        assertThat(preview.canvasWidth()).isEqualTo(2880);
+        assertThat(preview.canvasHeight()).isEqualTo(1880);
+        byte[] bytes = pngBytes(generated);
+        assertThat(store.get(1L, generated.id(), product)).isEqualTo(bytes);
+        var downloads = new DownloadService(mock(cc.ataglace.molebutter.imaging.internal.client.ImageDownloadClient.class), null, service, store);
+        var downloadRequest = new cc.ataglace.molebutter.imaging.api.DownloadRequestDto("BAG1", "DAKS", null, false, false, null,
+                List.of(new cc.ataglace.molebutter.imaging.api.DownloadImageItemDto(null, generated.id())));
+        var captured = downloads.capture(1L, downloadRequest, product);
+        var export = downloads.exportImages(captured).getFirst();
+        assertThat(export.fileName()).isEqualTo("사이즈.png");
+        assertThat(export.bytes()).isEqualTo(bytes); // The R2 export plan consumes these same bytes.
+        try (var zip = new java.util.zip.ZipInputStream(new ByteArrayInputStream(downloads.downloadImages(captured).archive()))) {
+            assertThat(zip.getNextEntry().getName()).isEqualTo("BAG1/processed/사이즈.png");
+            assertThat(zip.readAllBytes()).isEqualTo(bytes);
+        }
+        service.generate(1L, product, new SizeGuidePreviewRequestDto("DAKS", "PHOTO", "TOTE", url, layout, new SizeDimensionsDto("30", "14", "10")));
+        assertThat(store.get(1L, generated.id(), product)).isEqualTo(bytes);
+        assertThatThrownBy(() -> store.get(2L, generated.id(), product)).isInstanceOf(cc.ataglace.molebutter.imaging.api.ImagingFailure.class);
+        assertThat(product.sizeDimensions().height()).isEqualTo("22");
+        assertThat(service.listComparisons()).hasSize(8);
     }
 
     private byte[] pngBytes(GeneratedSizeImageDto result) {

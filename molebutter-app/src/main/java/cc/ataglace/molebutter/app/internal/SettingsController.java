@@ -20,6 +20,10 @@ public class SettingsController {
     private final SharedSettingsService settings;
     private final InventoryPaymentMethodService payments;
     private final BusinessAccess db;
+    private final cc.ataglace.molebutter.coupang.api.CoupangPricing pricing;
+    @GetMapping("/coupang-pricing") public ApiResponse<cc.ataglace.molebutter.coupang.api.CoupangPricing.Settings> pricing(@AuthenticationPrincipal UserPrincipal u){return ApiResponse.success(pricing.get(u.userId()));}
+    @PutMapping("/coupang-pricing") @OperationAudit("COUPANG_PRICING_SETTINGS_SAVE")
+    public ApiResponse<cc.ataglace.molebutter.coupang.api.CoupangPricing.Settings> pricingSave(@AuthenticationPrincipal UserPrincipal u,@RequestBody cc.ataglace.molebutter.coupang.api.CoupangPricing.Save input){return ApiResponse.success(pricing.save(u.userId(),input));}
     public record Supplier(String code,String name,boolean stockSupported) {}
     @GetMapping("/brands") public ApiResponse<List<Brand>> brands(@AuthenticationPrincipal UserPrincipal u) {return ApiResponse.success(settings.brands(u.userId()));}
     @PostMapping("/brands") @OperationAudit(value="BRAND_CREATE",targetType="BRAND")

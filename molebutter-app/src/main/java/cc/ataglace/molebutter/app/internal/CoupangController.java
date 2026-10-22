@@ -40,22 +40,6 @@ public final class CoupangController {
             @RequestHeader(value = "X-Coupang-Request-Id", required = false) String requestId) {
         return ApiResponse.success(brands.search(actor.userId(), brandName, page, requestId));
     }
-    @GetMapping("/products")
-    public ApiResponse<CoupangCatalog.ProductPage> products(@AuthenticationPrincipal UserPrincipal actor,
-            @RequestParam(defaultValue = "10") int maxPerPage, @RequestParam(defaultValue = "") String nextToken,
-            @RequestParam(required = false) String sellerProductId,
-            @RequestParam(required = false) String sellerProductName, @RequestParam(required = false) String status,
-            @RequestParam(required = false) String createdAt,
-            @RequestHeader(value = "X-Coupang-Request-Id", required = false) String requestId) {
-        return ApiResponse.success(catalog.products(actor.userId(), maxPerPage, nextToken,
-                new CoupangCatalog.ProductSearch(sellerProductId, sellerProductName, status, createdAt), requestId));
-    }
-    @GetMapping("/products/{sellerProductId}")
-    public ApiResponse<CoupangCatalog.ProductDetail> product(@AuthenticationPrincipal UserPrincipal actor,
-            @PathVariable String sellerProductId,
-            @RequestHeader(value = "X-Coupang-Request-Id", required = false) String requestId) {
-        return ApiResponse.success(catalog.product(actor.userId(), sellerProductId, requestId));
-    }
     @GetMapping("/categories")
     public ApiResponse<java.util.List<CoupangEditor.CategoryChoice>> categories(
             @AuthenticationPrincipal UserPrincipal actor,

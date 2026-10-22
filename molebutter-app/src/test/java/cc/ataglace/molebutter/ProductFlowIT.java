@@ -257,7 +257,148 @@ class ProductFlowIT {
             assertThat(last.items()).extracting(ProcurementProductView::id).doesNotContainAnyElementsOf(large.items().stream().map(ProcurementProductView::id).toList());
         } finally {jdbc.setDataSource(source);}
     }
+    @Test void exactCodeLookupIsReadOnlyPagedAndPreservesSelectedSupplier()throws Exception {
+        var selected=create("HJWA908BK");deltaFinish(selected,deltaListing(115170,70L));choose(selected,compare(selected).groups().getFirst().listings().getFirst());
+        for(int n=0;n<21;n++){var duplicate=products.create(actor,new ProductEditRequest(null,"","HISTORICAL-"+n,"exact"));jdbc.update("UPDATE catalog_product SET product_code=? WHERE id=?","HJWA908BK",Long.parseLong(duplicate.id()));}
+        create("HJWA908");create("HJWA908BK-EXTRA");
+        var accented=create("HISTORICAL-ACCENT");jdbc.update("UPDATE catalog_product SET product_code=? WHERE id=?","HJWA908BḰ",Long.parseLong(accented.id()));
+        var gone=create("HISTORICAL-GONE");jdbc.update("UPDATE catalog_product SET product_code=?,deleted_at=? WHERE id=?","HJWA908BK",time.now(),Long.parseLong(gone.id()));
+        var merged=create("HISTORICAL-MERGED");jdbc.update("UPDATE catalog_product SET product_code=?,merged_into=? WHERE id=?","HJWA908BK",Long.parseLong(selected.id()),Long.parseLong(merged.id()));
+        var first=products.byCode(actor," hjwa908bk ",0,20);var last=products.byCode(actor,"HJWA908BK",1,20);
+        assertThat(first.totalElements()).isEqualTo(22);assertThat(first.totalPages()).isEqualTo(2);assertThat(first.items()).hasSize(20).allMatch(p->p.productCode().equals("HJWA908BK"));
+        assertThat(last.items()).hasSize(2);assertThat(first.items()).extracting(ProcurementProductView::id).doesNotContainAnyElementsOf(last.items().stream().map(ProcurementProductView::id).toList());
+        var result=last.items().stream().filter(p->p.id().equals(selected.id())).findFirst().orElseThrow();assertThat(result.selectedSupplier().referencePrice()).isEqualTo(115170);assertThat(result.selectedSupplier().result().options().getFirst().stock()).isEqualTo(70);
+        var batch=procurementQueries.byCodes(actor,Set.of(" hjwa908bk ","HJWA908B","NO-SUCH-CODE"));
+        assertThat(batch).hasSize(22);assertThat(batch).noneMatch(p->p.id().equals(gone.id())||p.id().equals(merged.id()));
+        assertThat(batch.stream().filter(p->p.id().equals(selected.id())).findFirst().orElseThrow().selectedSupplier()).isNotNull();
+        assertThat(procurementQueries.byCodes(actor,Set.of("HJWA908BḰ"))).singleElement().satisfies(p->assertThat(p.duplicateCount()).isZero());
+        assertThat(recommendationSources.byCodes(actor,Set.of("HJWA908BK"))).isEmpty();
+        assertThat(first.items()).anyMatch(p->p.selectedSupplier()==null);assertThat(products.byCode(actor,"HJWA908B",0,20).items()).isEmpty();
+        assertThatThrownBy(()->products.byCode(actor," ",0,20)).isInstanceOf(cc.ataglace.molebutter.common.api.InputValidationFailure.class);
+        String route="/api/products/by-code?code=hjwa908bk&page=1&size=20";
+        status(new Browser().get(route),401);status(login(account(UserRole.VIEWER)).get(route),403);
+        var response=login(account(UserRole.PRODUCT)).get(route);status(response,200);assertThat(json.readTree(response.body()).path("data").path("totalElements").asLong()).isEqualTo(22);
+        assertThat(current(selected).selectedSupplier().referencePrice()).isEqualTo(115170);
+    }
+
     @Autowired DefaultProductChangeService changeService;
+    @Autowired cc.ataglace.molebutter.procurement.api.ProcurementProductQueries procurementQueries;
+    @Autowired cc.ataglace.molebutter.coupang.api.CoupangQuickEditSources quickEditSources;
+    @Autowired cc.ataglace.molebutter.coupang.api.CoupangRecommendationSources recommendationSources;
+    @Test void quickStockUsesPreviousConfirmedListingAndPreservesWholeOptionCount() {
+        var p=create("WUBA505BK");deltaFinish(p,deltaListing(179770,144L));choose(p,compare(p).groups().getFirst().listings().getFirst());
+        var initial=quickEditSources.get(actor,p.id());assertThat(initial.stockOptionCount()).isEqualTo(1);assertThat(initial.stocks().getFirst().quantity()).isEqualTo(144);assertThat(initial.stocks().getFirst().previous()).isFalse();
+        assertThat(recommendationSources.byCodes(actor,Set.of("WUBA505BK")).get("WUBA505BK").stocks()).singleElement().satisfies(s->assertThat(s.quantity()).isEqualTo(144));
+        start(current(p));
+        var recommendationPrior=recommendationSources.byCodes(actor,Set.of("WUBA505BK")).get("WUBA505BK");assertThat(recommendationPrior.stocks()).singleElement().satisfies(s->assertThat(s.quantity()).isEqualTo(144));assertThat(recommendationPrior.previousAvailability()).isTrue();assertThat(recommendationPrior.previousPrice()).isTrue();assertThat(recommendationPrior.purchaseCost()).isEqualTo(179770);
+        var prior=quickEditSources.get(actor,p.id());assertThat(prior.stocks().getFirst().quantity()).isEqualTo(144);assertThat(prior.stocks().getFirst().previous()).isTrue();
+        var work=refresh.claim("stock-failure");var good=deltaListing(179770,144L);
+        var failed=new SupplierResult(good.offer(),good.match(),"FAILED",List.of(),"합성 실패");
+        refresh.finish("stock-failure",work,new RefreshResult("FAILED",null,null,null,List.of(failed),time.now(),null));refresh.claim("stock-failure");
+        var batched=procurementQueries.selectedStocks(actor,List.of(current(p)));assertThat(batched.get(p.id()).options().getFirst().stock()).isEqualTo(144);assertThat(batched.get(p.id()).previous()).isTrue();
+        var retained=quickEditSources.get(actor,p.id());assertThat(retained.stocks().getFirst().quantity()).isEqualTo(144);assertThat(retained.stocks().getFirst().previous()).isTrue();
+        assertThat(retained.stocks().getFirst().checkedAt()).isNotBlank();
+        var availability=recommendationSources.byCodes(actor,Set.of("WUBA505BK")).get("WUBA505BK");assertThat(availability.availability()).isEqualTo("AVAILABLE");assertThat(availability.previousAvailability()).isTrue();assertThat(availability.availabilityCheckedAt()).isNotBlank();
+        assertThat(retained.ownedQuantity()).isZero();
+
+        assertThat(recommendationSources.byCodes(actor,Set.of("WUBA505BK")).get("WUBA505BK").stocks()).singleElement().satisfies(s->assertThat(s.quantity()).isEqualTo(144));
+        var changedOptions=new SupplierResult(good.offer(),good.match(),"FAILED",List.of(new SourceOption("black","블랙",null,"STOCK_UNKNOWN"),new SourceOption("white","화이트",null,"STOCK_UNKNOWN")),null);
+        deltaFinish(p,changedOptions);var fallbackMulti=quickEditSources.get(actor,p.id());assertThat(fallbackMulti.stockOptionCount()).isEqualTo(2);assertThat(fallbackMulti.stocks()).hasSize(1);assertThat(fallbackMulti.stocks().getFirst().quantity()).isEqualTo(144);
+        var partial=new SupplierResult(good.offer(),good.match(),"OPTIONS_PARTIAL",List.of(new SourceOption("one","ONE",0L,"SOLD_OUT"),new SourceOption("two","TWO",null,"STOCK_UNKNOWN")),null);
+        deltaFinish(p,partial);var multi=quickEditSources.get(actor,p.id());assertThat(multi.stockOptionCount()).isEqualTo(2);assertThat(multi.stocks()).hasSize(1);assertThat(multi.stocks().getFirst().quantity()).isZero();assertThat(multi.stockOptions()).hasSize(2);assertThat(multi.stockOptions().get(1).quantity()).isNull();
+        deltaFinish(p,deltaListing(179770,0L));assertThat(quickEditSources.get(actor,p.id()).stocks().getFirst().quantity()).isZero();
+        assertThat(recommendationSources.byCodes(actor,Set.of("WUBA505BK")).get("WUBA505BK").stocks()).isEmpty();
+        var availablePartial=new SupplierResult(good.offer(),good.match(),"OPTIONS_PARTIAL",List.of(new SourceOption("one","ONE",1L,"AVAILABLE"),new SourceOption("two","TWO",null,"STOCK_UNKNOWN")),null);
+        deltaFinish(p,availablePartial);var recommendationMulti=recommendationSources.byCodes(actor,Set.of("WUBA505BK")).get("WUBA505BK");assertThat(recommendationMulti.stockOptionCount()).isEqualTo(2);assertThat(recommendationMulti.stocks()).hasSize(1);
+        deltaFinish(p);assertThat(recommendationSources.byCodes(actor,Set.of("WUBA505BK")).get("WUBA505BK").availability()).isEqualTo("SELECTED_MISSING");
+        var none=create("HJWA908BK");assertThat(quickEditSources.get(actor,none.id()).stocks()).isEmpty();
+    }
+
+    @Test void retainedStockKeysetMatchesHistoricalReaderAcrossPagesAndTransfersOnlySelectedEvidence() {
+        var input=new ArrayList<ProcurementProductView>();
+        for(int n=0;n<3;n++) {
+            var p=create("PERF-STOCK-"+n);var good=deltaListing(179770,n==0?144L:n==1?0L:2L);
+            deltaFinish(p,good);choose(p,compare(p).groups().getFirst().listings().getFirst());
+            if(n==2)jdbc.update("DELETE FROM product_lookup_history WHERE product_id=?",p.id());
+            var failed=new SupplierResult(good.offer(),good.match(),"FAILED",List.of(
+                new SourceOption("black","블랙",null,"STOCK_UNKNOWN"),new SourceOption("white","화이트",null,"STOCK_UNKNOWN")),null);
+            jdbc.update("UPDATE product_supplier SET observation=? WHERE product_id=?",json.writeValueAsString(failed),p.id());
+            jdbc.update("UPDATE procurement_product SET latest_status='FAILED' WHERE product_id=?",p.id());
+            for(int i=0;i<61;i++) {
+                // Exact case-sensitive identity, unaccepted matches, and duplicate normal matches must be skipped.
+                var wrong=good.offer();wrong=new Offer(wrong.naverProductId(),wrong.title(),wrong.mallName(),wrong.mallProductId().toUpperCase(Locale.ROOT),wrong.url(),wrong.price(),wrong.deliveryFee(),wrong.mall(),wrong.imageUrl());
+                var wrongListing=new SupplierResult(wrong,good.match(),"CONFIRMED",good.options(),null);
+                var rejected=new SupplierResult(good.offer(),new CodeMatch("REVIEW",null,null,null,null,null),"CONFIRMED",good.options(),null);
+                var candidates=i%3==0?List.of(good,good):i%3==1?List.of(wrongListing):List.of(rejected);
+                var history=(tools.jackson.databind.node.ObjectNode)json.valueToTree(new RefreshResult("FAILED",null,null,null,candidates,time.now(),"x".repeat(12000)));
+                // Large unrelated payload must not be hydrated by stock recovery.
+                history.put("unrelatedAudit", "z".repeat(24000));
+                jdbc.update("INSERT INTO product_lookup_history(product_id,legacy,created_at,payload) VALUES(?,FALSE,?,?)",p.id(),time.now().plusSeconds(i),json.writeValueAsString(history));
+            }
+            input.add(current(p));
+        }
+        var expected=new HashMap<String,cc.ataglace.molebutter.procurement.api.ProcurementProductQueries.SelectedStock>();
+        long oldBytes=0;
+        for(var p:input) {
+            var identity=jdbc.queryForMap("SELECT mall,mall_product_id,naver_product_id FROM product_supplier WHERE id=?",p.selectedSupplier().id());
+            var histories=jdbc.queryForList("SELECT payload,created_at FROM product_lookup_history WHERE product_id=? ORDER BY id DESC",p.id());
+            List<SourceOption> options=List.of();String at=null;
+            for(var row:histories) {
+                String payload=(String)row.get("payload");oldBytes+=payload.length();var h=json.readValue(payload,RefreshResult.class);
+                var matches=h.suppliers().stream().filter(v->v.offer()!=null&&v.offer().mall()!=null
+                    &&v.offer().mall().name().equals(identity.get("mall"))&&Objects.equals(v.offer().mallProductId(),identity.get("mall_product_id"))
+                    &&Objects.equals(Objects.toString(v.offer().naverProductId(),""),Objects.toString(identity.get("naver_product_id"),""))
+                    &&v.accepted()&&Set.of("CONFIRMED","OPTIONS_PARTIAL","SOLD_OUT").contains(v.state())&&v.options()!=null
+                    &&v.options().stream().anyMatch(o->o.stock()!=null&&o.stock()>=0||Set.of("SOLD_OUT","UNAVAILABLE").contains(Objects.toString(o.state(),"")))).toList();
+                if(matches.size()==1){options=matches.getFirst().options();at=row.get("created_at") instanceof java.sql.Timestamp t?t.toLocalDateTime().toString():row.get("created_at").toString();break;}
+            }
+            expected.put(p.id(),new cc.ataglace.molebutter.procurement.api.ProcurementProductQueries.SelectedStock(options,true,at,2));
+        }
+        var original=jdbc.getDataSource();var reads=new java.util.concurrent.atomic.AtomicLong();var queries=new ArrayList<String>();
+        jdbc.setDataSource(new org.springframework.jdbc.datasource.DelegatingDataSource(original) {
+            @Override public java.sql.Connection getConnection() throws java.sql.SQLException {
+                var connection=super.getConnection();
+                return (java.sql.Connection)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{java.sql.Connection.class},(proxy,method,args)->{
+                    try {
+                        var result=method.invoke(connection,args);
+                        if(!method.getName().equals("prepareStatement"))return result;
+                        String sql=(String)args[0];queries.add(sql);var statement=(java.sql.PreparedStatement)result;
+                        return java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{java.sql.PreparedStatement.class},(sp,sm,sa)->{
+                            try {var value=sm.invoke(statement,sa);if(!sm.getName().equals("executeQuery"))return value;var rs=(java.sql.ResultSet)value;
+                                return java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{java.sql.ResultSet.class},(rp,rm,ra)->{
+                                    try{var v=rm.invoke(rs,ra);if(rm.getName().equals("getString")&&Objects.equals(ra[0],"stock_json")&&v!=null)reads.addAndGet(((String)v).length());return v;}catch(java.lang.reflect.InvocationTargetException failure){throw failure.getCause();}
+                                });
+                            }catch(java.lang.reflect.InvocationTargetException failure){throw failure.getCause();}
+                        });
+                    }catch(java.lang.reflect.InvocationTargetException failure){throw failure.getCause();}
+                });
+            }
+        });
+        try {
+            var actual=procurementQueries.selectedStocks(actor,input);assertThat(actual.entrySet().stream().collect(java.util.stream.Collectors.toMap(Map.Entry::getKey,e->new cc.ataglace.molebutter.procurement.api.ProcurementProductQueries.SelectedStock(e.getValue().options(),e.getValue().previous(),e.getValue().checkedAt(),e.getValue().optionCount())))).isEqualTo(expected);
+            assertThat(actual.get(input.getFirst().id()).options().getFirst().stock()).isEqualTo(144);
+            assertThat(actual.get(input.get(1).id()).options().getFirst().stock()).isZero();assertThat(actual.get(input.get(2).id()).options()).isEmpty();
+            assertThat(queries).noneMatch(sql->sql.contains("ROW_NUMBER()"));assertThat(reads.get()).isPositive().isLessThan(oldBytes/10);
+            System.out.printf("STOCK_HISTORY legacyPayloadChars=%s projectedStockChars=%s queries=%s%n",oldBytes,reads.get(),queries.size());
+        } finally {jdbc.setDataSource(original);}
+    }
+
+    @Test void recommendationEvidenceBatchOverHundredProductsKeepsExactCountsAndPreviousStock() {
+        var codes=new HashSet<String>();var expected=new HashMap<String,Long>();
+        for(int n=0;n<103;n++) {
+            var p=create("PERF-BATCH-"+n);codes.add(p.productCode());long quantity=n%2;
+            deltaFinish(p,deltaListing(10000,quantity));choose(p,compare(p).groups().getFirst().listings().getFirst());
+            jdbc.update("UPDATE procurement_product SET latest_status='FAILED' WHERE product_id=?",p.id());expected.put(p.id(),quantity);
+        }
+        var batch=procurementQueries.byCodes(actor,codes);assertThat(batch).hasSize(103).allMatch(p->p.duplicateCount()==0);
+        var stocks=procurementQueries.selectedStocks(actor,batch);assertThat(stocks).hasSize(103);
+        for(var p:batch){assertThat(stocks.get(p.id()).previous()).isTrue();assertThat(stocks.get(p.id()).checkedAt()).isNotBlank();assertThat(stocks.get(p.id()).options().getFirst().stock()).isEqualTo(expected.get(p.id()));}
+        // A completed new observation overrides the previous value on the next request, without cache expiry.
+        var first=batch.getFirst();deltaFinish(first,deltaListing(12000,17L));
+        var refreshed=recommendationSources.byCodes(actor,Set.of(first.productCode())).get(first.productCode());
+        assertThat(refreshed.purchaseCost()).isEqualTo(12000);assertThat(refreshed.stocks().getFirst().quantity()).isEqualTo(17);assertThat(refreshed.previousAvailability()).isFalse();
+    }
+
     SupplierResult deltaListing(long price,Long stock){
         var x=listing(ProcurementMall.LFMALL,"delta",price,"온라인점","CONFIRMED");
         return new SupplierResult(x.offer(),x.match(),stock==null?"OPTIONS_UNKNOWN":"CONFIRMED",stock==null?List.of():List.of(new SourceOption("black","블랙",stock,stock==0?"SOLD_OUT":"AVAILABLE")),null,null,null,null,x.branch());
@@ -425,6 +566,32 @@ class ProductFlowIT {
         assertThat(current(p).latestStatus()).isEqualTo("PARTIAL");assertThat(current(p).selectedSupplier().selectedMissing()).isFalse();
         var run=Long.parseLong(start(current(p)));var work=refresh.claim("cancelled");refresh.cache(work,new SearchResult(List.of(),true,null,"COMPLETED",List.of()));
         refresh.control(actor,run,"cancel");assertThat(current(p).selectedSupplier().selectedMissing()).isFalse();
+    }
+    @Test void incompleteNormalLookingResultDoesNotInventAMissingListing() {
+        var p=create("DCHO020E2");deltaFinish(p,deltaListing(46820,1L));choose(p,byMall(p,ProcurementMall.LFMALL));
+        start(current(p));var work=refresh.claim("incomplete-search");
+        refresh.cache(work,new SearchResult(List.of(),false,"검색 실패",null,List.of()));
+        refresh.finish("incomplete-search",work,new RefreshResult("PARTIAL",null,null,null,List.of(),time.now(),"검색 일부 조회",false,List.of(),null));refresh.claim("incomplete-search");
+        var source=quickEditSources.get(actor,p.id());assertThat(source.availability()).isNotEqualTo("SELECTED_MISSING");assertThat(source.stockProposal().source()).isNotEqualTo("ZERO");
+    }
+    @Test void missingRecommendationRetainsNormalSearchAcrossFailuresAndNeverResurrectsPreAbsenceStock() {
+        var p=create("DCHO020E2");var selected=deltaListing(46820,1L);deltaFinish(p,selected);choose(p,byMall(p,ProcurementMall.LFMALL));
+        deltaFinish(p);
+        var first=quickEditSources.get(actor,p.id());assertThat(first.availability()).isEqualTo("SELECTED_MISSING");assertThat(first.stockProposal().quantity()).isZero();assertThat(first.stocks().getFirst().quantity()).isEqualTo(1);String fingerprint=first.fingerprint();
+        var rec=recommendationSources.byCodes(actor,Set.of("DCHO020E2")).get("DCHO020E2");assertThat(rec.availability()).isEqualTo("SELECTED_MISSING");assertThat(rec.availabilityCheckedAt()).isEqualTo(first.availabilityCheckedAt());
+        start(current(p));var work=refresh.claim("missing-failure");
+        var pending=quickEditSources.get(actor,p.id());assertThat(pending.availability()).isEqualTo("SELECTED_MISSING");assertThat(pending.previousAvailability()).isTrue();
+        refresh.cache(work,new SearchResult(List.of(),false,"차단",null,List.of()));
+        refresh.finish("missing-failure",work,new RefreshResult("FAILED",null,null,null,List.of(),time.now(),"조회 실패"));refresh.claim("missing-failure");
+        var failed=quickEditSources.get(actor,p.id());assertThat(failed.availability()).isEqualTo("SELECTED_MISSING");assertThat(failed.stockProposal().quantity()).isZero();assertThat(failed.fingerprint()).isNotEqualTo(fingerprint);
+        deltaFinish(p,deltaListing(46820,null));
+        var found=quickEditSources.get(actor,p.id());assertThat(found.availability()).isEqualTo("UNKNOWN");assertThat(found.stockProposal()).isNull();
+        deltaFinish(p,deltaListing(46820,2L));
+        var recovered=quickEditSources.get(actor,p.id());assertThat(recovered.availability()).isEqualTo("AVAILABLE");assertThat(recovered.stockProposal().quantity()).isEqualTo(2);
+        var currentSupplier=current(p).selectedSupplier();var normal=currentSupplier.result();var checked=time.now().plusMinutes(1);
+        var direct=new SupplierResult(normal.offer(),normal.match(),normal.state(),normal.options(),normal.message(),normal.sourceTitle(),normal.sourceModelCode(),normal.sourceBrand(),normal.branch(),new StockEvidence("test",null,null,checked,true));
+        jdbc.update("UPDATE product_supplier SET observation=? WHERE id=?",json.writeValueAsString(direct),currentSupplier.id());
+        assertThat(quickEditSources.get(actor,p.id()).availabilityCheckedAt()).isEqualTo(checked.toString());
     }
     @Test void newStatusRepairIsIdempotentAndDoesNotRewriteObservationsOrOldRun(){
         var p=create("DCWA279BK");legacyLimitedResult(p,false);var old=jdbc.queryForList("SELECT * FROM product_lookup_history");var entries=jdbc.queryForList("SELECT * FROM product_refresh_entry");
@@ -670,6 +837,83 @@ class ProductFlowIT {
         for(String bad:List.of("?size=30","?page=-1","?from=2026-9-1","?from=2026-09-23&to=2026-09-22","?status=DONE","?run=abc"))status(browser.get(path+bad),400);
     }
     @Autowired NaverSearchRecoveryService recovery;
+    RuntimeException retryableRestriction(String kind){
+        var reason=kind.equals("SECURITY_CHECK")?cc.ataglace.molebutter.procurement.internal.NaverPriceSearch.BlockReason.SECURITY_CHECK:cc.ataglace.molebutter.procurement.internal.NaverPriceSearch.BlockReason.ACCESS_RESTRICTED;
+        return new cc.ataglace.molebutter.procurement.internal.NaverPriceSearch.SearchBlocked(reason,"synthetic restriction",kind.equals("SECURITY_CHECK")?null:Integer.valueOf(kind));
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"418","429","SECURITY_CHECK"})
+    void searchRestrictionBackoffPersistsFourDeadlinesThenRequiresExplicitResume(String kind){
+        var p=create("RESTRICT1");long run=Long.parseLong(start(p));int[] delays={5,30,60,120};
+        for(int n=0;n<5;n++){
+            var w=refresh.claim("restriction-worker");assertThat(w).isNotNull();long attempt=refresh.searchStarted("restriction-worker",w);
+            var failure=retryableRestriction(kind);refresh.searchFailed("restriction-worker",w,attempt,failure);
+            refresh.searchFailed("restriction-worker",w,attempt,failure);
+            var status=refresh.status(actor,Long.parseLong(p.id()));assertThat(status.searchRetryCount()).isEqualTo(n+1);
+            assertThat(status.loginRetryCount()).isZero();
+            var record=recovery.history(actor,run,0,"",null).items().getFirst();
+            assertThat(record.get("httpStatus")).isEqualTo(kind.equals("SECURITY_CHECK")?null:Integer.valueOf(kind));
+            assertThat(record.get("reasonCode")).isEqualTo(kind.equals("SECURITY_CHECK")?kind:"ACCESS_RESTRICTED");
+            assertThat(refresh.claim("other")).isNull();
+            if(n<4){
+                assertThat(status.runStatus()).isEqualTo("RETRY_WAIT");
+                assertThat(status.nextRetryAt()).isEqualTo(time.value.plusMinutes(delays[n]));
+                var notice=notifications.list(actor,null,20).items().getFirst();
+                assertThat(notice.title()).isEqualTo("상품 최신화 자동 재개 대기");
+                assertThat(notice.message()).contains("자동 재개 "+(n+1)+"/4단계",delays[n]+"분 대기",status.message());
+                assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM notification_event WHERE target_id=?",Integer.class,run)).isEqualTo(n+1);
+                assertThat(record.get("retryAt")).isEqualTo(status.nextRetryAt());
+                assertThat(recovery.gate().get("manualResumeRequired")).isEqualTo(false);
+                long version=((Number)recovery.gate().get("version")).longValue();
+                assertThatThrownBy(()->refresh.resumeSearchGate(actor,version)).hasMessageContaining("예정 시각");
+                time.value=status.nextRetryAt().minusSeconds(1);assertThat(refresh.claim("other")).isNull();
+                time.value=time.value.plusSeconds(1);
+            }else{
+                assertThat(status.runStatus()).isEqualTo("BLOCKED");assertThat(status.nextRetryAt()).isNull();
+                assertThat(notifications.list(actor,null,20).items().getFirst().message()).contains("수동 확인 필요").doesNotContain("분 대기","재개 예정");
+                assertThat(recovery.gate().get("manualResumeRequired")).isEqualTo(true);
+                time.value=time.value.plusDays(1);assertThat(refresh.claim("other")).isNull();
+            }
+        }
+        assertThat(recovery.history(actor,run,0,"",null).totalElements()).isEqualTo(5);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM product_lookup_history",Integer.class)).isZero();
+        refresh.control(actor,run,"resume");assertThat(recovery.gated()).isFalse();
+        assertThat(refresh.status(actor,Long.parseLong(p.id())).searchRetryCount()).isZero();
+        var w=refresh.claim("restriction-worker");long attempt=refresh.searchStarted("restriction-worker",w);
+        refresh.searchFailed("restriction-worker",w,attempt,retryableRestriction(kind));
+        assertThat(refresh.status(actor,Long.parseLong(p.id())).nextRetryAt()).isEqualTo(time.value.plusMinutes(5));
+    }
+    @Test void restrictionAndLoginFailuresShareOneStreakAndSuccessStartsANewCycle(){
+        var p=create("RESTRICT2");start(p);
+        List<RuntimeException> errors=List.of(retryableRestriction("418"),noResponse(),retryableRestriction("429"),
+                new cc.ataglace.molebutter.procurement.internal.NaverPriceSearch.SearchBlocked(cc.ataglace.molebutter.procurement.internal.NaverPriceSearch.BlockReason.LOGIN_REQUIRED,"safe"));
+        for(int i=0;i<errors.size();i++){
+            var w=refresh.claim("mixed");long a=refresh.searchStarted("mixed",w);refresh.searchFailed("mixed",w,a,errors.get(i));
+            var s=refresh.status(actor,Long.parseLong(p.id()));assertThat(s.searchRetryCount()).isEqualTo(i+1);
+            time.value=s.nextRetryAt();
+        }
+        var w=refresh.claim("mixed");long a=refresh.searchStarted("mixed",w);assertThat(refresh.searchSucceeded("mixed",w,a)).isTrue();
+        assertThat(refresh.status(actor,Long.parseLong(p.id())).searchRetryCount()).isZero();
+        // End this successful work, start a new real search, then check a security challenge gets the first delay.
+        refresh.finish("mixed",w,new RefreshResult("FAILED",null,null,null,List.of(),time.now(),"synthetic"));
+        assertThat(refresh.claim("mixed")).isNull(); // Worker finalizes the completed run on its next claim.
+        time.value=time.value.plusSeconds(60);start(current(p));w=refresh.claim("mixed");a=refresh.searchStarted("mixed",w);
+        refresh.searchFailed("mixed",w,a,retryableRestriction("SECURITY_CHECK"));
+        assertThat(refresh.status(actor,Long.parseLong(p.id())).searchRetryCount()).isEqualTo(1);
+        assertThat(refresh.status(actor,Long.parseLong(p.id())).nextRetryAt()).isEqualTo(time.value.plusMinutes(5));
+    }
+    @Test void forbiddenStillRequiresManualConfirmationAndCancelledRestrictionCannotBypassCooldown(){
+        var p=create("RESTRICT3");long run=Long.parseLong(start(p));var w=refresh.claim("restricted");long a=refresh.searchStarted("restricted",w);
+        refresh.searchFailed("restricted",w,a,new cc.ataglace.molebutter.procurement.internal.NaverPriceSearch.SearchBlocked(cc.ataglace.molebutter.procurement.internal.NaverPriceSearch.BlockReason.ACCESS_RESTRICTED,"safe",403));
+        assertThat(refresh.status(actor,Long.parseLong(p.id())).runStatus()).isEqualTo("BLOCKED");
+        assertThat(refresh.status(actor,Long.parseLong(p.id())).nextRetryAt()).isNull();
+        refresh.control(actor,run,"resume");time.value=time.value.plusSeconds(60);w=refresh.claim("restricted");a=refresh.searchStarted("restricted",w);
+        refresh.searchFailed("restricted",w,a,retryableRestriction("418"));
+        var deadline=refresh.status(actor,Long.parseLong(p.id())).nextRetryAt();refresh.control(actor,run,"cancel");
+        long next=Long.parseLong(start(current(p)));assertThat(refresh.claim("new")).isNull();
+        assertThat(recovery.gate().get("untilAt")).isEqualTo(deadline);
+        time.value=deadline;assertThat(refresh.claim("new").runId()).isEqualTo(next);
+    }
     cc.ataglace.molebutter.procurement.internal.NaverSearchFailure noResponse(){return new cc.ataglace.molebutter.procurement.internal.NaverSearchFailure(cc.ataglace.molebutter.procurement.internal.NaverSearchFailure.Code.SEARCH_NO_REQUEST,"SORT",Map.of("requests",0));}
     @Test void searchRecoverySharesStreakAcrossLoginAndNoResponseAndNeverWritesFailedObservations(){
         var p=create("RECOVERY1");long run=Long.parseLong(start(p));int[] delays={5,30,60,120};
@@ -711,7 +955,13 @@ class ProductFlowIT {
     @Test void repeatedValidationStopsAfterOneRecheckAndExplicitResumeResetsSignature(){
         var p=create("RECOVERY3");long run=Long.parseLong(start(p));
         var failure=new cc.ataglace.molebutter.procurement.internal.NaverSearchFailure(cc.ataglace.molebutter.procurement.internal.NaverSearchFailure.Code.RESPONSE_MISMATCH,"SORT",Map.of("mismatches",List.of("SORT")));
-        for(int i=0;i<2;i++){var w=refresh.claim("worker");long a=refresh.searchStarted("worker",w);refresh.searchFailed("worker",w,a,failure);time.value=time.value.plusMinutes(5);}
+        for(int i=0;i<2;i++){
+            var w=refresh.claim("worker");long a=refresh.searchStarted("worker",w);refresh.searchFailed("worker",w,a,failure);
+            var notice=notifications.list(actor,null,20).items().getFirst();
+            if(i==0)assertThat(notice.message()).contains("자동 재개 1/4단계","5분 대기","재개 예정");
+            else assertThat(notice.message()).contains("수동 확인 필요").doesNotContain("분 대기","재개 예정");
+            time.value=time.value.plusMinutes(5);
+        }
         assertThat(refresh.status(actor,Long.parseLong(p.id())).runStatus()).isEqualTo("BLOCKED");
         assertThat(recovery.gated()).isTrue();refresh.control(actor,run,"cancel");
         long version=((Number)recovery.gate().get("version")).longValue();assertThatThrownBy(()->refresh.resumeSearchGate(actor,version-1)).isInstanceOf(RuntimeException.class);
@@ -765,6 +1015,8 @@ class ProductFlowIT {
             if(i<4){
                 assertThat(status.runStatus()).isEqualTo("RETRY_WAIT");
                 assertThat(status.nextRetryAt()).isEqualTo(detected.plusMinutes(delays[i]));
+                assertThat(notifications.list(actor,null,20).items().getFirst().message())
+                    .contains("자동 재개 "+(i+1)+"/4단계",delays[i]+"분 대기","네이버 로그인 감지","재개 예정");
                 time.value=status.nextRetryAt().minusSeconds(1);assertThat(refresh.claim("other-process")).isNull();
                 time.value=status.nextRetryAt();
             }else{
@@ -1231,6 +1483,22 @@ class ProductFlowIT {
             status(staff.post(assign,new AssignmentInput(l.revision(),branch.id())),200);
             admin.csrf();status(admin.send("PUT",route,input,admin.csrf),409);
             var response=admin.get("/api/settings/preferred-suppliers");assertThat(json.readTree(response.body()).path("data").path("groups").isArray()).isTrue();
+        }finally{jdbc.update("UPDATE `user` SET user_role='PRODUCT' WHERE id=?",adminUser.getId());}
+    }
+
+    @Test void coupangPricingSettingsAreSharedRevisionCheckedAndAdminOnly()throws Exception{
+        String path="/api/settings/coupang-pricing";var adminUser=account(UserRole.ADMIN);
+        try{
+            var admin=login(adminUser);var staff=login(account(UserRole.PRODUCT));var viewer=login(account(UserRole.VIEWER));
+            status(new Browser().get(path),401);status(viewer.get(path),403);status(staff.get(path),200);
+            var initial=json.readTree(admin.get(path).body()).path("data");
+            var input=Map.of("revision",initial.path("revision").asLong(),"shippingCost",5000,"commissionPercent",11.25,"marginPercent",8);
+            status(admin.send("PUT",path,input,null),403);staff.csrf();status(staff.send("PUT",path,input,staff.csrf),403);
+            admin.csrf();status(admin.send("PUT",path,input,admin.csrf),200);status(admin.send("PUT",path,input,admin.csrf),409);
+            var saved=json.readTree(staff.get(path).body()).path("data");assertThat(saved.path("shippingCost").asLong()).isEqualTo(5000);assertThat(saved.path("commissionPercent").asDouble()).isEqualTo(11.25);assertThat(saved.path("marginPercent").asDouble()).isEqualTo(8);
+            status(admin.send("PUT",path,Map.of("revision",saved.path("revision").asLong(),"shippingCost",4000,"commissionPercent",91,"marginPercent",0),admin.csrf),400);
+            assertThat(json.readTree(admin.get(path).body()).path("data")).isEqualTo(saved);
+            status(admin.send("PUT",path,Map.of("revision",saved.path("revision").asLong(),"shippingCost",initial.path("shippingCost").asLong(),"commissionPercent",initial.path("commissionPercent").decimalValue(),"marginPercent",initial.path("marginPercent").decimalValue()),admin.csrf),200);
         }finally{jdbc.update("UPDATE `user` SET user_role='PRODUCT' WHERE id=?",adminUser.getId());}
     }
 

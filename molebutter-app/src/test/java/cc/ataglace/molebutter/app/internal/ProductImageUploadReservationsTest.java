@@ -48,7 +48,7 @@ class ProductImageUploadReservationsTest {
             assertThatThrownBy(() -> reservations.acquire(PRODUCT, requestId, GENERATION))
                     .isInstanceOf(ProductImageUploadFailure.class)
                     .satisfies(error -> assertThat(((ProductImageUploadFailure) error).kind())
-                            .isEqualTo(ProductImageUploadFailure.Kind.DUPLICATE));
+                            .isEqualTo(ProductImageUploadFailure.Kind.BUSY));
         }
         verify(storage, never()).create(any(), any(), any(), any(), any());
         verify(storage, never()).replace(any(), any(), any(), any(), any(), any());
@@ -75,7 +75,7 @@ class ProductImageUploadReservationsTest {
         when(storage.head(StorageArea.PRIVATE, KEY)).thenReturn(Optional.of(claim(FIRST, "released", "released-tag")));
         assertThatThrownBy(() -> reservations.acquire(PRODUCT, FIRST, GENERATION))
                 .isInstanceOfSatisfying(ProductImageUploadFailure.class,
-                        failure -> assertThat(failure.kind()).isEqualTo(ProductImageUploadFailure.Kind.DUPLICATE));
+                        failure -> assertThat(failure.kind()).isEqualTo(ProductImageUploadFailure.Kind.BUSY));
         verify(storage, never()).create(any(), any(), any(), any(), any());
         verify(storage, never()).replace(any(), any(), any(), any(), any(), any());
     }
@@ -299,7 +299,7 @@ class ProductImageUploadReservationsTest {
             reservations.acquire(PRODUCT, requestId, GENERATION);
             return true;
         } catch (ProductImageUploadFailure failure) {
-            assertThat(failure.kind()).isEqualTo(ProductImageUploadFailure.Kind.DUPLICATE);
+            assertThat(failure.kind()).isEqualTo(ProductImageUploadFailure.Kind.BUSY);
             return false;
         }
     }

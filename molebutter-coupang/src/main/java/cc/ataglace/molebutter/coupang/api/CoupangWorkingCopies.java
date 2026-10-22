@@ -13,7 +13,9 @@ public interface CoupangWorkingCopies {
             return "REPRESENTATION".equals(imageType());
         }
     }
-    record Content(String id, String type, String detailType, String content, String assetId) {
+    record Content(String id, String type, String detailType, String content, String assetId,
+                   @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) String purpose) {
+        public Content(String id,String type,String detailType,String content,String assetId){this(id,type,detailType,content,assetId,null);}
     }
     record Option(String id, String itemName, Map<String, String> registration,
             List<CoupangCatalog.Attribute> attributes, List<Image> images, List<Content> contents,
@@ -31,7 +33,13 @@ public interface CoupangWorkingCopies {
     record Entry(String mode, String workingCopyId, Long revision, String productId, Document document,
             String sessionId, String expiresAt, CoupangEditor.EditorDocument observation, boolean blocked,
             List<CoupangEditing.Change> changes, String accountKey, Document recoveryBase, String recoveryMessage,
-            Long appliedRevision) {
+            Long appliedRevision,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) CoupangEditor.CategoryRules categoryRules) {
+        public Entry(String mode,String workingCopyId,Long revision,String productId,Document document,
+                String sessionId,String expiresAt,CoupangEditor.EditorDocument observation,boolean blocked,
+                List<CoupangEditing.Change> changes,String accountKey,Document recoveryBase,String recoveryMessage,Long appliedRevision) {
+            this(mode,workingCopyId,revision,productId,document,sessionId,expiresAt,observation,blocked,changes,accountKey,recoveryBase,recoveryMessage,appliedRevision,null);
+        }
     }
     record Save(String sessionId, Long expectedRevision, Document document, List<CoupangEditing.Change> changes) {
         @com.fasterxml.jackson.annotation.JsonAnySetter
@@ -40,6 +48,10 @@ public interface CoupangWorkingCopies {
         }
     }
     Entry open(Long actor, String productId, String workingCopyId);
+    /** Reuse already persisted provider observations after submission completion. */
+    default Entry openObserved(Long actor, String workingCopyId) { throw new UnsupportedOperationException(); }
+    default Entry prefill(Long actor, Document document) { throw new UnsupportedOperationException(); }
     Entry save(Long actor, String workingCopyId, Save input);
-    PageResponse<Summary> list(Long actor, String query, int page, int size);
+    default PageResponse<Summary> list(Long actor,String query,int page,int size){return list(actor,query,null,page,size);}
+    PageResponse<Summary> list(Long actor, String query, String mode, int page, int size);
 }

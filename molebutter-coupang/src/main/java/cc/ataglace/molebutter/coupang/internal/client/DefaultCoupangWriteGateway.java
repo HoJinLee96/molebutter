@@ -1,5 +1,6 @@
 package cc.ataglace.molebutter.coupang.internal.client;
 import cc.ataglace.molebutter.coupang.api.CoupangWriteGateway;
+import cc.ataglace.molebutter.coupang.api.CoupangPrices;
 
 import cc.ataglace.molebutter.media.api.ImageAssets;
 import cc.ataglace.molebutter.media.api.R2Images;
@@ -30,6 +31,9 @@ import tools.jackson.databind.node.ArrayNode;
  */
 @Component
 final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
+    private static final Duration CREATION_TRANSITION_GAP = Duration.ofSeconds(5);
+    private static final Duration APPROVAL_CHECK_WINDOW = Duration.ofMinutes(10);
+    private static final int MAX_APPROVAL_CHECKS = 120;
     private final BusinessAccess access;
     private final CoupangProductClient client;
     private final ImageAssets assets;
@@ -95,7 +99,8 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
         return blank(client.vendorId()) ? null : client.accountKey();
     }
     public Prepared prepare(Long actor, Document input, Mapping mapping, Document observed,
-            List<CoupangEditing.Change> changes) {
+            List<CoupangEditing.Change> rawChanges) {
+        var changes=CoupangPrices.changes(rawChanges);
         access.productActor(actor, true);
         var document = CoupangWorkingCopyDocuments.normalize(input, json);
         if (mapping != null && !Objects.equals(client.accountKey(), mapping.accountKey()))
@@ -105,13 +110,33 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
             if (!CoupangInputs.matches(json, document, c))
                 throw invalid("수정 항목과 입력값이 일치하지 않습니다.");
         }
-        return client.writeSession(() -> withApproval(build(actor, document, mapping, observed, changes)));
+        return client.operation(actor,null,()->client.writeSession(() -> withApproval(build(actor, document, mapping, observed, changes))));
     }
+    public Prepared prepareStoredOption(Long actor,Document input,Mapping mapping,Document observed,List<CoupangEditing.Change> rawEdits) {
+        var edits=CoupangPrices.changes(rawEdits);
+        input=CoupangWorkingCopyDocuments.normalize(input,json);
+        access.productActor(actor,true);
+        if(mapping==null||!Objects.equals(client.accountKey(),mapping.accountKey())||edits==null||edits.size()!=1)throw invalid("쿠팡 수정 대상을 확인해 주세요.");
+        var edit=edits.getFirst();CoupangInputs.checkCurrent(edit);
+        if(!CoupangInputs.matches(json,input,edit))throw invalid("수정 항목과 입력값이 일치하지 않습니다.");
+        Type type=switch(edit.path()){case "options.registration.salePrice"->Type.PRICE;case "options.registration.maximumBuyCount"->Type.STOCK;default->throw invalid("단일 가격·재고 수정만 허용됩니다.");};
+        var link=optionMapping(mapping,edit.optionId());
+        var before=observed.options().stream().filter(o->o.id().equals(edit.optionId())).findFirst().orElseThrow(()->invalid("옵션이 변경되었습니다."));
+        String field=type==Type.PRICE?"salePrice":"maximumBuyCount",value=Objects.toString(edit.value(),"");
+        validateWireField(field,value);if(type==Type.PRICE&&number(value).mod(BigInteger.TEN).signum()!=0)throw invalid("가격은 10원 단위로 입력해 주세요.");
+        String previous=before.registration().get(field);if(previous==null)throw invalid("현재 판매값이 미확인입니다.");
+        var inventory=json.createObjectNode();inventory.set(type==Type.PRICE?"salePrice":"amountInStock",json.readTree(number(previous).toString()));
+        var step=currentStep(type,edit.optionId(),link.vendorItemId(),value,inventory);
+        var changes=new ArrayList<Change>();diff("",json.readTree(step.baselineJson()),json.readTree(step.expectedJson()),changes);
+        return new Prepared(mapping.accountKey(),mapping,numericEqual(value,inventory.path(type==Type.PRICE?"salePrice":"amountInStock"))?List.of():List.of(step),List.copyOf(changes),client.now(),List.of(),new EditIntent(observed,List.copyOf(edits)),4);
+    }
+    private Prepared build(Long actor,Document input,Mapping mapping,Document observed,List<CoupangEditing.Change> edits) {return build(actor,input,mapping,observed,edits,false);}
     private Prepared build(Long actor, Document input, Mapping mapping, Document observed,
-            List<CoupangEditing.Change> edits) {
+            List<CoupangEditing.Change> edits,boolean quickEdit) {
         boolean create = mapping == null || mapping.sellerProductId() == null;
         if (create)
             validateCreation(input);
+        var creationRules = create ? client.creationCategory(input.basic().get("displayCategoryCode")) : null;
         ObjectNode raw = create
                 ? json.createObjectNode()
                 : client.rawProduct(mapping.sellerProductId()).deepCopy().asObject();
@@ -162,7 +187,7 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
             brands.requireSelection(actor, d.settings().get("brandId"), d.basic().get("brand"));
         }
         if (create || edits.stream().anyMatch(c -> c.path().startsWith("delivery.")))
-            regional(d);
+            regional(d, create);
         var items = json.createArrayNode();
         var sourceItems = raw.path("items");
         if (!create && sourceItems.size() != d.options().size())
@@ -181,6 +206,12 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
             }
             ObjectNode item = old == null ? json.createObjectNode() : old.deepCopy();
             links.add(link);
+            if(quickEdit&&edits.stream().anyMatch(edit->Objects.equals(edit.optionId(),o.id()))) {
+                var before=observed.options().stream().filter(v->Objects.equals(v.id(),o.id())).findFirst().orElseThrow(()->invalid("옵션이 변경되었습니다."));
+                String oldCode=Objects.toString(before.registration().get("externalVendorSku"),"").trim().toUpperCase(Locale.ROOT);
+                String newCode=Objects.toString(o.registration().get("externalVendorSku"),"").trim().toUpperCase(Locale.ROOT);
+                if(!oldCode.equals(newCode))throw invalid("판매자상품코드가 변경되었습니다. 다시 확인해 주세요.");
+            }
             var attributes = o.attributes();
             if (create)
                 set(item, "itemName", o.itemName());
@@ -222,7 +253,7 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
                 var before = create
                         ? List.<CoupangCatalog.Attribute>of()
                         : CoupangPurchaseAttributes.read(old.path("attributes"));
-                var rules = client.rawCategory(d.basic().get("displayCategoryCode"));
+                var rules = create ? creationRules : client.rawCategory(d.basic().get("displayCategoryCode"));
                 item.set("attributes", create
                         ? attributeRows(o)
                         : CoupangPurchaseAttributes.patch(json, old.path("attributes"), before, attributes, rules));
@@ -283,11 +314,11 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
                     set(desired, e.getKey(), e.getValue());
                 }
             desired.put("requested", false);
-            CoupangPurchaseAttributes.create(items, client.rawCategory(d.basic().get("displayCategoryCode")));
+            CoupangPurchaseAttributes.create(items, creationRules);
             if (skus.isEmpty())
-                throw invalid("등록 결과 확인을 위한 판매자 상품코드를 입력해 주세요.");
+                throw invalid("판매자 상품코드를 입력해 주세요.");
             steps.add(new Step(UUID.randomUUID().toString(), Type.CREATE, null, "POST", CoupangProductClient.PATH, "",
-                    wire(desired), wire(createBaseline(List.of(skus.getFirst()))), wire(desired)));
+                    wire(desired), wire(json.createObjectNode().put("creationRulesCheckedAt", creationRules.checkedAt())), wire(desired)));
         } else {
             if (!raw.equals(desired)) {
                 desired.put("requested", false);
@@ -315,7 +346,7 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
             }
         }
         for (var s : steps)
-            diff("", json.readTree(s.baselineJson()), json.readTree(s.expectedJson()), changes);
+            diff("", s.type() == Type.CREATE ? json.createObjectNode() : json.readTree(s.baselineJson()), json.readTree(s.expectedJson()), changes);
         steps.sort(Comparator.comparingInt(s -> switch (s.type()) {
             case DELIVERY -> 0;
             case ORIGINAL_PRICE -> 1;
@@ -324,6 +355,7 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
             case PRODUCT -> 4;
             case CREATE -> 5;
             case APPROVAL -> 6;
+            case SALE_STOP, SALE_RESUME, DELETE -> 7;
         }));
         return new Prepared(client.accountKey(),
                 new Mapping(client.accountKey(), create ? null : mapping.sellerProductId(), List.copyOf(links)),
@@ -355,14 +387,15 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
                 if (blank(o.registration().get(key)))
                     throw invalid("옵션의 " + key + "를 입력해 주세요.");
     }
-    private void regional(Document d) {
+    private void regional(Document d, boolean create) {
         var values = d.delivery();
         if (!"Y".equals(values.get("remoteAreaDeliverable"))
                 || !values.containsKey("jeju") && !values.containsKey("notJeju"))
             return;
         var code = values.get("outboundShippingPlaceCode");
-        var place = client.rawOutboundPlace(code).items().stream().filter(v -> v.usable() && v.code().equals(code))
-                .findFirst().orElseThrow(() -> invalid("출고지를 확인해 주세요."));
+        var place = create ? client.creationOutboundPlace(code) : client.rawOutboundPlace(code).items().stream()
+                .filter(v -> v.usable() && v.code().equals(code)).findFirst().orElseThrow(() -> invalid("출고지를 확인해 주세요."));
+        if (!place.usable() || !Objects.equals(place.code(), code)) throw invalid("출고지를 확인해 주세요.");
         var policies = place.remoteInfos().stream()
                 .filter(v -> v.usable() && v.carrier().equals(values.get("deliveryCompanyCode"))).toList();
         if (policies.size() != 1)
@@ -383,9 +416,84 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
             throw invalid(CoupangProductClient.REGISTRATION_USER_REQUIRED);
         return id;
     }
+
+    private static boolean lifecycle(Type type){return Set.of(Type.SALE_STOP,Type.SALE_RESUME,Type.DELETE).contains(type);}
+    public Prepared prepareAction(Long actor,Mapping mapping,Document observed,String action,String vendorItem) {
+        access.productActor(actor,true);
+        Type type=Type.valueOf(action);
+        if(!lifecycle(type) || mapping==null || !Objects.equals(mapping.accountKey(),client.accountKey()))throw invalid("상품 작업과 계정을 확인해 주세요.");
+        return client.operation(actor,null,()->client.writeSession(()->{
+            var raw=client.rawProduct(mapping.sellerProductId());
+            var source=client.editorDocument(raw,new HashMap<>(),new HashMap<>());
+            var enriched=CoupangInputs.enrich(mapping,source);
+            if(!mapping.options().equals(enriched.options()))throw invalid("옵션 ID가 변경되었습니다. 다시 진입해 주세요.");
+            if(Set.of("APPROVING","승인대기중","IN_REVIEW","심사중").contains(raw.path("statusName").asString()))throw invalid("승인·심사 중에는 상품 작업을 진행할 수 없습니다.");
+            var steps=new ArrayList<Step>();var changes=new ArrayList<Change>();
+            boolean selected=false;
+            for(var option:mapping.options()) {
+                if(type!=Type.DELETE && vendorItem!=null && !vendorItem.equals(option.vendorItemId()))continue;
+                selected=true;
+                if(option.vendorItemId()==null){if(type==Type.DELETE)continue;throw invalid("승인된 옵션 ID가 필요합니다.");}
+                var inventory=client.rawInventory(option.vendorItemId());
+                boolean before=inventory.path("onSale").asBoolean();boolean desired=type==Type.SALE_RESUME;
+                if(type==Type.DELETE && !before)continue;
+                var stepType=type==Type.DELETE?Type.SALE_STOP:type;
+                if(before==desired)continue;
+                String path="/v2/providers/seller_api/apis/api/v1/marketplace/vendor-items/"+option.vendorItemId()+"/sales/"+(desired?"resume":"stop");
+                steps.add(new Step(UUID.randomUUID().toString(),stepType,option.optionId(),"PUT",path,"",null,"{\"onSale\":"+before+"}","{\"onSale\":"+desired+"}"));
+                changes.add(new Change("options["+option.vendorItemId()+"].onSale",Boolean.toString(before),Boolean.toString(desired)));
+            }
+            if(!selected && type!=Type.DELETE)throw invalid("대상 옵션이 없습니다.");
+            if(type==Type.DELETE){steps.add(new Step(UUID.randomUUID().toString(),Type.DELETE,null,"DELETE",CoupangProductClient.PATH+"/"+mapping.sellerProductId(),"",null,wire(raw),"{\"deleted\":true}"));changes.add(new Change("deleted","false","true"));}
+            return new Prepared(client.accountKey(),mapping,List.copyOf(steps),List.copyOf(changes),client.now(),List.of(),new EditIntent(observed,List.of()),4);
+        }));
+    }
+    private Result executeLifecycle(Long actor,Prepared p,Step step,Mapping mapping,Instant at,java.util.function.Consumer<Step> beforeDispatch) {
+        var sent=new java.util.concurrent.atomic.AtomicBoolean();var request=new java.util.concurrent.atomic.AtomicReference<String>();
+        try{return client.operation(actor,null,()->client.writeSession(()->{
+            JsonNode raw;
+            try{raw=client.rawProduct(mapping.sellerProductId());}catch(cc.ataglace.molebutter.coupang.api.CoupangListingMissing deleted){
+                if(step.type()==Type.DELETE)return result(State.CONFIRMED,mapping,"VERIFIED","상품 삭제를 확인했습니다.",at);throw deleted;}
+            if(Set.of("APPROVING","승인대기중","IN_REVIEW","심사중").contains(raw.path("statusName").asString()))throw invalid("승인·심사 중인 상품입니다.");
+            var actual=step;
+            if(step.type()==Type.DELETE) {
+                var baseline=json.readTree(step.baselineJson());
+                var oldIds=new TreeSet<String>();for(var row:baseline.path("items"))oldIds.add(row.path("sellerProductItemId").asString()+":"+row.path("vendorItemId").asString());
+                var newIds=new TreeSet<String>();for(var row:raw.path("items")) {
+                    newIds.add(row.path("sellerProductItemId").asString()+":"+row.path("vendorItemId").asString());
+                    String vendor=optionalId(row.path("vendorItemId"));if(vendor!=null && client.rawInventory(vendor).path("onSale").asBoolean())throw invalid("모든 옵션의 판매중지를 확인한 뒤 삭제해 주세요.");
+                }
+                if(!oldIds.equals(newIds))throw invalid("옵션 구성이 변경되었습니다. 삭제를 다시 준비해 주세요.");
+                actual=new Step(step.id(),Type.DELETE,null,"DELETE",CoupangProductClient.PATH+"/"+mapping.sellerProductId(),"",null,wire(raw),step.expectedJson());
+            } else {
+                var option=optionMapping(mapping,step.optionId());var remote=remoteOption(raw,option);
+                if(remote.isEmpty())throw invalid("옵션 ID가 변경되었습니다.");
+                var inventory=client.rawInventory(option.vendorItemId());
+                if(subset(json.readTree(step.expectedJson()),inventory))return result(State.CONFIRMED,mapping,"ALREADY_APPLIED","판매상태 반영을 확인했습니다.",at);
+                actual=new Step(step.id(),step.type(),step.optionId(),"PUT","/v2/providers/seller_api/apis/api/v1/marketplace/vendor-items/"+option.vendorItemId()+"/sales/"+(step.type()==Type.SALE_RESUME?"resume":"stop"),"",null,wire(inventory),step.expectedJson());
+            }
+            access.productActor(actor,true);beforeDispatch.accept(actual);request.set(json.writeValueAsString(actual));sent.set(true);
+            var retryStep=actual;
+            var response=client.write(actual.method(),actual.path(),actual.query(),null,
+                    () -> retryGuard(actor,retryStep,mapping,beforeDispatch));
+            var out=response.status()==200?parseOutcome(response.body(),actual,mapping,at):httpFailure(response.status(),response.body(),mapping,at,actual.bodyJson());
+            if(out.state()==State.ACCEPTED && "SUCCESS".equals(out.code())) {
+                if(step.type()==Type.DELETE) {
+                    var root=json.readTree(response.body());
+                    if(mapping.sellerProductId().equals(optionalId(root.path("data")))) {
+                        client.deletedReceipt(mapping.sellerProductId(),root);
+                        out=result(State.CONFIRMED,mapping,"DELETE_CONFIRMED","상품 삭제를 확인했습니다.",at);
+                    }else out=result(State.UNKNOWN,mapping,"INVALID_RESPONSE","삭제 결과의 상품 ID를 확인하지 못했습니다.",at);
+                }else try{if(subset(json.readTree(step.expectedJson()),client.rawInventory(optionMapping(mapping,step.optionId()).vendorItemId())))out=result(State.CONFIRMED,mapping,"VERIFIED","판매상태 반영을 확인했습니다.",at);}catch(CoupangFailure ignored){}
+            }
+            return withRequest(out,request.get());
+        }));}catch(InputValidationFailure rejected){return result(State.FAILED,mapping,"MAPPING_CHANGED",rejected.getMessage(),at);}
+        catch(CoupangFailure failure){return withRequest(result(sent.get()?State.UNKNOWN:State.FAILED,mapping,failure.kind().name(),failure.getMessage(),at),request.get());}
+    }
     public Result execute(Long actor, Prepared p, Step step, Mapping current,
             java.util.function.Consumer<Step> beforeDispatch) {
         access.productActor(actor, true);
+        client.observationActor(actor);
         var at = client.now();
         var mapping = current == null ? p.mapping() : current;
         if (!validAccount(p, mapping))
@@ -395,6 +503,7 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
             return result(State.FAILED, mapping, "INVALID_STEP", "전송 단계를 확인해 주세요.", at);
         if (p.schemaVersion() < 4)
             return result(State.FAILED, mapping, "LEGACY_INTENT", "새 미리보기로 준비해 주세요.", at);
+        if(lifecycle(step.type()))return executeLifecycle(actor,p,step,mapping,at,beforeDispatch);
         if (step.type() == Type.APPROVAL)
             return executeApproval(actor, p, step, mapping, at, beforeDispatch);
         if (step.type() == Type.CREATE && mapping.sellerProductId() != null)
@@ -413,23 +522,30 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
                         ? p.editIntent().observed()
                         : CoupangInputs.apply(json, p.editIntent().observed(), p.editIntent().changes());
                 var fresh = build(actor, input, step.type() == Type.CREATE ? null : mapping, p.editIntent().observed(),
-                        p.editIntent().changes());
+                        p.editIntent().changes(),p.editIntent().quickEditBasis()!=null);
                 var candidate = fresh.steps().stream()
                         .filter(s -> s.type() == step.type() && Objects.equals(s.optionId(), step.optionId()))
                         .findFirst().orElse(null);
                 if (candidate == null)
                     return result(State.CONFIRMED, mapping, "ALREADY_APPLIED", "변경값의 반영을 확인했습니다.", at);
+                if (step.type() == Type.CREATE && !Objects.equals(json.readTree(step.baselineJson()).path("creationRulesCheckedAt"),
+                        json.readTree(candidate.baselineJson()).path("creationRulesCheckedAt")))
+                    throw invalid("카테고리 규격 확인이 변경되었습니다. 입력을 유지한 채 새 미리보기로 확인해 주세요.");
+                if(p.editIntent().quickEditBasis()!=null&&!json.readTree(step.baselineJson()).equals(json.readTree(candidate.baselineJson())))
+                    throw invalid("현재 쿠팡값이 변경되었습니다. 입력을 보관한 뒤 다시 확인해 주세요.");
                 var actual = new Step(step.id(), candidate.type(), candidate.optionId(), candidate.method(),
                         candidate.path(), candidate.query(), candidate.bodyJson(), candidate.baselineJson(),
                         candidate.expectedJson());
                 access.productActor(actor, true);
+                if (actual.type() == Type.CREATE) checkCreationRules(actual);
                 beforeDispatch.accept(actual);
                 exact.set(json.writeValueAsString(actual));
                 dispatched.set(true);
-                var response = client.write(actual.method(), actual.path(), actual.query(), actual.bodyJson());
+                var response = client.write(actual.method(), actual.path(), actual.query(), actual.bodyJson(),
+                        () -> retryGuard(actor, actual, mapping, beforeDispatch));
                 var out = response.status() == 200
                         ? parseOutcome(response.body(), actual, fresh.mapping(), at)
-                        : httpFailure(response.status(), response.body(), mapping, at);
+                        : httpFailure(response.status(), response.body(), mapping, at, actual.bodyJson());
                 if (approvalFollows(p, step))
                     out = saved(p, actual, out);
                 else if (out.state() == State.ACCEPTED)
@@ -446,6 +562,31 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
                     dispatched.get() ? failure.kind().name() : "PREFLIGHT_" + failure.kind().name(),
                     failure.getMessage(), at), exact.get());
         }
+    }
+    private void retryGuard(Long actor, Step actual, Mapping mapping, java.util.function.Consumer<Step> beforeDispatch) {
+        access.productActor(actor, true);
+        if (actual.type() == Type.CREATE) {
+            checkCreationRules(actual);
+        } else if (actual.type() != Type.APPROVAL) {
+            boolean matches;
+            if (actual.type() == Type.DELETE) {
+                var current = client.rawProduct(mapping.sellerProductId());
+                matches = json.readTree(actual.baselineJson()).equals(current);
+                for (var item : current.path("items")) {
+                    String vendorItemId = optionalId(item.path("vendorItemId"));
+                    if (vendorItemId != null && client.rawInventory(vendorItemId).path("onSale").asBoolean())
+                        throw invalid("모든 옵션의 판매중지를 확인한 뒤 삭제해 주세요.");
+                }
+            } else matches = baselineMatches(actual, mapping);
+            if (!matches) throw invalid("현재 쿠팡값이 변경되었습니다. 입력을 보관한 뒤 다시 확인해 주세요.");
+        }
+        // Recheck account lease, supplier fingerprint, permission and persisted intent before another dispatch.
+        beforeDispatch.accept(actual);
+    }
+    private void checkCreationRules(Step actual) {
+        var rules = client.creationCategory(json.readTree(actual.bodyJson()).path("displayCategoryCode").asString());
+        if (!Objects.equals(rules.checkedAt(), json.readTree(actual.baselineJson()).path("creationRulesCheckedAt").asString(null)))
+            throw invalid("카테고리 규격 확인이 변경되었습니다. 입력을 유지한 채 새 미리보기로 확인해 주세요.");
     }
     private void validateWireField(String key, String value) {
         if (NUMBERS.contains(key)) {
@@ -488,13 +629,14 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
     }
     private static Result withRequest(Result result, String request) {
         return new Result(result.state(), result.mapping(), result.code(), result.message(), result.attemptedAt(),
-                request);
+                request, result.rejectionDetails());
     }
     private Result executeApproval(Long actor, Prepared prepared, Step step, Mapping mapping, Instant attempted,
             java.util.function.Consumer<Step> beforeDispatch) {
         if (mapping.sellerProductId() == null)
             return result(State.FAILED, mapping, "MAPPING_CHANGED", "저장된 등록상품 ID를 확인해 주세요.", attempted);
         var sent = new java.util.concurrent.atomic.AtomicBoolean();
+        boolean creation = json.readValue(step.expectedJson(), Step.class).type() == Type.CREATE;
         try {
             return client.writeSession(() -> {
                 String path = CoupangProductClient.PATH + "/" + mapping.sellerProductId() + "/approvals";
@@ -503,7 +645,9 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
                 access.productActor(actor, true);
                 beforeDispatch.accept(actual);
                 sent.set(true);
-                var response = client.write("PUT", path, "", null);
+                java.util.function.Supplier<CoupangHttpTransport.Response> dispatch = () -> client.write("PUT", path, "", null,
+                        () -> retryGuard(actor, actual, mapping, beforeDispatch));
+                var response = creation ? client.withFirstResponseGap(CREATION_TRANSITION_GAP, dispatch) : dispatch.get();
                 if (response.status() != 200) {
                     if (response.status() == 400 && approvalProcessing(response.body()))
                         return result(State.FAILED, mapping, "APPROVAL_NOT_READY",
@@ -514,15 +658,46 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
                 if (accepted.state() != State.ACCEPTED)
                     return accepted;
                 try {
-                    return verifyApproval(prepared, actual, accepted);
+                    return creation ? verifyCreatedApprovalAutomatically(actor, prepared, actual, accepted)
+                            : verifyApproval(prepared, actual, accepted);
                 } catch (CoupangFailure e) {
-                    return result(State.ACCEPTED, mapping, "APPROVAL_PENDING", "판매 승인 요청 접수 · 승인 결과 확인 필요", attempted);
+                    return result(State.ACCEPTED, mapping,
+                            e.kind() == CoupangFailure.Kind.PRODUCT_PROCESSING ? "APPROVAL_LOOKUP_PROCESSING" : "APPROVAL_LOOKUP_FAILED",
+                            e.kind() == CoupangFailure.Kind.PRODUCT_PROCESSING
+                                    ? "판매 승인 요청 접수 · 자동 결과 조회에서 쿠팡 상품 처리 중 응답을 받았습니다. 잠시 후 결과를 다시 확인해 주세요."
+                                    : "판매 승인 요청 접수 · 자동 결과 조회를 완료하지 못했습니다. 결과를 다시 확인해 주세요.", attempted);
                 }
             });
         } catch (CoupangFailure e) {
             return result(sent.get() ? State.UNKNOWN : State.FAILED, mapping, e.kind().name(),
                     sent.get() ? "판매 승인 요청 결과를 확인하지 못했습니다. 재전송하지 말고 결과를 확인해 주세요." : "승인 요청을 보내지 못했습니다.", attempted);
         }
+    }
+    /** Only reads repeat after a confirmed approval response. The worker stays RUNNING while waiting. */
+    private Result verifyCreatedApprovalAutomatically(Long actor, Prepared prepared, Step approval, Result accepted) {
+        long deadline = System.nanoTime() + APPROVAL_CHECK_WINDOW.toNanos();
+        var latest = accepted;
+        for (int check = 0; check < MAX_APPROVAL_CHECKS && System.nanoTime() < deadline; check++) {
+            try {
+                access.productActor(actor, true);
+            } catch (cc.ataglace.molebutter.common.api.BusinessException denied) {
+                return result(State.ACCEPTED, latest.mapping(), "APPROVAL_CHECK_ACCESS_DENIED",
+                        "판매 승인 요청은 접수되었습니다. 권한 변경으로 자동 결과 확인을 중단했습니다.", accepted.attemptedAt());
+            }
+            try {
+                var previous = latest;
+                latest = client.withFirstResponseGap(CREATION_TRANSITION_GAP,
+                        () -> verifyApproval(prepared, approval, previous));
+                if (latest.state() != State.ACCEPTED || !"APPROVAL_PENDING".equals(latest.code()))
+                    return latest;
+            } catch (CoupangFailure failure) {
+                if (failure.kind() != CoupangFailure.Kind.PRODUCT_PROCESSING)
+                    return result(State.ACCEPTED, latest.mapping(), "APPROVAL_LOOKUP_FAILED",
+                            "판매 승인 요청 접수 · 자동 결과 조회를 완료하지 못했습니다. 결과를 다시 확인해 주세요.", accepted.attemptedAt());
+            }
+        }
+        return result(State.ACCEPTED, latest.mapping(), "APPROVAL_CHECK_TIMEOUT",
+                "판매 승인 요청 접수 · 10분 동안 자동 결과 확인을 진행했으나 쿠팡 처리가 완료되지 않았습니다.", accepted.attemptedAt());
     }
     private boolean approvalProcessing(byte[] body) {
         try {
@@ -558,34 +733,26 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
                 previous.attemptedAt());
     }
     public Result reconcile(Long actor, Prepared prepared, Step step, Result previous) {
+        client.observationActor(actor);
         access.productActor(actor, true);
         Mapping mapping = previous.mapping() == null ? prepared.mapping() : previous.mapping();
         if (!validAccount(prepared, mapping))
             return result(State.FAILED, mapping, "ACCOUNT_CHANGED", "쿠팡 계정이 변경되었습니다. 연결 정보를 확인해 주세요.",
                     previous.attemptedAt());
-        if (step.type() == Type.CREATE && mapping.sellerProductId() == null
-                && Duration.between(previous.attemptedAt(), client.now()).compareTo(Duration.ofMinutes(1)) < 0)
-            return result(State.UNKNOWN, mapping, "WAIT_RECONCILE", "등록 여부 확인을 기다리고 있습니다.", previous.attemptedAt());
+        if (step.type() == Type.CREATE && mapping.sellerProductId() == null)
+            return result(State.UNKNOWN, mapping, "UNRESOLVED",
+                    "등록 응답의 상품 ID를 확인하지 못했습니다. 재등록하지 말고 Wing에서 직접 확인해 주세요.", previous.attemptedAt());
         try {
             return client.writeSession(() -> {
-                if (step.type() == Type.APPROVAL)
-                    return verifyApproval(prepared, step, previous);
-                if (step.type() == Type.CREATE && mapping.sellerProductId() == null) {
-                    var candidates = new LinkedHashSet<String>();
-                    for (String sku : prepared.expectedSkus())
-                        for (var row : client.rawSummary(sku))
-                            candidates.add(scalar(row.path("sellerProductId")));
-                    for (var id : json.readTree(step.baselineJson()).path("knownSellerProductIds"))
-                        candidates.remove(id.asString());
-                    // SKU/content equality cannot distinguish our lost POST from a concurrent or
-                    // late-visible registration.
-                    // Only an ID returned by the registration response is authoritative for
-                    // automatic mapping.
-                    return result(State.UNKNOWN, mapping, "UNRESOLVED",
-                            candidates.isEmpty()
-                                    ? "등록 여부를 확인하지 못했습니다. 다시 확인해 주세요."
-                                    : "같은 상품코드의 후보가 있지만 이번 등록 결과인지 확인할 수 없습니다. 새로 등록하지 말고 쿠팡에서 확인해 주세요.",
-                            previous.attemptedAt());
+                if(step.type()==Type.DELETE) {
+                    try{client.rawProduct(mapping.sellerProductId());}catch(cc.ataglace.molebutter.coupang.api.CoupangListingMissing deleted){return result(State.CONFIRMED,mapping,"DELETE_CONFIRMED","상품 삭제를 확인했습니다.",previous.attemptedAt());}
+                    return result(previous.state()==State.UNKNOWN?State.UNKNOWN:State.ACCEPTED,mapping,"UNRESOLVED","삭제 결과를 확인 중입니다. 재전송하지 마세요.",previous.attemptedAt());
+                }
+                if (step.type() == Type.APPROVAL) {
+                    var parent = json.readValue(step.expectedJson(), Step.class);
+                    return previous.state() == State.ACCEPTED && parent.type() == Type.CREATE
+                            ? verifyCreatedApprovalAutomatically(actor, prepared, step, previous)
+                            : verifyApproval(prepared, step, previous);
                 }
                 if (step.type() == Type.CREATE)
                     return verifyKnown(prepared, step, previous);
@@ -603,17 +770,6 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
         } catch (CoupangFailure e) {
             return result(State.UNKNOWN, mapping, e.kind().name(), "쿠팡 처리 결과를 확인하지 못했습니다.", previous.attemptedAt());
         }
-    }
-    private ObjectNode createBaseline(List<String> skus) {
-        var ids = new LinkedHashSet<String>();
-        for (String sku : skus)
-            for (var row : client.rawSummary(sku))
-                ids.add(scalar(row.path("sellerProductId")));
-        var baseline = json.createObjectNode();
-        var rows = json.createArrayNode();
-        ids.forEach(rows::add);
-        baseline.set("knownSellerProductIds", rows);
-        return baseline;
     }
     private boolean validAccount(Prepared p, Mapping m) {
         return client.accountKey().equals(p.accountKey()) && m != null && client.accountKey().equals(m.accountKey());
@@ -653,8 +809,8 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
                         accepted.attemptedAt());
             if ("NEEDS_CORRECTION".equals(accepted.code()) && !approved)
                 return result(State.ACCEPTED, mapping, accepted.code(), accepted.message(), accepted.attemptedAt());
-            // Dates, CDN URLs and content can change after a successful registration.
-            // Report those differences without keeping a verified creation locked forever.
+            // Creation dates, search-tag order and image locations are presentation differences.
+            // Report other differences without keeping a verified creation locked forever.
             boolean reflected = createApplied(expected, actual);
             return result(State.CONFIRMED, mapping, reflected ? "CREATED_CONFIRMED" : "CREATED_VALUES_DIFFER",
                     reflected ? "쿠팡 등록·옵션 연결을 확인했습니다." : "등록·옵션 연결을 확인했습니다. 현재 상품값이 등록 요청과 다릅니다. 상품 수정에서 최신값을 확인해 주세요.",
@@ -721,6 +877,9 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
     }
     Result httpFailure(int status, byte[] body, Mapping mapping, Instant now) {
         return new CoupangWriteOutcome(json).httpFailure(status, body, mapping, now);
+    }
+    private Result httpFailure(int status, byte[] body, Mapping mapping, Instant now, String requestJson) {
+        return new CoupangWriteOutcome(json).httpFailure(status, body, mapping, now, requestJson);
     }
     private Step currentStep(Type type, String optionId, String vendorItemId, String value, JsonNode inventory) {
         var before = json.createObjectNode();
@@ -842,7 +1001,7 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
             String description = cc.ataglace.molebutter.media.api.EditedImages.description(actor,
                     image ? "<img src=\"" + escape(c.content()) + "\">" : c.content(), previous, r2, assets);
             var row = json.createObjectNode();
-            row.put("contentsType", c.type().equals("IMAGE") ? "IMAGE" : "HTML");
+            row.put("contentsType", c.type());
             var details = json.createArrayNode();
             var part = json.createObjectNode();
             part.put("detailType", image ? "IMAGE" : "TEXT");
@@ -1100,8 +1259,8 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
     }
     private boolean createApplied(JsonNode expected, JsonNode actual) {
         for (var p : expected.properties()) {
-            if (Set.of("requested", "sellerProductId", "productId").contains(p.getKey()))
-                continue; // Approval state and generated IDs are reported independently.
+            if (Set.of("requested", "sellerProductId", "productId", "saleStartedAt", "saleEndedAt").contains(p.getKey()))
+                continue; // Approval/IDs are checked independently; creation dates can be normalized by Coupang.
             if ("items".equals(p.getKey())) {
                 for (var wanted : p.getValue()) {
                     JsonNode got = null;
@@ -1116,6 +1275,12 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
                             continue;
                         if ("images".equals(field.getKey())) {
                             if (!imagesApplied(field.getValue(), got.path("images")))
+                                return false;
+                        } else if ("searchTags".equals(field.getKey())) {
+                            if (!unorderedValuesApplied(field.getValue(), got.path("searchTags")))
+                                return false;
+                        } else if ("contents".equals(field.getKey())) {
+                            if (!creationContentsApplied(field.getValue(), got.path("contents")))
                                 return false;
                         } else if (Set.of("attributes", "notices", "certifications").contains(field.getKey())) {
                             if (!arrayMembersApplied(field.getValue(), got.path(field.getKey())))
@@ -1148,23 +1313,70 @@ final class DefaultCoupangWriteGateway implements CoupangWriteGateway {
         return true;
     }
     private static boolean imagesApplied(JsonNode expected, JsonNode actual) {
-        if (!actual.isArray() || actual.size() != expected.size())
+        if (!expected.isArray() || !actual.isArray() || actual.size() != expected.size())
             return false;
+        var unmatched = new ArrayList<JsonNode>(actual.valueStream().toList());
         for (var wanted : expected) {
-            boolean found = false;
-            for (var got : actual) {
-                boolean samePath = Objects.equals(optionalText(wanted.path("vendorPath")),
-                        optionalText(got.path("vendorPath"))) && wanted.path("vendorPath").isString()
-                        || Objects.equals(optionalText(wanted.path("cdnPath")), optionalText(got.path("cdnPath")))
-                                && wanted.path("cdnPath").isString();
-                if (samePath && wanted.path("imageType").equals(got.path("imageType"))
-                        && wanted.path("imageOrder").equals(got.path("imageOrder")))
-                    found = true;
+            if (!wanted.isObject()) return false;
+            var comparable = wanted.deepCopy().asObject();
+            comparable.remove("vendorPath"); comparable.remove("cdnPath");
+            // Match each role/order once. URL rewriting must not hide a missing image or changed metadata.
+            int match = -1;
+            for (int i = 0; i < unmatched.size(); i++) {
+                var got = unmatched.get(i);
+                if ((hasImageLocation(got.path("vendorPath")) || hasImageLocation(got.path("cdnPath")))
+                        && subset(comparable, got)) { match = i; break; }
             }
-            if (!found)
+            if (match < 0)
                 return false;
+            unmatched.remove(match);
         }
         return true;
+    }
+    private static boolean hasImageLocation(JsonNode value) {
+        return value.isString() && !value.asString().isBlank();
+    }
+    private static boolean unorderedValuesApplied(JsonNode expected, JsonNode actual) {
+        if (!expected.isArray() || !actual.isArray() || expected.size() != actual.size()) return false;
+        var unmatched = new ArrayList<JsonNode>(actual.valueStream().toList());
+        for (var wanted : expected) {
+            if (!unmatched.remove(wanted)) return false;
+        }
+        return unmatched.isEmpty();
+    }
+    private static boolean creationContentsApplied(JsonNode expected, JsonNode actual) {
+        if (!expected.isArray() || !actual.isArray() || expected.size() != actual.size()) return false;
+        // Normalize copies only: the original request and observed response remain audit evidence.
+        var wantedRows = expected.deepCopy(); var gotRows = actual.deepCopy();
+        for (int i = 0; i < wantedRows.size(); i++) {
+            var wantedRow = wantedRows.get(i); var gotRow = gotRows.get(i);
+            var wantedParts = wantedRow.path("contentDetails"); var gotParts = gotRow.path("contentDetails");
+            if (!wantedParts.isArray() || !gotParts.isArray() || wantedParts.size() != gotParts.size()) return false;
+            for (int j = 0; j < wantedParts.size(); j++) {
+                var wanted = wantedParts.get(j); var got = gotParts.get(j);
+                if (!wanted.isObject() || !got.isObject()) return false;
+                if ("IMAGE".equals(wanted.path("detailType").asString())
+                        && wanted.path("detailType").equals(got.path("detailType"))) {
+                    if (!hasImageLocation(wanted.path("content")) || !hasImageLocation(got.path("content"))) return false;
+                    got.asObject().set("content", wanted.path("content"));
+                } else if ("HTML".equals(wantedRow.path("contentsType").asString())
+                        && "TEXT".equals(wanted.path("detailType").asString())
+                        && wanted.path("content").isString() && got.path("content").isString()) {
+                    wanted.asObject().put("content", imageLocationIndependentHtml(wanted.path("content").asString()));
+                    got.asObject().put("content", imageLocationIndependentHtml(got.path("content").asString()));
+                }
+            }
+        }
+        return subset(wantedRows, gotRows);
+    }
+    private static final java.util.regex.Pattern HTML_IMAGE_SOURCE = java.util.regex.Pattern.compile(
+            "(<img\\b(?:[^\"'>]|\"[^\"]*\"|'[^']*')*?\\s+src\\s*=\\s*)(?:[\"']([^\"']*)[\"']|([^\\s>]+))",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+    private static String imageLocationIndependentHtml(String html) {
+        return HTML_IMAGE_SOURCE.matcher(html).replaceAll(match -> {
+            String url = Objects.toString(match.group(2), match.group(3));
+            return java.util.regex.Matcher.quoteReplacement(url.isBlank() ? match.group() : match.group(1) + "\"image-location\"");
+        });
     }
     private JsonNode delta(JsonNode before, JsonNode after) {
         if (before.isObject() && after.isObject()) {

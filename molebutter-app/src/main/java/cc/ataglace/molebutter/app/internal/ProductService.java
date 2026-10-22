@@ -37,6 +37,7 @@ public class ProductService {
     public PageResponse<ProcurementProductView> list(Long a,String q,String m,String s,int p,int z){return queries.list(a,q,m,s,p,z);}
     public PageResponse<ProcurementProductView> list(Long a,String q,String m,String s,int p,int z,String c){return queries.list(a,q,m,s,p,z,c);}
     public cc.ataglace.molebutter.procurement.api.ChangeDtos.Counts changeCounts(Long a,String q,String m,String s){return queries.changeCounts(a,q,m,s);}
+    public PageResponse<ProcurementProductView> byCode(Long actor,String code,int page,int size){return queries.byCode(actor,code,page,size);}
     public ProcurementProductView product(long id){return queries.product(id);}
     public Map<String,Object> detail(Long a,long id){return queries.detail(a,id);}
     public PageResponse<Map<String,Object>> history(Long a,long id,int p){return queries.history(a,id,p);}

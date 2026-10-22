@@ -54,6 +54,19 @@ test('approval acceptance stays distinct from success and only offers result ver
   assert.equal(S.retryable(e), false);
   assert.notEqual(S.statuses.ACCEPTED, S.statuses.SUCCEEDED);
 });
+test('automatic creation approval verification stays active and cannot offer manual confirmation or another write', () => {
+  const e = { status: 'RUNNING', target: { mode: 'CREATE', steps: [
+    { type: 'CREATE', status: 'SUCCEEDED' }, { type: 'APPROVAL', status: 'RUNNING' }
+  ] } };
+  assert.equal(S.automaticApproval(e.target), true);
+  assert.equal(S.active(e), true);
+  assert.equal(S.reconcilable(e), false);
+  assert.equal(S.retryable(e), false);
+  assert.equal(S.revisable(e), false);
+  assert.equal(S.automaticApproval({ ...e.target, mode: 'UPDATE' }), false);
+  e.status = 'SUCCEEDED'; e.target.steps[1].status = 'SUCCEEDED';
+  assert.equal(S.automaticApproval(e.target), false);
+});
 test('change review identifies the option and field across registration and current-value requests', () => {
   const draft = {
     options: [{

@@ -133,9 +133,9 @@ class ProductImageWorkspaceTest {
         var request=new DownloadRequestDto("BAG1","DAKS",null,false,false,null,List.of(new DownloadImageItemDto(0,null,first.imageUrls().getFirst())));
         var snapshot=new DownloadService.ExportSnapshot(request,first,request.images(),Map.of());
         when(downloads.capture(eq(1L),eq(request),same(first))).thenReturn(snapshot);
-        var images=List.of(new ExportImageDto("01.png","image/png",".png",new byte[]{1},ExportImageCategory.OFFICIAL));when(downloads.exportImages(same(snapshot))).thenReturn(images);
+        var images=List.of(new ExportImageDto("01.png","image/png",".png",new byte[]{1},ExportImageCategory.OFFICIAL));when(downloads.exportUploadImages(same(snapshot))).thenReturn(images);
         var plan=workspace.prepareExport(1L,request);workspace.lookup(1L,"BAG1","DAKS");assertThat(plan.prepare()).isSameAs(images);
-        verify(downloads).capture(eq(1L),eq(request),same(first));verify(downloads).exportImages(same(snapshot));
+        verify(downloads).capture(eq(1L),eq(request),same(first));verify(downloads).exportUploadImages(same(snapshot));
         verify(cache,times(2)).refreshProduct("BAG1","DAKS");
         assertThatThrownBy(()->workspace.prepareExport(2L,request)).hasMessageContaining("다시 조회");
     }

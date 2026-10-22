@@ -12,6 +12,7 @@ import cc.ataglace.molebutter.coupang.api.CoupangWriteGateway;
 /** 접수된 실행의 임대·순차 호출·결과 기록을 담당한다. */
 final class SubmissionWorker implements AutoCloseable {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SubmissionWorker.class);
+    QuickEditGuard quickGuard;
     private final BusinessAccess access;
     private final SubmissionStore store;
     private final CoupangWriteGateway writer;
@@ -59,7 +60,8 @@ final class SubmissionWorker implements AutoCloseable {
             return;
         current = job;
         CoupangWriteGateway.Result result;
-        try {
+        try (var executionContext = org.slf4j.MDC.putCloseable("coupangExecution", Long.toString(job.executionId()));
+                var stepContext = org.slf4j.MDC.putCloseable("coupangStep", job.step().id())) {
             access.productActor(job.actor(), true);
             if (!job.prepared().supported())
                 result = new CoupangWriteGateway.Result(CoupangWriteGateway.State.FAILED, job.mapping(),
@@ -80,10 +82,13 @@ final class SubmissionWorker implements AutoCloseable {
                         "LEGACY_INTENT", null, Instant.now());
             else
                 result = writer.execute(job.actor(), job.prepared(), job.step(), job.mapping(),
-                        actual -> transactions.executeWithoutResult(tx -> {
+                        actual -> {
+                            // Keep validation outside @Repository exception translation and before any dispatch.
+                            if(quickGuard!=null)quickGuard.check(job.actor(),job.prepared().editIntent().quickEditBasis());
+                            transactions.executeWithoutResult(tx -> {
                             access.productActor(job.actor(), true);
                             store.recordRequest(job, actual);
-                        }));
+                        });});
             if (result == null)
                 result = unknown(job, "RESPONSE");
             if (result.mapping() != null && (!job.prepared().accountKey().equals(result.mapping().accountKey())
@@ -103,9 +108,18 @@ final class SubmissionWorker implements AutoCloseable {
         final var outcome = result;
         try {
             transactions.executeWithoutResult(tx -> store.finish(job, outcome));
+            // Never log upstream messages, request bodies, account keys or exception messages.
+            if (outcome.state() == CoupangWriteGateway.State.FAILED || outcome.state() == CoupangWriteGateway.State.UNKNOWN)
+                log.warn("[COUPANG_SUBMISSION] execution={} step={} type={} action={} state={} code={}",
+                        job.executionId(), job.step().id(), job.step().type(), job.action(), outcome.state(),
+                        SubmissionStore.publicCode(outcome.code()));
+            else
+                log.info("[COUPANG_SUBMISSION] execution={} step={} type={} action={} state={} code={}",
+                        job.executionId(), job.step().id(), job.step().type(), job.action(), outcome.state(),
+                        SubmissionStore.publicCode(outcome.code()));
         } catch (RuntimeException persistenceFailure) {
-            log.warn("Coupang submission result commit failed execution={} type={}", job.executionId(),
-                    persistenceFailure.getClass().getSimpleName());
+            log.warn("Coupang submission result commit failed execution={} step={} type={} state=UNKNOWN code=PERSISTENCE exception={}",
+                    job.executionId(), job.step().id(), job.step().type(), persistenceFailure.getClass().getSimpleName());
             // The remote call has already happened. A failed result/mapping commit must
             // never make it retryable.
             transactions.executeWithoutResult(tx -> store.finish(job, unknown(job, "PERSISTENCE")));

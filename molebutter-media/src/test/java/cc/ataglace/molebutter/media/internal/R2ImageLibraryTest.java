@@ -14,6 +14,14 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class R2ImageLibraryTest {
+    @Test void commonImagesUseTheConfiguredPublicOriginAndNeverBroadenProductListing()throws Exception{
+        String key="common/first_guide.png";byte[] bytes=image();var metadata=meta(key,bytes.length);
+        when(storage.head(StorageArea.PUBLIC,key)).thenReturn(Optional.of(metadata));when(storage.get(StorageArea.PUBLIC,key)).thenReturn(Optional.of(new StoredObject(metadata,bytes)));
+        assertThat(library.resolve(1L,"https://assets.example.test/"+key).key()).isEqualTo(key);
+        for(String url:List.of("https://evil.test/common/first_guide.png","https://assets.example.test/common/../private.png","https://assets.example.test/private/secret.png","https://assets.example.test/common/file.txt","https://assets.example.test/common/%2e%2e/private.png","https://assets.example.test/common/first_guide.png?x=1"))
+            assertThatThrownBy(()->library.resolve(1L,url)).isInstanceOf(InputValidationFailure.class);
+        verify(storage,times(1)).get(any(),anyString());verify(storage,never()).create(any(),any(),any(),any(),any());
+    }
     final ObjectStorage storage=mock(ObjectStorage.class);
     final BusinessAccess access=mock(BusinessAccess.class);
     final R2ImageLibrary library=new R2ImageLibrary(storage,access);

@@ -148,7 +148,7 @@ class CoupangV47PreparationIT {
                 assertThat(Flyway.configure().dataSource(url, "test_migrator", "isolated-test-migration-password")
                         .target("48").load().migrate().migrationsExecuted).isEqualTo(1);
                 assertThat(Flyway.configure().dataSource(url, "test_migrator", "isolated-test-migration-password")
-                        .load().migrate().migrationsExecuted).isZero();
+                        .target("48").load().migrate().migrationsExecuted).isZero();
                 assertThatThrownBy(() -> CoupangV47Preparation.finish(c, prepared, () -> null))
                         .hasMessageContaining("전환용 입력이 변경");
                 CoupangV47Preparation.requireComplete(c);

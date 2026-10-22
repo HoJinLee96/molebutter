@@ -1,5 +1,6 @@
 package cc.ataglace.molebutter.coupang.internal.client;
 import cc.ataglace.molebutter.coupang.internal.CoupangWriteRejection;
+import cc.ataglace.molebutter.coupang.internal.CoupangRejectionDetails;
 
 import java.time.Instant;
 import java.util.*;
@@ -27,11 +28,11 @@ final class CoupangWriteOutcome {
         String code = scalar(response.path("code"));
         if ("ERROR".equals(code)) {
             var reason = CoupangWriteRejection.classify(root);
-            return result(State.FAILED, mapping, reason == null ? "HTTP_200_REJECTED" : reason,
+            return new Result(State.FAILED, mapping, reason == null ? "HTTP_200_REJECTED" : reason,
                     reason == null
                             ? CoupangWriteRejection.message("HTTP_200_REJECTED")
                             : CoupangWriteRejection.message(reason),
-                    attempted);
+                    attempted, null, CoupangRejectionDetails.extract(json, root, step.bodyJson()));
         }
         if (!"SUCCESS".equals(code))
             return result(State.UNKNOWN, mapping, "INVALID_RESPONSE", "쿠팡 처리 결과를 확인하지 못했습니다.", attempted);
@@ -69,10 +70,16 @@ final class CoupangWriteOutcome {
         return false;
     }
     Result httpFailure(int status, byte[] body, Mapping mapping, Instant now) {
+        return httpFailure(status, body, mapping, now, null);
+    }
+    Result httpFailure(int status, byte[] body, Mapping mapping, Instant now, String requestJson) {
         String reason = null;
+        String details = null;
         if (status >= 400 && status < 500 && !Set.of(401, 403, 429).contains(status))
             try {
-                reason = CoupangWriteRejection.classify(json.readTree(body));
+                var root = json.readTree(body);
+                reason = CoupangWriteRejection.classify(root);
+                details = CoupangRejectionDetails.extract(json, root, requestJson);
             } catch (RuntimeException ignored) {
             }
         String code = reason != null ? reason : switch (status) {
@@ -87,8 +94,9 @@ final class CoupangWriteOutcome {
             case 429 -> "쿠팡 호출 제한입니다. 잠시 후 다시 시도해 주세요.";
             default -> status >= 500 ? "쿠팡 처리 결과를 확인하지 못했습니다." : "쿠팡이 전송을 거절했습니다. 입력 규격을 확인해 주세요.";
         };
-        return result(status >= 500 || status < 400 ? State.UNKNOWN : State.FAILED, mapping, code,
-                CoupangWriteRejection.message(code) == null ? message : CoupangWriteRejection.message(code), now);
+        return new Result(status >= 500 || status < 400 ? State.UNKNOWN : State.FAILED, mapping, code,
+                CoupangWriteRejection.message(code) == null ? message : CoupangWriteRejection.message(code), now,
+                null, details);
     }
     private static String scalar(JsonNode n) {
         return n.isMissingNode() || n.isNull()

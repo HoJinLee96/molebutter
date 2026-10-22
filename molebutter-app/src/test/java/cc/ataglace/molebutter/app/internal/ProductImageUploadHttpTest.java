@@ -3,6 +3,7 @@ package cc.ataglace.molebutter.app.internal;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import cc.ataglace.molebutter.identity.api.*;
@@ -30,13 +31,13 @@ class ProductImageUploadHttpTest {
 
     @AfterEach void clear() { SecurityContextHolder.clearContext(); }
 
-    @Test void duplicateDestinationIsAnExplicitRejectionForTheUploadDialog() throws Exception {
+    @Test void activeReservationIsAnExplicitBusyRejectionForTheUploadDialog() throws Exception {
         when(uploads.start(eq(42L), any())).thenThrow(new ProductImageUploadFailure(
-                ProductImageUploadFailure.Kind.DUPLICATE, "이미 업로드한 상품입니다."));
+                ProductImageUploadFailure.Kind.BUSY, "이 상품의 업로드 결과 확인이 필요합니다."));
         http.perform(post("/api/product-images/products/upload").contentType("application/json").content(input()))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("IMAGING_UPLOAD_DUPLICATE"))
-                .andExpect(jsonPath("$.message").value("이미 업로드한 상품입니다."));
+                .andExpect(jsonPath("$.code").value("IMAGING_UPLOAD_BUSY"))
+                .andExpect(jsonPath("$.message").value("이 상품의 업로드 결과 확인이 필요합니다."));
         verifyNoInteractions(workspace);
     }
 
@@ -71,6 +72,25 @@ class ProductImageUploadHttpTest {
                 .andExpect(jsonPath("$.data.result.files[1].fileName").value("상품정보.png"))
                 .andExpect(jsonPath("$.data.result.files[1].key").value("products/HIHO861W2/processed/상품정보.png"))
                 .andExpect(jsonPath("$.data.result.files[1].url").value(files.get(1).url()));
+        verifyNoInteractions(workspace);
+    }
+
+    @Test void skippedFilesAndReasonsAreReturnedByExistingStartAndJobApis() throws Exception {
+        String id = "801fed42-3ad7-4db4-bd9c-362e6312c009";
+        var skipped = new ProductImageUploadJob.SkippedFile("사이즈.png", "products/HIHO861W2/processed/사이즈.png",
+                "https://assets.example.test/products/HIHO861W2/processed/사이즈.png", "EXISTS");
+        var job = new ProductImageUploadJob(id, "SUCCEEDED", "중복 제외", Instant.EPOCH, Instant.EPOCH,
+                new ProductImageUploadJob.Result("HIHO861W2", List.of(), 1, List.of(skipped)), null);
+        when(uploads.start(eq(42L), any())).thenReturn(job);
+        when(uploads.get(42L, id)).thenReturn(job);
+        for (var request : List.of(post("/api/product-images/products/upload").contentType("application/json").content(input()),
+                get("/api/product-images/products/upload/jobs/" + id))) {
+            http.perform(request).andExpect(jsonPath("$.data.result.files").isEmpty())
+                    .andExpect(jsonPath("$.data.result.totalCount").value(1))
+                    .andExpect(jsonPath("$.data.result.skippedFiles[0].fileName").value("사이즈.png"))
+                    .andExpect(jsonPath("$.data.result.skippedFiles[0].key").value(skipped.key()))
+                    .andExpect(jsonPath("$.data.result.skippedFiles[0].reason").value("EXISTS"));
+        }
         verifyNoInteractions(workspace);
     }
 

@@ -22,4 +22,7 @@ public class ProcurementNotifications {
         notifications.publish("refresh:"+run+":"+r.get("notification_sequence"),"REFRESH_"+state,"BLOCKED".equals(state)?"ERROR":total>success+sold&&"COMPLETED".equals(state)?"WARNING":"INFO",title,message,"REFRESH",run,recipients);
     }
     private String shortMessage(String s){if(s==null)return "작업 상태를 확인해 주세요.";return s.length()>500?s.substring(0,500):s;}
+    static String retryWaitReason(String reason,int stage,int total,int minutes) {
+        return "자동 재개 "+stage+"/"+total+"단계 · "+minutes+"분 대기 · "+reason;
+    }
 }

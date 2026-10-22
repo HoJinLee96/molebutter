@@ -51,21 +51,22 @@ export function enableImageUploading({ canOpen, snapshot, onState }) {
         status.classList.toggle('error', failed);
     }
 
-    function renderFiles(items) {
+    function renderFiles(items, skippedItems) {
         files.replaceChildren();
-        for (const file of items || []) {
+        for (const file of [...(items || []), ...(skippedItems || []).map(file => ({ ...file, skipped: true }))]) {
             const row = document.createElement('li');
+            const label = file.skipped ? `중복 제외 · ${file.key || file.fileName}` : file.fileName || file.key || '이미지';
             // Only a public HTTPS URL can become a navigation link.
             let url;
             try { url = new URL(file.url); } catch { url = null; }
             if (url?.protocol === 'https:' && !url.username && !url.password) {
                 const link = document.createElement('a');
                 link.href = url.href;
-                link.textContent = file.fileName || file.key || '이미지';
+                link.textContent = label;
                 link.target = '_blank';
                 link.rel = 'noopener noreferrer';
                 row.append(link);
-            } else row.textContent = file.fileName || file.key || '이미지';
+            } else row.textContent = label;
             files.append(row);
         }
     }
@@ -135,7 +136,7 @@ export function enableImageUploading({ canOpen, snapshot, onState }) {
                     pending = null;
                     storePending();
                     showStatus(failure.message, true);
-                    if ((failure.status === 409 && failure.code === 'IMAGING_UPLOAD_DUPLICATE')
+                    if ((failure.status === 409 && ['IMAGING_UPLOAD_DUPLICATE', 'IMAGING_UPLOAD_BUSY'].includes(failure.code))
                             || failure.code === 'IMAGING_UPLOAD_CHECK_FAILED') {
                         // Preflight rejection occurred before any write. Keep the input and immutable selection.
                         const { requestId, ...selection } = rejected;
@@ -190,28 +191,30 @@ export function enableImageUploading({ canOpen, snapshot, onState }) {
                 throw new Error('업로드 결과를 확인할 수 없습니다.');
             }
             const count = (job.result?.files || []).length;
+            const skippedCount = (job.result?.skippedFiles || []).length;
+            const summary = `업로드 ${count}개 · 중복 제외 ${skippedCount}개`;
             const total = job.result?.totalCount ?? pending.request.images.length;
-            renderFiles(job.result?.files);
+            renderFiles(job.result?.files, job.result?.skippedFiles);
             pending.status = job.status;
             storePending();
             if (job.status === 'SUCCEEDED') {
-                showStatus(`${count}개 이미지 업로드 완료: molebutter/products/${job.result?.uploadProductCode || pending.request.uploadProductCode}/`);
+                showStatus(`업로드 완료 · ${summary}: molebutter/products/${job.result?.uploadProductCode || pending.request.uploadProductCode}/`);
                 pending = null;
                 storePending();
-                showToast('이미지를 공개 버킷에 업로드했습니다.');
+                showToast(count ? summary : '모든 파일이 이미 있어 업로드를 건너뛰었습니다.');
                 return;
             }
             if (job.status === 'FAILED') {
-                showStatus(`업로드 실패 · ${count}/${total}개 저장. ${job.error || job.message || '다시 시도해주세요.'}${count ? ' 저장된 파일이 있어 같은 상품코드로 다시 업로드할 수 없습니다. 저장 결과를 확인해주세요.' : ''}`, true);
+                showStatus(`업로드 실패 · ${summary} · 선택 ${total}개. ${job.error || job.message || '다시 시도해주세요.'} 새 요청에서는 기존 파일을 제외하고 남은 파일을 업로드할 수 있습니다.`, true);
                 pending = null;
                 storePending();
                 return;
             }
             if (job.status === 'UNKNOWN') {
-                showStatus(`업로드 결과 확인 필요 · ${count}/${total}개 저장 확인. ${job.error || job.message || '응답이 유실되어 추가 업로드를 막았습니다.'}`, true);
+                showStatus(`업로드 결과 확인 필요 · ${summary} · 선택 ${total}개. ${job.error || job.message || '응답이 유실되어 추가 업로드를 막았습니다.'}`, true);
                 return;
             }
-            showStatus(`이미지 업로드 중 · ${count}/${total}개 저장`);
+            showStatus(`이미지 업로드 중 · ${summary} · 선택 ${total}개`);
             await sleep(1000);
             job = await sendJson(JOBS + encodeURIComponent(pending.request.requestId));
         }

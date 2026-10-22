@@ -41,7 +41,7 @@
         if(working)return;const term=q('[data-code]').value.trim().toUpperCase();if(!/^[A-Z0-9_-]{4,40}$/.test(term))return error('상품코드는 영문·숫자·밑줄·하이픈 4~40자로 입력해 주세요.');
         if(more&&term!==code)return;controller?.abort();controller=new AbortController();const token=++generation;working=true;error('');render();
         try{const params=new URLSearchParams({productCode:term});if(more&&cursor)params.set('cursor',cursor);const page=await apiGet(base+'?'+params,{signal:controller.signal});if(!active||token!==generation)return;
-            if(!more){if(code!==term){selected.clear();folder='';}items=[];folders=[];}code=page.productCode;const found=new Map(items.map(i=>[i.key,i]));for(const item of page.images)found.set(item.key,item);items=[...found.values()];folders=[...new Set([...folders,...(page.folders||[]),...items.flatMap(i=>{const path=i.key.slice(('products/'+code+'/').length).split('/');return path.slice(0,-1).map((_,n)=>path.slice(0,n+1).join('/'));})])];cursor=page.nextCursor;
+            if(!more){if(code!==term){selected.clear();folder='';}items=[];folders=[];}code=page.productCode;const found=new Map(items.map(i=>[i.key,i]));for(const item of page.images)found.set(item.key,item);items=[...found.values()];for(const key of selected.keys()){if(found.has(key))selected.set(key,found.get(key));else selected.delete(key);}folders=[...new Set([...folders,...(page.folders||[]),...items.flatMap(i=>{const path=i.key.slice(('products/'+code+'/').length).split('/');return path.slice(0,-1).map((_,n)=>path.slice(0,n+1).join('/'));})])];cursor=page.nextCursor;
         }catch(err){if(active&&token===generation)error(err.message||'R2 이미지 조회에 실패했습니다. 다시 조회해 주세요.');}
         finally{if(active&&token===generation){working=false;render();}}
     }
