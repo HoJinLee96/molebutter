@@ -65,7 +65,7 @@ public final class ServerImageInspection implements ImageInspection {
                         }
                 }
                 var errors = ImageRules.errors(image.role(), file.mime(), file.width(), file.height(), file.bytes());
-                var warnings = List.<String>of();
+                var warnings = ImageRules.warnings(image.role(), file.width(), file.height());
                 checks.add(check(image, errors.isEmpty() ? "PASS" : "FAIL", file, errors, warnings));
             } catch (RuntimeException failure) {
                 String message = failure instanceof InputValidationFailure

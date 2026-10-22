@@ -433,10 +433,21 @@
     border-top: 1px solid var(--border);
     padding-top: 20px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 20px 24px;
 }
+.product-image-workspace .product-registration-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    align-self: end;
+    justify-self: end;
+    gap: 8px;
+    max-width: min(360px, 100%);
+}
+.product-image-workspace #registrationPrepareStatus { margin: 0; overflow-wrap: anywhere; }
+.product-image-workspace #registrationPrepareStatus:empty { display: none; }
 .product-image-workspace .download-main {
     display: grid;
     gap: 8px;
@@ -704,6 +715,9 @@
 .product-image-workspace .sg-editor-scale input[type="range"] {
     width: 100%;
 }
+
+.product-image-workspace .sg-editor-scale output { float: right; font-variant-numeric: tabular-nums; }
+.product-image-workspace .sg-editor-scale [data-sg-scale-maximum] { color: var(--text-muted); font-weight: 400; }
 .product-image-workspace .sg-editor-hint {
     font-size: 0.8rem;
     line-height: 1.6;
@@ -750,3 +764,20 @@
     .product-image-workspace .download-result { flex-wrap: wrap; }
     .product-image-workspace .download-status { flex-basis: 100%; }
 }
+
+/* Comparison controls share the existing size editor's responsive side panel. */
+.product-image-workspace .sg-editor-comparison-details,
+.product-image-workspace .sg-editor-comparison-status { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.product-image-workspace .sg-editor-comparison-details { color: var(--text-muted); }
+.product-image-workspace .sg-editor-comparison-status { color: var(--danger); }
+.product-image-workspace .sg-editor-comparison-status:empty,
+.product-image-workspace .sg-editor-comparison-details:empty { display: none; }
+.product-image-workspace .sg-editor-side select { max-width: 100%; width: 100%; }
+.product-image-workspace .sg-handle-comparison { background: #0f766e; color: white; }
+.product-image-workspace .sg-handle:focus-visible { outline: 3px solid #0f766e; outline-offset: 3px; }
+
+.product-image-workspace .sg-comparison-list { display: grid; gap: 8px; }
+.product-image-workspace .sg-comparison-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
+.product-image-workspace .sg-comparison-item span { min-width: 0; overflow-wrap: anywhere; }
+.product-image-workspace .sg-comparison-item small { display: block; color: var(--text-muted); }
+.product-image-workspace .sg-comparison-item button { flex-shrink: 0; }

@@ -268,7 +268,7 @@ public class LocalImageAssets implements ImageAssets {
         for (String id : previous)
             if (!sorted.contains(id))
                 db.update(
-                        "UPDATE coupang_asset a SET pending_delete_at=CURRENT_TIMESTAMP(6) WHERE id=? AND NOT EXISTS(SELECT 1 FROM coupang_working_copy_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM coupang_execution_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM legacy_coupang_listing_history_asset h WHERE h.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM legacy_coupang_asset_pin l WHERE l.asset_id=a.id)",
+                        "UPDATE coupang_asset a SET pending_delete_at=CURRENT_TIMESTAMP(6) WHERE id=? AND NOT EXISTS(SELECT 1 FROM coupang_working_copy_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM coupang_execution_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM legacy_coupang_listing_history_asset h WHERE h.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM legacy_coupang_asset_pin l WHERE l.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM coupang_product_asset_pin p WHERE p.asset_id=a.id)",
                         id);
     }
     @Override
@@ -306,7 +306,7 @@ public class LocalImageAssets implements ImageAssets {
         db.update("DELETE FROM coupang_execution_asset WHERE submission_id=?", submissionId);
         for (String id : ids)
             db.update(
-                    "UPDATE coupang_asset a SET pending_delete_at=COALESCE(pending_delete_at,CURRENT_TIMESTAMP(6)) WHERE id=? AND NOT EXISTS(SELECT 1 FROM coupang_working_copy_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM coupang_execution_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM legacy_coupang_listing_history_asset h WHERE h.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM legacy_coupang_asset_pin l WHERE l.asset_id=a.id)",
+                    "UPDATE coupang_asset a SET pending_delete_at=COALESCE(pending_delete_at,CURRENT_TIMESTAMP(6)) WHERE id=? AND NOT EXISTS(SELECT 1 FROM coupang_working_copy_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM coupang_execution_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM legacy_coupang_listing_history_asset h WHERE h.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM legacy_coupang_asset_pin l WHERE l.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM coupang_product_asset_pin p WHERE p.asset_id=a.id)",
                     id);
     }
     @Override
@@ -314,7 +314,7 @@ public class LocalImageAssets implements ImageAssets {
     public void reapUnreferenced() {
         retryFileDeletes();
         var ids = db.queryForList(
-                "SELECT id FROM coupang_asset a WHERE a.pending_delete_at < CURRENT_TIMESTAMP(6)-INTERVAL 24 HOUR AND NOT EXISTS(SELECT 1 FROM coupang_image_edit e WHERE e.original_asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM coupang_working_copy_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM coupang_execution_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM legacy_coupang_listing_history_asset h WHERE h.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM legacy_coupang_asset_pin l WHERE l.asset_id=a.id) LIMIT 100",
+                "SELECT id FROM coupang_asset a WHERE a.pending_delete_at < CURRENT_TIMESTAMP(6)-INTERVAL 24 HOUR AND NOT EXISTS(SELECT 1 FROM coupang_image_edit e WHERE e.original_asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM coupang_working_copy_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM coupang_execution_asset r WHERE r.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM legacy_coupang_listing_history_asset h WHERE h.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM legacy_coupang_asset_pin l WHERE l.asset_id=a.id) AND NOT EXISTS(SELECT 1 FROM coupang_product_asset_pin p WHERE p.asset_id=a.id) LIMIT 100",
                 String.class);
         for (String id : ids) {
             try {
@@ -326,7 +326,7 @@ public class LocalImageAssets implements ImageAssets {
                         return null;
                     for (String reference : List.of("coupang_working_copy_asset:asset_id",
                             "coupang_execution_asset:asset_id", "legacy_coupang_listing_history_asset:asset_id",
-                            "legacy_coupang_asset_pin:asset_id", "coupang_image_edit:original_asset_id")) {
+                            "legacy_coupang_asset_pin:asset_id", "coupang_product_asset_pin:asset_id", "coupang_image_edit:original_asset_id")) {
                         String[] parts = reference.split(":");
                         Long count = db.queryForObject("SELECT COUNT(*) FROM " + parts[0] + " WHERE " + parts[1] + "=?",
                                 Long.class, id);

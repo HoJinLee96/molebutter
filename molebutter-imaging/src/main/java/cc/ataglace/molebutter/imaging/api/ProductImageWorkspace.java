@@ -27,7 +27,13 @@ public class ProductImageWorkspace {
         ProductLookupDto product = cache.refreshProduct(code, brand);
         observations.put(actor, product); return product;
     }
+    /** The actor's immutable server observation; never refreshes a stale lookup implicitly. */
+    public ProductLookupDto observed(Long actor, String code, String brand) {
+        ImagingInputs.actor(actor); ImagingInputs.product(code, brand);
+        return observations.get(actor, code, brand);
+    }
     public List<SizeGuideTemplateDto> listTemplates() { return sizes.listTemplates(); }
+    public List<SizeGuideComparisonDto> listComparisons() { return sizes.listComparisons(); }
     public SizeGuidePreviewResponseDto preview(Long actor, String code, SizeGuidePreviewRequestDto request) {
         ImagingInputs.actor(actor); ImagingInputs.preview(code, request);
         ProductLookupDto product = observations.get(actor, code, request.brandCode());
@@ -54,11 +60,12 @@ public class ProductImageWorkspace {
         var snapshot = downloads.capture(actor, request, product);
         return jobs.start(actor, () -> rendered(() -> downloads.downloadImages(snapshot)));
     }
+    /** Captures upload input; size guides use a separate 750px rendition when prepared. */
     public ImageExportPlan prepareExport(Long actor, DownloadRequestDto request) {
         ImagingInputs.actor(actor); ImagingInputs.download(request);
         ProductLookupDto product = observations.get(actor, request.productCode(), request.brandCode());
         var snapshot = downloads.capture(actor, request, product);
-        return () -> rendered(() -> downloads.exportImages(snapshot));
+        return () -> rendered(() -> downloads.exportUploadImages(snapshot));
     }
     public JobDto job(Long actor, String id) { return jobs.get(actor, id); }
     public DownloadArtifact download(Long actor, String id) { return jobs.artifact(actor, id); }

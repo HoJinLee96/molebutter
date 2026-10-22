@@ -33,6 +33,13 @@ class ServerImageInspectionTest {
                 .descriptionInputs("<p style=\"background-image:url(https://assets.test/a)\">본문</p>", ""))
                 .isInstanceOf(InputValidationFailure.class);
         assertThat(ImageRules.errors("REPRESENTATION", "image/png", 750, 750, 88040)).isEmpty();
+        assertThat(ImageRules.errors("DETAIL", "image/jpeg", 500, 5000, 3*1024*1024)).isEmpty();
+        assertThat(ImageRules.warnings("DETAIL",500,5000)).hasSize(1);
+        assertThat(ImageRules.warnings("DETAIL",500,500)).isEmpty();
+        assertThat(ImageRules.warnings("DESCRIPTION",500,5000)).isEmpty();
+        for(int[] size:List.of(new int[]{499,500},new int[]{500,499},new int[]{5001,500},new int[]{500,5001}))assertThat(ImageRules.errors("DETAIL","image/png",size[0],size[1],100)).isNotEmpty();
+        assertThat(ImageRules.errors("DETAIL","image/png",500,700,3*1024*1024+1)).isNotEmpty();
+        assertThat(ImageRules.errors("DETAIL","image/webp",500,700,100)).isNotEmpty();
         assertThat(ImageRules.errors("DETAIL", "image/png", 499, 499, 100)).isNotEmpty();
         assertThat(ImageRules.errors("DESCRIPTION", "image/png", 750, 962, 88040)).isEmpty();
         assertThat(ImageRules.errors("DETAIL", "image/png", 5000, 5000, 3 * 1024 * 1024)).isEmpty();

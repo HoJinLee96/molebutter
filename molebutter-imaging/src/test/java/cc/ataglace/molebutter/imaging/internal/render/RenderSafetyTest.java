@@ -53,6 +53,11 @@ class RenderSafetyTest {
             assertThat(renderer.render(SizeGuideTemplate.TOTE, dimensions, "FREE", source, layout,
                     RenderSupport.OUTPUT_SCALE).layout()).isEqualTo(layout);
         }
+        var output = new SizeGuideLayoutDto(new SizeGuideLayoutDto.PhotoPlacement(.02, -.5, .3), null, null, null, null, true);
+        assertThat(renderer.render(SizeGuideTemplate.TOTE, dimensions, "FREE", source, output).layout().outputSpace()).isTrue();
+        for (double coordinate : new double[]{Double.NaN, Double.POSITIVE_INFINITY, 10001}) {
+            assertInvalidLayout(new SizeGuideLayoutDto(new SizeGuideLayoutDto.PhotoPlacement(.02, coordinate, .3), null, null, null, null, true));
+        }
     }
 
     @Test

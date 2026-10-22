@@ -46,10 +46,14 @@ public final class ImagingInputs {
         if (layout == null) return;
         if (layout.photo() != null) {
             double scale = layout.photo().scale();
-            if (!Double.isFinite(scale) || scale < 0.3 || scale > 2.5) fail("사진 배율을 확인해주세요.");
-            ratio(layout.photo().centerXRatio()); ratio(layout.photo().centerYRatio());
+            if (!Double.isFinite(scale) || scale < (layout.outputSpace() ? 0.01 : 0.3) || scale > 2.5) fail("사진 배율을 확인해주세요.");
+            coordinate(layout.photo().centerXRatio(), layout.outputSpace()); coordinate(layout.photo().centerYRatio(), layout.outputSpace());
         }
-        arrow(layout.width()); arrow(layout.depth()); arrow(layout.height());
+        arrow(layout.width(), layout.outputSpace()); arrow(layout.depth(), layout.outputSpace()); arrow(layout.height(), layout.outputSpace());
+        if (!layout.comparisons().isEmpty()) {
+            if (!selection.photoMode()) fail("사진 편집에서 비교 대상을 선택해주세요.");
+            cc.ataglace.molebutter.imaging.internal.policy.SizeGuideComparisons.validate(layout.comparisons());
+        }
     }
     private static void dimension(String value) {
         if (value == null || value.isBlank() || "-".equals(value.trim())) return;
@@ -61,10 +65,12 @@ public final class ImagingInputs {
             if (!Double.isFinite(number) || number <= 0 || number > 10000) fail("치수를 확인해주세요.");
         } catch (NumberFormatException e) { fail("치수를 확인해주세요."); }
     }
-    private static void arrow(SizeGuideLayoutDto.ArrowPlacement arrow) {
+    private static void arrow(SizeGuideLayoutDto.ArrowPlacement arrow, boolean outputSpace) {
         if (arrow == null) return;
-        ratio(arrow.startXRatio()); ratio(arrow.startYRatio()); ratio(arrow.endXRatio()); ratio(arrow.endYRatio());
-        ratio(arrow.labelXRatio()); ratio(arrow.labelYRatio());
+        for (double value : new double[]{arrow.startXRatio(), arrow.startYRatio(), arrow.endXRatio(), arrow.endYRatio(), arrow.labelXRatio(), arrow.labelYRatio()}) coordinate(value, outputSpace);
+    }
+    private static void coordinate(double value, boolean outputSpace) {
+        if (!Double.isFinite(value) || (outputSpace ? Math.abs(value) > 10000 : value < 0 || value > 1)) fail("편집 좌표를 확인해주세요.");
     }
     private static void ratio(double value) { if (!Double.isFinite(value) || value < 0 || value > 1) fail("편집 좌표를 확인해주세요."); }
     public static void download(DownloadRequestDto request) {

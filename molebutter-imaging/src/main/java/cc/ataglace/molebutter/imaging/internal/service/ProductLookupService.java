@@ -83,7 +83,7 @@ public class ProductLookupService {
                 sizeGuideTemplate.supported(),
                 sizeGuideTemplate.displayName(),
                 sizeGuideTemplate.supported() ? sizeGuideTemplate.key() : null,
-                sizeDimensions);
+                sizeDimensions, originalProductName);
     }
 
     private List<String> fetchCategoryNames(String productCode) {

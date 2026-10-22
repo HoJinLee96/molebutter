@@ -28,12 +28,16 @@ public final class RenderSupport {
     public static final long MAX_IMAGE_PIXELS = 20_000_000;
     private static final int MAX_RENDER_TEXT_LENGTH = 8192;
     /**
-     * 최종 저장 폭(쿠팡 상세페이지 권장 780px). 좌표계는 1440 기준을 유지하고(레이아웃 비율·편집기 좌표 그대로),
-     * 저장용 렌더는 OUTPUT_SCALE 변환을 건 캔버스에 직접 그린다 → 사이즈 이미지는 780×509.
+     * 일반 실루엣 사이즈·고시의 저장 폭 780px. 좌표계는 1440 기준을 유지하고,
+     * OUTPUT_SCALE 변환을 건 캔버스에 직접 그린다. 사진 편집은 아래 PHOTO_OUTPUT_SCALE을 사용한다.
      */
     public static final int OUTPUT_IMAGE_WIDTH = 780;
     /** 1440 기준 좌표계를 최종 저장 폭으로 옮기는 배율(≈0.5417). */
     public static final double OUTPUT_SCALE = OUTPUT_IMAGE_WIDTH / (double) SIZE_IMAGE_WIDTH;
+    /** Photo editor/export keeps a 2x working canvas instead of stretching a 780px preview. */
+    public static final double PHOTO_OUTPUT_SCALE = 2;
+    public static final int PHOTO_OUTPUT_WIDTH = SIZE_IMAGE_WIDTH * 2;
+    public static final int PHOTO_OUTPUT_HEIGHT = SIZE_IMAGE_HEIGHT * 2;
     // 사용자가 사진을 키우거나 옮겨도 캔버스 끝/표 영역을 덮지 않도록 사진 렌더를 이 세로 밴드로 clip 한다.
     public static final int SIZE_PHOTO_CLIP_TOP = 24;
     public static final int SIZE_PHOTO_CLIP_BOTTOM = 600;
@@ -47,6 +51,26 @@ public final class RenderSupport {
         graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
         graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
         graphics.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+        graphics.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+    }
+
+    /** Progressive minification avoids aliasing; premultiplied alpha avoids dark transparent edges. */
+    public static BufferedImage resampleImage(BufferedImage source, int width, int height) {
+        validateImageDimensions(width, height);
+        BufferedImage current = source;
+        while (current.getWidth() / 2 >= width || current.getHeight() / 2 >= height) {
+            int nextWidth = Math.max(width, current.getWidth() / 2);
+            int nextHeight = Math.max(height, current.getHeight() / 2);
+            current = resampleStep(current, nextWidth, nextHeight);
+        }
+        return current.getWidth() == width && current.getHeight() == height ? current : resampleStep(current, width, height);
+    }
+    private static BufferedImage resampleStep(BufferedImage source, int width, int height) {
+        var image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB_PRE);
+        var g = image.createGraphics();
+        try { applyQualityHints(g); g.drawImage(source, 0, 0, width, height, null); }
+        finally { g.dispose(); }
+        return image;
     }
 
     public static List<String> wrapText(Graphics2D graphics, String value, Font font, int maxWidth) {

@@ -41,7 +41,7 @@ function fixture({ send, pending } = {}) {
             return { id: requestId, status: 'SUCCEEDED', result: { uploadProductCode: body?.uploadProductCode, files: [] } };
         }
     });
-    f.run(moduleSource('image-order.js')); f.run(moduleSource('upload-dialog.js')); f.run(moduleSource('app.js'));
+    f.run(moduleSource('image-order.js')); f.run(moduleSource('upload-dialog.js')); f.run(moduleSource('coupang-prefill.js')); f.run(moduleSource('app.js'));
     const lookup = async (code = product.productCode) => {
         f.$('productCodeInput').value = code; await f.$('lookupButton').click(); await f.settle();
     };
@@ -122,7 +122,8 @@ test('upload confirmation shows the immutable shared code and both classified pa
 });
 
 for (const failure of [
-    { status: 409, code: 'IMAGING_UPLOAD_DUPLICATE', message: 'duplicate folder' },
+    { status: 409, code: 'IMAGING_UPLOAD_DUPLICATE', message: 'legacy duplicate rejection' },
+    { status: 409, code: 'IMAGING_UPLOAD_BUSY', message: 'active reservation' },
     { status: 503, code: 'IMAGING_UPLOAD_CHECK_FAILED', message: 'preflight failed' }
 ]) test(`${failure.code} preserves the code and selection; changing folders requires cancel and a new snapshot`, async () => {
     let reject = true;
@@ -155,3 +156,22 @@ test('restored uncertain upload only queries the existing request and preserves 
     assert.equal(f.posts('upload').length, 1); assert.deepEqual(f.posts('upload')[0].body, pending.request);
     assert.equal(f.stored.has(storageKey), false);
 });
+
+for (const [status, uploaded, skipped] of [['SUCCEEDED', 1, 2], ['SUCCEEDED', 0, 3], ['FAILED', 1, 1], ['UNKNOWN', 1, 1]]) {
+    test(`${status} shows uploaded and skipped files separately without losing request protection (${uploaded}/${skipped})`, async () => {
+        const file = index => ({ fileName: index + '.png', key: `products/TARGET/processed/${index}.png`, url: `https://assets.example.test/products/TARGET/processed/${index}.png` });
+        const f = fixture({ send: url => url.endsWith('/upload') ? {
+            id: requestId, status, error: status === 'FAILED' ? '합성 실패' : null,
+            result: { uploadProductCode: 'TARGET', totalCount: 3,
+                files: Array.from({ length: uploaded }, (_, i) => file(i)),
+                skippedFiles: Array.from({ length: skipped }, (_, i) => ({ ...file(i + 10), reason: 'EXISTS' })) }
+        } : undefined });
+        await f.lookup(); await f.$('uploadImagesButton').click(); await f.$('confirmUploadButton').click();
+        assert.match(f.$('uploadStatus').textContent, new RegExp(`업로드 ${uploaded}개 · 중복 제외 ${skipped}개`));
+        assert.equal(f.$('uploadFiles').children.length, uploaded + skipped);
+        assert.match(f.$('uploadFiles').children.at(-1).children[0].textContent, /중복 제외 · products\/TARGET\/processed\//);
+        assert.equal(f.stored.has(storageKey), status === 'UNKNOWN');
+        assert.equal(f.posts('upload').length, 1);
+        assert.doesNotMatch(f.$('uploadStatus').textContent, /같은 상품코드로 다시 업로드할 수 없습니다/);
+    });
+}

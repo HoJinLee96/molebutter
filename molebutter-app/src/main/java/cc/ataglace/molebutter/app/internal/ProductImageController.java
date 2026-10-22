@@ -46,6 +46,12 @@ public class ProductImageController {
         return ApiResponse.success(workspace.preview(actor(principal), code, request));
     }
 
+    @GetMapping("/size-guide/comparisons")
+    public ApiResponse<List<SizeGuideComparisonDto>> comparisons(@AuthenticationPrincipal UserPrincipal principal) {
+        actor(principal);
+        return ApiResponse.success(workspace.listComparisons());
+    }
+
     @PostMapping("/products/{code}/size-guide/images")
     public ApiResponse<GeneratedSizeImageDto> generate(@AuthenticationPrincipal UserPrincipal principal,
             @PathVariable String code, @RequestBody SizeGuidePreviewRequestDto request) {
