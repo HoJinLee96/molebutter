@@ -27,6 +27,7 @@ public class DefaultInventoryService implements cc.ataglace.molebutter.inventory
     public PageResponse<Map<String,Object>> stockProducts(Long actor,String q,String productId,String brandId,int page,int size) { return queries.stockProducts(actor, q, productId, brandId, page, size); }
     public Map<String,Object> stockTotals(Long actor,String q,String productId,String brandId) { return queries.stockTotals(actor, q, productId, brandId); }
     public Map<String,Object> stockProduct(Long actor,long product) { return queries.stockProduct(actor, product); }
+    public Map<String,cc.ataglace.molebutter.inventory.api.InventoryService.OwnedStock> ownedStocks(Long actor,List<String> ids){return queries.ownedStocks(actor,ids);}
     public List<Map<String,Object>> summaries(Long actor,List<String> productIds) { return queries.summaries(actor, productIds); }
     public Map<String,Object> create(Long actor,String requestId,PurchaseInput input) { return purchases.create(actor, requestId, input); }
     public Map<String,Object> editPurchase(Long actor,long order,PurchaseEdit x) { return purchases.editPurchase(actor, order, x); }

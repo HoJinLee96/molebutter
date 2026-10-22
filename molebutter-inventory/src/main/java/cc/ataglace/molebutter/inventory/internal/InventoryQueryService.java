@@ -193,6 +193,16 @@ public class InventoryQueryService extends InventorySupport {
         row.put("options",jdbc.queryForList("SELECT CAST(i.color AS BINARY) color_key,CAST(i.size AS BINARY) size_key,MIN(i.color) color,MIN(i.size) size,SUM(i.on_hand) onHand,SUM(i.pending) pending FROM inventory_item i JOIN inventory_purchase o ON o.id=i.purchase_id JOIN catalog_product p ON p.id=i.product_id WHERE o.deleted_at IS NULL AND "+stockKey("p")+"=? GROUP BY color_key,size_key ORDER BY color,size",key).stream().map(r->{return InventoryView.OPTION.project(r,false);}).toList());
         return visibleStock(row,a);
     }
+    public Map<String,cc.ataglace.molebutter.inventory.api.InventoryService.OwnedStock> ownedStocks(Long actor,List<String> productIds){
+        admin(actor);var ids=BusinessIds.parseList(productIds);if(ids.size()>100)throw new InputValidationFailure("한 번에 100개 상품까지 조회할 수 있습니다.");
+        var options=new LinkedHashMap<String,List<cc.ataglace.molebutter.inventory.api.InventoryService.OwnedOption>>();
+        for(var id:ids)options.put(id.toString(),new ArrayList<>());
+        if(!ids.isEmpty())for(var row:jdbc.queryForList("SELECT CAST(i.product_id AS CHAR) productId,MIN(i.color) color,MIN(i.size) size,SUM(i.on_hand) quantity FROM inventory_item i JOIN inventory_purchase p ON p.id=i.purchase_id WHERE p.deleted_at IS NULL AND i.product_id IN ("+String.join(",",Collections.nCopies(ids.size(),"?"))+") GROUP BY i.product_id,CAST(i.color AS BINARY),CAST(i.size AS BINARY) ORDER BY i.product_id,CAST(color AS BINARY),CAST(size AS BINARY)",ids.toArray())){
+            options.get(row.get("productId").toString()).add(new cc.ataglace.molebutter.inventory.api.InventoryService.OwnedOption(Objects.toString(row.get("color"),""),Objects.toString(row.get("size"),""),((Number)row.get("quantity")).longValue()));
+        }
+        var result=new LinkedHashMap<String,cc.ataglace.molebutter.inventory.api.InventoryService.OwnedStock>();
+        options.forEach((id,rows)->result.put(id,new cc.ataglace.molebutter.inventory.api.InventoryService.OwnedStock(rows.stream().mapToLong(o->o.quantity()).sum(),List.copyOf(rows))));return Map.copyOf(result);
+    }
     public List<Map<String,Object>> summaries(Long actor,List<String> productIds) {
         admin(actor);var ids=BusinessIds.parseList(productIds);if(ids.size()>100)throw new InputValidationFailure("한 번에 100개 상품까지 조회할 수 있습니다.");if(ids.isEmpty())return List.of();
         return jdbc.queryForList("SELECT CAST(i.product_id AS CHAR) productId,SUM(i.on_hand) onHand,SUM(i.pending) pending FROM inventory_item i JOIN inventory_purchase o ON o.id=i.purchase_id WHERE o.deleted_at IS NULL AND i.product_id IN ("+String.join(",",Collections.nCopies(ids.size(),"?"))+") GROUP BY i.product_id",ids.toArray()).stream().map(row->InventoryView.SUMMARY.project(row,false)).toList();

@@ -56,12 +56,13 @@ public class NaverSearchRecoveryService {
         db.lock();var a=attempt(id);if(!current(owner,w,a))return;
         var run=db.jdbc.queryForMap("SELECT status,search_retry_count,search_failure_signature FROM product_refresh_run WHERE id=?",w.runId());
         String state=run.get("status").toString();int count=((Number)run.get("search_retry_count")).intValue();
-        boolean temporary=NaverSearchFailure.temporary(code),validation=NaverSearchFailure.validation(code);
+        boolean temporary=NaverSearchFailure.temporary(code,http),validation=NaverSearchFailure.validation(code);
         String signature=code+":"+stage+":"+diagnostic.getOrDefault("mismatches",List.of());
         boolean repeated=validation&&signature.equals(run.get("search_failure_signature"));
         if(temporary||validation)count++;
         int[] minutes={5,30,60,120};
-        LocalDateTime next=(temporary||validation)&&!repeated&&count<=4?db.time.now().plusMinutes(validation?5:minutes[count-1]):null;
+        Integer waitMinutes=(temporary||validation)&&!repeated&&count<=minutes.length?validation?5:minutes[count-1]:null;
+        LocalDateTime next=waitMinutes==null?null:db.time.now().plusMinutes(waitMinutes);
         String message=NaverSearchFailure.message(code)+(next==null?" · 자동 재개 중단, 수동 확인 필요":" · "+next.format(java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm"))+" 재개 예정");
         boolean active=List.of("RUNNING","PAUSED").contains(state);
         boolean valid=db.jdbc.queryForObject("SELECT COUNT(*) FROM catalog_product p JOIN procurement_product p_pm ON p_pm.product_id=p.id JOIN product_refresh_entry e ON e.product_id=p.id WHERE e.run_id=? AND e.product_id=? AND e.status='CHECKING' AND p_pm.lookup_revision=? AND p.deleted_at IS NULL AND p.merged_into IS NULL",Long.class,w.runId(),w.productId(),w.revision())==1;
@@ -74,7 +75,8 @@ public class NaverSearchRecoveryService {
             db.jdbc.update("UPDATE product_refresh_run SET status=?,search_retry_count=?,login_retry_count=login_retry_count+?,block_reason=?,search_failure_code=?,search_failure_stage=?,search_failure_signature=IF(?, ?,search_failure_signature),next_retry_at=?,message=? WHERE id=?",target,count,NaverSearchFailure.login(code)?1:0,code,code,stage,validation,signature,next,message,w.runId());
             db.jdbc.update("UPDATE product_refresh_entry SET status='PENDING' WHERE run_id=? AND product_id=?",w.runId(),w.productId());
             db.jdbc.update("UPDATE procurement_product SET latest_status=?,latest_result=NULL WHERE product_id=? AND lookup_revision=?",next==null?"FAILED":"PENDING",w.productId(),w.revision());
-            if(!target.equals("PAUSED"))notifications.refresh(w.runId(),target,message);
+            if(!target.equals("PAUSED"))notifications.refresh(w.runId(),target,next==null?message:
+                ProcurementNotifications.retryWaitReason(message,count,minutes.length,waitMinutes));
         }else if(active){db.jdbc.update("UPDATE product_refresh_entry SET status='STALE' WHERE run_id=? AND product_id=? AND status='CHECKING'",w.runId(),w.productId());}
         log.warn("[NAVER_SEARCH_ATTEMPT] attemptId={} runId={} productId={} stage={} code={} httpStatus={} retryCount={} retryAt={} exception={}",id,w.runId(),w.productId(),stage,code,http,count,next,error.getClass().getSimpleName());
         release(owner);

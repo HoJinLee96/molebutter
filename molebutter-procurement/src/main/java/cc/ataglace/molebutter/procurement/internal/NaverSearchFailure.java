@@ -19,7 +19,11 @@ public final class NaverSearchFailure extends IllegalStateException {
     public Code code(){return code;} public String stage(){return stage;}
     public Map<String,Object> diagnostics(){return diagnostics;} public Integer httpStatus(){return httpStatus;}
     public static boolean login(String code){return Set.of("LOGIN_REQUIRED","API_LOGIN_REDIRECT").contains(code);}
-    public static boolean temporary(String code){return login(code)||Set.of("SEARCH_NO_REQUEST","SEARCH_RESPONSE_TIMEOUT","SEARCH_NETWORK_ERROR","INTERRUPTED").contains(code);}
+    public static boolean temporary(String code){return temporary(code,null);}
+    public static boolean temporary(String code,Integer httpStatus){
+        return login(code)||Set.of("SEARCH_NO_REQUEST","SEARCH_RESPONSE_TIMEOUT","SEARCH_NETWORK_ERROR","INTERRUPTED","SECURITY_CHECK").contains(code)
+            || "ACCESS_RESTRICTED".equals(code)&&(Integer.valueOf(418).equals(httpStatus)||Integer.valueOf(429).equals(httpStatus));
+    }
     public static boolean validation(String code){return Set.of("RESPONSE_MISMATCH","RESPONSE_SCHEMA_CHANGED","UI_ELEMENT_MISSING").contains(code);}
     public static String message(String code){return switch(code){
         case "LOGIN_REQUIRED","API_LOGIN_REDIRECT" -> "네이버 로그인 요구";
@@ -33,6 +37,7 @@ public final class NaverSearchFailure extends IllegalStateException {
         case "INTERRUPTED" -> "이전 검색 실행 중단";
         case "AUTHENTICATED_SESSION" -> "검색 전용 Chrome 로그인 상태 확인 필요";
         case "ACCESS_RESTRICTED" -> "네이버 검색 접속 제한·보안 확인";
+        case "SECURITY_CHECK" -> "네이버 검색 보안 확인·자동입력 방지";
         default -> "네이버 검색 처리 오류";
     };}
 }

@@ -18,7 +18,7 @@ class NaverSearchRecoveryBrowserTest {
     @Test void classifiesActualBrowserNoRequestNetworkRedirectMismatchAndSuccess(){
         Assumptions.assumeTrue(Files.exists(Path.of("/Applications/Google Chrome.app")));
         try(var playwright=Playwright.create();var browser=playwright.chromium().launch(new BrowserType.LaunchOptions().setChannel("chrome").setHeadless(true))){
-            for(String mode:List.of("NONE","NETWORK","REDIRECT","MISMATCH","SCHEMA","SUCCESS","HTTP","PENDING")){
+            for(String mode:List.of("NONE","NETWORK","REDIRECT","MISMATCH","SCHEMA","SUCCESS","HTTP","HTTP418","HTTP429","CHALLENGE","PENDING")){
                 try(var context=browser.newContext()){
                     context.route("**/*",route->{
                         String url=route.request().url();
@@ -27,6 +27,9 @@ class NaverSearchRecoveryBrowserTest {
                                 case "NETWORK" -> route.abort();
                                 case "REDIRECT" -> route.fulfill(new Route.FulfillOptions().setStatus(302).setHeaders(Map.of("location","https://nid.naver.com/nidlogin.login")));
                                 case "HTTP" -> route.fulfill(new Route.FulfillOptions().setStatus(403).setBody("denied"));
+                                case "HTTP418" -> route.fulfill(new Route.FulfillOptions().setStatus(418).setBody("denied"));
+                                case "HTTP429" -> route.fulfill(new Route.FulfillOptions().setStatus(429).setBody("denied"));
+                                case "CHALLENGE" -> route.fulfill(new Route.FulfillOptions().setContentType("text/html").setBody("<html>보안 확인 · 자동입력 방지</html>"));
                                 case "PENDING" -> { }
                                 default -> route.fulfill(new Route.FulfillOptions().setContentType("application/json").setBody(mode.equals("SCHEMA")?"{}":NaverGuestSearchTest.DATA.replace("price_asc",mode.equals("MISMATCH")?"review":"price_asc")));
                             }
@@ -43,6 +46,13 @@ class NaverSearchRecoveryBrowserTest {
                     Runnable click=()->{if(!mode.equals("NONE"))page.evaluate("url => {fetch(url).catch(()=>{});}",API);};
                     if(mode.equals("SUCCESS"))assertThat((Object)ReflectionTestUtils.invokeMethod(search,"capture","HIBA311",1,40,false,click)).isNotNull();
                     else if(mode.equals("HTTP"))assertThatThrownBy(()->ReflectionTestUtils.invokeMethod(search,"capture","HIBA311",1,40,false,click)).isInstanceOfSatisfying(NaverPriceSearch.SearchBlocked.class,f->assertThat(f.httpStatus()).isEqualTo(403));
+                    else if(List.of("HTTP418","HTTP429","CHALLENGE").contains(mode))
+                        assertThatThrownBy(()->ReflectionTestUtils.invokeMethod(search,"capture","HIBA311",1,40,false,click))
+                            .isInstanceOfSatisfying(NaverPriceSearch.SearchBlocked.class,f->{
+                                assertThat(NaverSearchFailure.temporary(f.reason().name(),f.httpStatus())).isTrue();
+                                if(mode.equals("CHALLENGE"))assertThat(f.reason()).isEqualTo(NaverPriceSearch.BlockReason.SECURITY_CHECK);
+                                else assertThat(f.httpStatus()).isEqualTo(Integer.parseInt(mode.substring(4)));
+                            });
                     else {
                         var expected=switch(mode){case "NONE"->NaverSearchFailure.Code.SEARCH_NO_REQUEST;case "NETWORK"->NaverSearchFailure.Code.SEARCH_NETWORK_ERROR;case "REDIRECT"->NaverSearchFailure.Code.API_LOGIN_REDIRECT;case "MISMATCH"->NaverSearchFailure.Code.RESPONSE_MISMATCH;case "SCHEMA"->NaverSearchFailure.Code.RESPONSE_SCHEMA_CHANGED;default->NaverSearchFailure.Code.SEARCH_RESPONSE_TIMEOUT;};
                         assertThatThrownBy(()->ReflectionTestUtils.invokeMethod(search,"capture","HIBA311",1,40,false,click)).isInstanceOfSatisfying(NaverSearchFailure.class,f->{assertThat(f.code()).as(mode).isEqualTo(expected);assertThat(f.diagnostics().toString()).doesNotContain("HIBA311","https://","Cookie");});

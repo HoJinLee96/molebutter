@@ -21,7 +21,7 @@ import tools.jackson.databind.ObjectMapper;
 /** 비로그인 전용 Chrome에서 홈 → 통합검색 → 더보기/쇼핑 → 낮은 가격순 UI를 사용한다. */
 @Component
 public class NaverPriceSearch {
-    public enum BlockReason { LOGIN_REQUIRED, ACCESS_RESTRICTED, AUTHENTICATED_SESSION, TAB_CLEANUP_FAILED }
+    public enum BlockReason { LOGIN_REQUIRED, ACCESS_RESTRICTED, SECURITY_CHECK, AUTHENTICATED_SESSION, TAB_CLEANUP_FAILED }
     public static class SearchBlocked extends IllegalStateException {
         private final BlockReason reason;
         private final Integer httpStatus;
@@ -357,7 +357,7 @@ public class NaverPriceSearch {
         if(status==403||status==418)throw new SearchBlocked(BlockReason.ACCESS_RESTRICTED,"[네이버 검색 제한] HTTP "+status+". 잠시 후 재개해 주세요.",status);
         if(status==429)throw new SearchBlocked(BlockReason.ACCESS_RESTRICTED,"[네이버 검색 제한] 요청 횟수 초과 · HTTP 429. 잠시 후 재개해 주세요.",status);
         if(body.contains("접근이 제한")||body.contains("접속이 일시적으로 제한")||body.contains("비정상적인 접근")||body.contains("보안 확인")||body.contains("자동입력 방지"))
-            throw new SearchBlocked("[네이버 검색 제한] 접속 제한·보안 확인 감지. 검색 전용 Chrome을 확인해 주세요.");
+            throw new SearchBlocked(BlockReason.SECURITY_CHECK,"[네이버 검색 제한] 접속 제한·보안 확인 감지. 대기 후 다시 확인합니다.");
     }
     public SearchResult parse(String data) {return payload.parse(data);}
     @PreDestroy void close() {
